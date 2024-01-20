@@ -7,15 +7,6 @@ jobs:
       - name: Check out
         uses: actions/checkout@master
 
-      - name: Set up
-        uses: actions/setup-java@master
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-
-      - name: Build project
-        run: mvn -B -Pcoverage verify
-
       - name: Run Snyk to check for vulnerabilities
         uses: snyk/actions/maven@master
         continue-on-error: true
@@ -28,3 +19,12 @@ jobs:
         uses: github/codeql-action/upload-sarif@v2
         with:
           sarif_file: snyk.sarif
+
+      - name: Set up
+        uses: actions/setup-java@master
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Build project
+        run: mvn -B -Pcoverage verify
