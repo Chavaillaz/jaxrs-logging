@@ -97,8 +97,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      *
      * @return The annotation type
      */
-    protected Class<? extends Logged> getAnnotation() {
-        return Logged.class;
+    protected Optional<Logged> getAnnotation() {
+        return getAnnotation(resourceInfo, Logged.class);
     }
 
     /**
@@ -167,7 +167,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param requestContext The context of the request
      */
     protected void logRequestBody(ContainerRequestContext requestContext) {
-        getAnnotation(resourceInfo, getAnnotation())
+        getAnnotation()
                 .map(Logged::requestBody)
                 .filter(loggingActivated -> loggingActivated && requestContext.hasEntity())
                 .ifPresent(logging -> MDC.put(REQUEST_BODY, getRequestBody(requestContext)));
@@ -179,7 +179,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param responseContext THe context of the response
      */
     protected void logResponseBody(ContainerResponseContext responseContext) {
-        getAnnotation(resourceInfo, getAnnotation())
+        getAnnotation()
                 .map(Logged::responseBody)
                 .filter(loggingActivated -> loggingActivated && responseContext.hasEntity())
                 .ifPresent(logging -> MDC.put(RESPONSE_BODY, getResponseBody(responseContext)));
