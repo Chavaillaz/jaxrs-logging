@@ -1,14 +1,14 @@
 package com.chavaillaz.jakarta.rs;
 
-import static com.chavaillaz.jakarta.rs.LoggedFilter.DURATION;
-import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_BODY;
-import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID;
-import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_METHOD;
-import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_URI;
-import static com.chavaillaz.jakarta.rs.LoggedFilter.RESOURCE_CLASS;
-import static com.chavaillaz.jakarta.rs.LoggedFilter.RESOURCE_METHOD;
-import static com.chavaillaz.jakarta.rs.LoggedFilter.RESPONSE_BODY;
-import static com.chavaillaz.jakarta.rs.LoggedFilter.RESPONSE_STATUS;
+import static com.chavaillaz.jakarta.rs.LoggedField.DURATION;
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_BODY;
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_METHOD;
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_URI;
+import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_CLASS;
+import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
+import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
+import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
 import static jakarta.ws.rs.core.HttpHeaders.CONTENT_TYPE;
 import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN_TYPE;
 import static java.lang.Integer.parseInt;
@@ -91,11 +91,11 @@ class LoggedFilterTest {
         requestLoggingFilter.filter(requestContext);
 
         // Then
-        assertNotNull(MDC.get(REQUEST_ID));
-        assertEquals(requestContext.getUriInfo().getPath(), MDC.get(REQUEST_URI));
-        assertEquals(requestContext.getMethod(), MDC.get(REQUEST_METHOD));
-        assertEquals(getClass().getSimpleName(), MDC.get(RESOURCE_CLASS));
-        assertEquals("setupTest", MDC.get(RESOURCE_METHOD));
+        assertNotNull(getMdc(REQUEST_ID));
+        assertEquals(requestContext.getUriInfo().getPath(), getMdc(REQUEST_URI));
+        assertEquals(requestContext.getMethod(), getMdc(REQUEST_METHOD));
+        assertEquals(getClass().getSimpleName(), getMdc(RESOURCE_CLASS));
+        assertEquals("setupTest", getMdc(RESOURCE_METHOD));
     }
 
     @Test
@@ -111,15 +111,15 @@ class LoggedFilterTest {
         requestLoggingFilter.filter(requestContext, responseContext);
 
         // Then
-        assertNotNull(getLoggedMdc(REQUEST_ID));
-        assertEquals(requestContext.getUriInfo().getPath(), getLoggedMdc(REQUEST_URI));
-        assertEquals(requestContext.getMethod(), getLoggedMdc(REQUEST_METHOD));
-        assertEquals(getClass().getSimpleName(), getLoggedMdc(RESOURCE_CLASS));
-        assertEquals("setupTest", getLoggedMdc(RESOURCE_METHOD));
-        assertEquals(responseContext.getHttpResponse().getStatus(), parseInt(getLoggedMdc(RESPONSE_STATUS)));
-        assertNotNull(getLoggedMdc(DURATION));
-        assertEquals(INPUT, getLoggedMdc(REQUEST_BODY));
-        assertEquals(OUTPUT, getLoggedMdc(RESPONSE_BODY));
+        assertNotNull(getMdcLogged(REQUEST_ID));
+        assertEquals(requestContext.getUriInfo().getPath(), getMdcLogged(REQUEST_URI));
+        assertEquals(requestContext.getMethod(), getMdcLogged(REQUEST_METHOD));
+        assertEquals(getClass().getSimpleName(), getMdcLogged(RESOURCE_CLASS));
+        assertEquals("setupTest", getMdcLogged(RESOURCE_METHOD));
+        assertEquals(responseContext.getHttpResponse().getStatus(), parseInt(getMdcLogged(RESPONSE_STATUS)));
+        assertNotNull(getMdcLogged(DURATION));
+        assertEquals(INPUT, getMdcLogged(REQUEST_BODY));
+        assertEquals(OUTPUT, getMdcLogged(RESPONSE_BODY));
     }
 
     private PreMatchContainerRequestContext getRequestContext() throws URISyntaxException {
@@ -139,11 +139,19 @@ class LoggedFilterTest {
         return new ContainerResponseContextImpl(request.getHttpRequest(), httpResponse, builtResponse);
     }
 
-    private String getLoggedMdc(String key) {
+    private String getMdc(LoggedField field) {
+        return MDC.get(getMdcField(field));
+    }
+
+    private String getMdcField(LoggedField field) {
+        return requestLoggingFilter.mdcFields.get(field.name());
+    }
+
+    private String getMdcLogged(LoggedField key) {
         return LIST_APPENDER.getMessages().stream()
                 .filter(log -> log.getMessage().getFormattedMessage().startsWith("Processed"))
                 .map(LogEvent::getContextData)
-                .map(mdc -> mdc.getValue(key))
+                .map(mdc -> mdc.getValue(getMdcField(key)))
                 .map(Object::toString)
                 .findFirst()
                 .orElse(null);

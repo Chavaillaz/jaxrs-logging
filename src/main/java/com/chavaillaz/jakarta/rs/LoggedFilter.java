@@ -1,5 +1,15 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.LoggedField.DURATION;
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_BODY;
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_METHOD;
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_URI;
+import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_CLASS;
+import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
+import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
+import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
+import static com.chavaillaz.jakarta.rs.LoggedField.getDefaultFields;
 import static java.lang.String.valueOf;
 import static java.lang.System.nanoTime;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -13,6 +23,7 @@ import java.io.IOException;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
+import java.util.Map;
 import java.util.Optional;
 
 import jakarta.ws.rs.container.ContainerRequestContext;
@@ -56,16 +67,16 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     protected static final Logger log = LoggerFactory.getLogger(LoggedFilter.class);
 
-    protected static final String DURATION = "duration";
-    protected static final String REQUEST_ID = "request-id";
+    /**
+     * Name of the property stored in container context to compute the duration time.
+     */
     protected static final String REQUEST_TIME = "request-time";
-    protected static final String REQUEST_METHOD = "request-method";
-    protected static final String REQUEST_URI = "request-uri";
-    protected static final String REQUEST_BODY = "request-body";
-    protected static final String RESPONSE_BODY = "response-body";
-    protected static final String RESPONSE_STATUS = "response-status";
-    protected static final String RESOURCE_CLASS = "resource-class";
-    protected static final String RESOURCE_METHOD = "resource-method";
+
+    /**
+     * Names of MDC fields to be used for all logged fields.
+     * Allows changes from children classes.
+     */
+    protected final Map<String, String> mdcFields = getDefaultFields();
 
     @Context
     ResourceInfo resourceInfo;
@@ -93,12 +104,21 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     /**
      * Gets the annotation type used to activate this filter.
-     * Can be overridden for more specific annotation to be used when extending this filter.
      *
      * @return The annotation type
      */
     protected Optional<Logged> getAnnotation() {
         return getAnnotation(resourceInfo, Logged.class);
+    }
+
+    /**
+     * Puts a diagnostic context value identified by the given field into the current thread's context map.
+     *
+     * @param field The field for which put the given value
+     * @param value The value to put
+     */
+    private void putMdc(LoggedField field, String value) {
+        MDC.put(mdcFields.get(field.name()), value);
     }
 
     /**
@@ -117,25 +137,23 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     @Override
     public void filter(ContainerRequestContext requestContext) {
-        String requestId = getRequestId(requestContext);
-        requestContext.setProperty(REQUEST_ID, requestId);
-        MDC.put(REQUEST_ID, requestId);
+        putMdc(REQUEST_ID, getRequestId(requestContext));
 
         requestContext.setProperty(REQUEST_TIME, nanoTime());
 
         Optional.of(requestContext.getUriInfo())
                 .map(UriInfo::getPath)
-                .ifPresent(path -> MDC.put(REQUEST_URI, path));
+                .ifPresent(path -> putMdc(REQUEST_URI, path));
 
-        MDC.put(REQUEST_METHOD, requestContext.getMethod());
+        putMdc(REQUEST_METHOD, requestContext.getMethod());
 
         Optional.ofNullable(resourceInfo.getResourceClass())
                 .map(Class::getSimpleName)
-                .ifPresent(value -> MDC.put(RESOURCE_CLASS, value));
+                .ifPresent(value -> putMdc(RESOURCE_CLASS, value));
 
         Optional.ofNullable(resourceInfo.getResourceMethod())
                 .map(Method::getName)
-                .ifPresent(value -> MDC.put(RESOURCE_METHOD, value));
+                .ifPresent(value -> putMdc(RESOURCE_METHOD, value));
     }
 
     @Override
@@ -145,9 +163,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 .map(Long::parseLong)
                 .orElse(nanoTime());
         long duration = (nanoTime() - requestStartTime) / 1_000_000;
-        MDC.put(DURATION, valueOf(duration));
+        putMdc(DURATION, valueOf(duration));
 
-        MDC.put(RESPONSE_STATUS, valueOf(responseContext.getStatus()));
+        putMdc(RESPONSE_STATUS, valueOf(responseContext.getStatus()));
 
         logRequestBody(requestContext);
         logResponseBody(responseContext);
@@ -170,7 +188,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         getAnnotation()
                 .map(Logged::requestBody)
                 .filter(loggingActivated -> loggingActivated && requestContext.hasEntity())
-                .ifPresent(logging -> MDC.put(REQUEST_BODY, getRequestBody(requestContext)));
+                .ifPresent(logging -> putMdc(REQUEST_BODY, getRequestBody(requestContext)));
     }
 
     /**
@@ -182,7 +200,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         getAnnotation()
                 .map(Logged::responseBody)
                 .filter(loggingActivated -> loggingActivated && responseContext.hasEntity())
-                .ifPresent(logging -> MDC.put(RESPONSE_BODY, getResponseBody(responseContext)));
+                .ifPresent(logging -> putMdc(RESPONSE_BODY, getResponseBody(responseContext)));
     }
 
     /**
@@ -240,15 +258,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * and {@link #filter(ContainerRequestContext, ContainerResponseContext)}.
      */
     protected void cleanupMdc() {
-        MDC.remove(DURATION);
-        MDC.remove(REQUEST_ID);
-        MDC.remove(REQUEST_BODY);
-        MDC.remove(REQUEST_URI);
-        MDC.remove(REQUEST_METHOD);
-        MDC.remove(RESPONSE_BODY);
-        MDC.remove(RESPONSE_STATUS);
-        MDC.remove(RESOURCE_CLASS);
-        MDC.remove(RESOURCE_METHOD);
+        mdcFields.values().forEach(MDC::remove);
     }
 
 }

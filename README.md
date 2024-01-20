@@ -27,7 +27,7 @@ The logging of requests and responses is done through a filter that can be activ
 
 It will add the following information to MDC for the request processing:
 
-* Request identifier (random UUID)
+* Request identifier (from X-Request-ID header or random UUID)
 * Request HTTP method
 * Request URI path relative to the base URI
 * Resource class matched by the current request
