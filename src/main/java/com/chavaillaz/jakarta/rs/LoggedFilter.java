@@ -5,6 +5,7 @@ import static java.lang.System.nanoTime;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Optional.empty;
 import static java.util.Optional.of;
+import static java.util.UUID.randomUUID;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
@@ -13,7 +14,6 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
 import java.util.Optional;
-import java.util.UUID;
 
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
@@ -103,13 +103,16 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     /**
      * Gets the request identifier that will be stored in MDC for the complete request processing.
-     * Returns a random UUID but can be overridden to return a business identifier based on the request.
+     * Returns the header value of {@code X-Request-ID} or a random UUID when not present.
      *
      * @param requestContext The context of the request received
      * @return The request identifier
      */
     protected String getRequestId(ContainerRequestContext requestContext) {
-        return UUID.randomUUID().toString();
+        return of(requestContext)
+                .map(ContainerRequestContext::getHeaders)
+                .map(headers -> headers.getFirst("X-Request-ID"))
+                .orElse(randomUUID().toString());
     }
 
     @Override
