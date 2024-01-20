@@ -23,12 +23,7 @@ import java.net.URISyntaxException;
 import jakarta.ws.rs.container.ResourceInfo;
 import jakarta.ws.rs.ext.Providers;
 import org.apache.commons.io.IOUtils;
-import org.apache.logging.log4j.Level;
-import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.core.LogEvent;
-import org.apache.logging.log4j.core.LoggerContext;
-import org.apache.logging.log4j.core.config.Configuration;
-import org.apache.logging.log4j.core.config.LoggerConfig;
 import org.jboss.resteasy.core.Headers;
 import org.jboss.resteasy.core.interception.jaxrs.ContainerResponseContextImpl;
 import org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext;
@@ -36,8 +31,6 @@ import org.jboss.resteasy.mock.MockHttpRequest;
 import org.jboss.resteasy.mock.MockHttpResponse;
 import org.jboss.resteasy.plugins.providers.DefaultTextPlain;
 import org.jboss.resteasy.specimpl.BuiltResponse;
-import org.junit.jupiter.api.BeforeAll;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -47,10 +40,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.MDC;
 
 @ExtendWith(MockitoExtension.class)
+@DisplayName("Original filter")
 @Logged(requestBody = true, responseBody = true)
-class LoggedFilterTest {
+class LoggedFilterTest extends AbstractFilterTest {
 
-    private static final InMemoryAppender LIST_APPENDER = InMemoryAppender.createDefaultAppender();
     private static final String INPUT = "input";
     private static final String OUTPUT = "output";
 
@@ -63,19 +56,9 @@ class LoggedFilterTest {
     @InjectMocks
     LoggedFilter requestLoggingFilter;
 
-    @BeforeAll
-    static void registerListAppender() {
-        LoggerContext loggerContext = (LoggerContext) LogManager.getContext(false);
-        Configuration configuration = loggerContext.getConfiguration();
-        LoggerConfig rootLoggerConfig = configuration.getLoggerConfig("");
-        rootLoggerConfig.addAppender(LIST_APPENDER, Level.ALL, null);
-    }
-
-    @BeforeEach
+    @Override
     void setupTest() {
-        MDC.clear();
-        LIST_APPENDER.getMessages().clear();
-        LIST_APPENDER.start();
+        super.setupTest();
         // Returns this method and class as the resource matched by the queries in tests
         doReturn(new Object() {}.getClass().getEnclosingMethod()).when(resourceInfo).getResourceMethod();
         doReturn(this.getClass()).when(resourceInfo).getResourceClass();

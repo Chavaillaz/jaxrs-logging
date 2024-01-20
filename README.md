@@ -93,6 +93,18 @@ with the following MDC fields:
 * `response-body: { "id" : 1, "content": "Something" }`
 * `duration: 15`
 
+## Extension
+
+An example of extension of the filter is available
+with [UserLogged](src%2Ftest%2Fjava%2Fcom%2Fchavaillaz%2Fjakarta%2Frs%2FUserLogged.java)
+and [UserLoggedFilter](src%2Ftest%2Fjava%2Fcom%2Fchavaillaz%2Fjakarta%2Frs%2FUserLoggedFilter.java).
+In this example, you can find the following customization of the original filter:
+
+* Log new **user-id** field in MDC
+* Log new **user-agent** field in MDC if activated in annotation
+* Change **request-id** logic to get it from a header field
+* Rename MDC field of **request-id** to **request-identifier**
+
 ## Contributing
 
 If you have a feature request or found a bug, you can:

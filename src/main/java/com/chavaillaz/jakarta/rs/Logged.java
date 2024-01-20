@@ -21,14 +21,14 @@ import jakarta.ws.rs.NameBinding;
 public @interface Logged {
 
     /**
-     * Indicates if the request body must be as MDC field when logging the request.
+     * Indicates if the request body must be as MDC field when processing and logging the request.
      *
      * @return {@code true} to log the request body, {@code false} otherwise
      */
     boolean requestBody() default false;
 
     /**
-     * Indicates if the response body must be as MDC field when logging the request.
+     * Indicates if the response body must be as MDC field when processing and logging the request.
      *
      * @return {@code true} to log the response body, {@code false} otherwise
      */
