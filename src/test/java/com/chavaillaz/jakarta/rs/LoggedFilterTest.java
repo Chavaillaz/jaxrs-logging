@@ -1,0 +1,153 @@
+package com.chavaillaz.jakarta.rs;
+
+import static com.chavaillaz.jakarta.rs.LoggedFilter.DURATION;
+import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_BODY;
+import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID;
+import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_METHOD;
+import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_URI;
+import static com.chavaillaz.jakarta.rs.LoggedFilter.RESOURCE_CLASS;
+import static com.chavaillaz.jakarta.rs.LoggedFilter.RESOURCE_METHOD;
+import static com.chavaillaz.jakarta.rs.LoggedFilter.RESPONSE_BODY;
+import static com.chavaillaz.jakarta.rs.LoggedFilter.RESPONSE_STATUS;
+import static jakarta.ws.rs.core.HttpHeaders.CONTENT_TYPE;
+import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN_TYPE;
+import static java.lang.Integer.parseInt;
+import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doReturn;
+
+import java.net.URISyntaxException;
+
+import jakarta.ws.rs.container.ResourceInfo;
+import jakarta.ws.rs.ext.Providers;
+import org.apache.commons.io.IOUtils;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.core.LogEvent;
+import org.apache.logging.log4j.core.LoggerContext;
+import org.apache.logging.log4j.core.config.Configuration;
+import org.apache.logging.log4j.core.config.LoggerConfig;
+import org.jboss.resteasy.core.Headers;
+import org.jboss.resteasy.core.interception.jaxrs.ContainerResponseContextImpl;
+import org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext;
+import org.jboss.resteasy.mock.MockHttpRequest;
+import org.jboss.resteasy.mock.MockHttpResponse;
+import org.jboss.resteasy.plugins.providers.DefaultTextPlain;
+import org.jboss.resteasy.specimpl.BuiltResponse;
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.slf4j.MDC;
+
+@ExtendWith(MockitoExtension.class)
+@Logged(requestBody = true, responseBody = true)
+class LoggedFilterTest {
+
+    private static final InMemoryAppender LIST_APPENDER = InMemoryAppender.createDefaultAppender();
+    private static final String INPUT = "input";
+    private static final String OUTPUT = "output";
+
+    @Mock
+    ResourceInfo resourceInfo;
+
+    @Mock
+    Providers providers;
+
+    @InjectMocks
+    LoggedFilter requestLoggingFilter;
+
+    @BeforeAll
+    static void registerListAppender() {
+        LoggerContext loggerContext = (LoggerContext) LogManager.getContext(false);
+        Configuration configuration = loggerContext.getConfiguration();
+        LoggerConfig rootLoggerConfig = configuration.getLoggerConfig("");
+        rootLoggerConfig.addAppender(LIST_APPENDER, Level.ALL, null);
+    }
+
+    @BeforeEach
+    void setupTest() {
+        MDC.clear();
+        LIST_APPENDER.getMessages().clear();
+        LIST_APPENDER.start();
+        // Returns this method and class as the resource matched by the queries in tests
+        doReturn(new Object() {}.getClass().getEnclosingMethod()).when(resourceInfo).getResourceMethod();
+        doReturn(this.getClass()).when(resourceInfo).getResourceClass();
+    }
+
+    @Test
+    @DisplayName("Check filter on request sets up MDC fields")
+    void filterRequestCheckMdc() throws URISyntaxException {
+        // Given
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+
+        // When
+        requestLoggingFilter.filter(requestContext);
+
+        // Then
+        assertNotNull(MDC.get(REQUEST_ID));
+        assertEquals(requestContext.getUriInfo().getPath(), MDC.get(REQUEST_URI));
+        assertEquals(requestContext.getMethod(), MDC.get(REQUEST_METHOD));
+        assertEquals(getClass().getSimpleName(), MDC.get(RESOURCE_CLASS));
+        assertEquals("setupTest", MDC.get(RESOURCE_METHOD));
+    }
+
+    @Test
+    @DisplayName("Check filter on request and response writes log with MDC fields")
+    void filterResponseCheckLog() throws Exception {
+        // Given
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ContainerResponseContextImpl responseContext = getResponseContext(requestContext);
+        doReturn(new DefaultTextPlain()).when(providers).getMessageBodyWriter(any(), any(), any(), any());
+
+        // When
+        requestLoggingFilter.filter(requestContext);
+        requestLoggingFilter.filter(requestContext, responseContext);
+
+        // Then
+        assertNotNull(getLoggedMdc(REQUEST_ID));
+        assertEquals(requestContext.getUriInfo().getPath(), getLoggedMdc(REQUEST_URI));
+        assertEquals(requestContext.getMethod(), getLoggedMdc(REQUEST_METHOD));
+        assertEquals(getClass().getSimpleName(), getLoggedMdc(RESOURCE_CLASS));
+        assertEquals("setupTest", getLoggedMdc(RESOURCE_METHOD));
+        assertEquals(responseContext.getHttpResponse().getStatus(), parseInt(getLoggedMdc(RESPONSE_STATUS)));
+        assertNotNull(getLoggedMdc(DURATION));
+        assertEquals(INPUT, getLoggedMdc(REQUEST_BODY));
+        assertEquals(OUTPUT, getLoggedMdc(RESPONSE_BODY));
+    }
+
+    private PreMatchContainerRequestContext getRequestContext() throws URISyntaxException {
+        MockHttpRequest request = MockHttpRequest.create("POST", "example.company.com/service");
+        request.setInputStream(IOUtils.toInputStream(INPUT, UTF_8));
+        request.contentType(TEXT_PLAIN_TYPE);
+        return new PreMatchContainerRequestContext(request);
+    }
+
+    private ContainerResponseContextImpl getResponseContext(PreMatchContainerRequestContext request) {
+        int responseStatus = 200;
+        Headers<Object> headers = new Headers<>();
+        headers.add(CONTENT_TYPE, TEXT_PLAIN_TYPE.toString());
+        MockHttpResponse httpResponse = new MockHttpResponse();
+        httpResponse.setStatus(responseStatus);
+        BuiltResponse builtResponse = new BuiltResponse(responseStatus, headers, OUTPUT, null);
+        return new ContainerResponseContextImpl(request.getHttpRequest(), httpResponse, builtResponse);
+    }
+
+    private String getLoggedMdc(String key) {
+        return LIST_APPENDER.getMessages().stream()
+                .filter(log -> log.getMessage().getFormattedMessage().startsWith("Processed"))
+                .map(LogEvent::getContextData)
+                .map(mdc -> mdc.getValue(key))
+                .map(Object::toString)
+                .findFirst()
+                .orElse(null);
+    }
+
+}
+
