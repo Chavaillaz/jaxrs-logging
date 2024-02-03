@@ -282,9 +282,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      *
      * @return The list of filters to be applied
      */
-    protected Set<LoggedBodyFilter> filersBody() {
+    protected Set<LoggedBodyFilter> filtersBody() {
         return getAnnotation()
-                .map(Logged::filersBody)
+                .map(Logged::filtersBody)
                 .stream()
                 .flatMap(Stream::of)
                 .map(this::instantiateFilter)
@@ -299,7 +299,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @return The payload filtered
      */
     protected String filterBody(String payload) {
-        for (LoggedBodyFilter filter : filersBody()) {
+        for (LoggedBodyFilter filter : filtersBody()) {
             payload = filter.filterBody(payload);
         }
         return payload;

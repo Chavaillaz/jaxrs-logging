@@ -47,7 +47,7 @@ with the following MDC fields set:
 Additional logging features can be activated using properties of the annotation:
 
 ```java
-@Logged(requestBody = {LOG, MDC}, responseBody = {LOG, MDC}, filersBody = {YourBodyFilter.class})
+@Logged(requestBody = {LOG, MDC}, responseBody = {LOG, MDC}, filtersBody = {YourBodyFilter.class})
 ```
 
 * **requestBody**

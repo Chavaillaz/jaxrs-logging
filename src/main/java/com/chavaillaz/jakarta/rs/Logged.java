@@ -39,7 +39,7 @@ public @interface Logged {
      *
      * @return The list of filters to be applied
      */
-    Class<? extends LoggedBodyFilter>[] filersBody() default {};
+    Class<? extends LoggedBodyFilter>[] filtersBody() default {};
 
     /**
      * Type of logging to be applied to the request and response body.

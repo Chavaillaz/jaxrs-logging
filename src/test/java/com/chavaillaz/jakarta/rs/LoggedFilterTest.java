@@ -239,21 +239,21 @@ class LoggedFilterTest extends AbstractFilterTest {
                 .orElse(null);
     }
 
-    @Logged(requestBody = {LogType.MDC, LogType.LOG}, responseBody = {LogType.MDC, LogType.LOG}, filersBody = {SensitiveBodyFilter.class})
+    @Logged(requestBody = {LogType.MDC, LogType.LOG}, responseBody = {LogType.MDC, LogType.LOG}, filtersBody = {SensitiveBodyFilter.class})
     interface AnnotatedResource {
 
         void inherit();
 
-        @Logged(requestBody = {LogType.MDC, LogType.LOG}, responseBody = {LogType.MDC, LogType.LOG}, filersBody = SensitiveBodyFilter.class)
+        @Logged(requestBody = {LogType.MDC, LogType.LOG}, responseBody = {LogType.MDC, LogType.LOG}, filtersBody = SensitiveBodyFilter.class)
         void bodyAsMdcAndLogWithFilter();
 
         @Logged(requestBody = {LogType.MDC, LogType.LOG}, responseBody = {LogType.MDC, LogType.LOG})
         void bodyAsMdcAndLog();
 
-        @Logged(requestBody = LogType.MDC, responseBody = LogType.MDC, filersBody = SensitiveBodyFilter.class)
+        @Logged(requestBody = LogType.MDC, responseBody = LogType.MDC, filtersBody = SensitiveBodyFilter.class)
         void bodyAsMdcWithFilter();
 
-        @Logged(requestBody = LogType.LOG, responseBody = LogType.LOG, filersBody = SensitiveBodyFilter.class)
+        @Logged(requestBody = LogType.LOG, responseBody = LogType.LOG, filtersBody = SensitiveBodyFilter.class)
         void bodyAsLogWithFilter();
 
         @Logged(requestBody = LogType.MDC, responseBody = LogType.MDC)
