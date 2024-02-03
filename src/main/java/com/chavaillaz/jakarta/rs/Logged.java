@@ -21,17 +21,41 @@ import jakarta.ws.rs.NameBinding;
 public @interface Logged {
 
     /**
-     * Indicates if the request body must be as MDC field when processing and logging the request.
+     * Indicates how the request body must be logged.
      *
-     * @return {@code true} to log the request body, {@code false} otherwise
+     * @return The types of logging to be done
      */
-    boolean requestBody() default false;
+    LogType[] requestBody() default {};
 
     /**
-     * Indicates if the response body must be as MDC field when processing and logging the request.
+     * Indicates how the response body must be logged.
      *
-     * @return {@code true} to log the response body, {@code false} otherwise
+     * @return The types of logging to be done
      */
-    boolean responseBody() default false;
+    LogType[] responseBody() default {};
+
+    /**
+     * Indicates which filters must be applied before logging the request or response body.
+     *
+     * @return The list of filters to be applied
+     */
+    Class<? extends LoggedBodyFilter>[] filersBody() default {};
+
+    /**
+     * Type of logging to be applied to the request and response body.
+     */
+    enum LogType {
+
+        /**
+         * Writes the element as a new log line.
+         */
+        LOG,
+
+        /**
+         * Writes the element as MDC field of the processed log line from {@link LoggedFilter}.
+         */
+        MDC
+
+    }
 
 }

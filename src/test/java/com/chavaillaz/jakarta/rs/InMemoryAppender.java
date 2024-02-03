@@ -58,4 +58,17 @@ public class InMemoryAppender extends AbstractAppender {
         return this.messages;
     }
 
+    /**
+     * Finds the first message containing the given content.
+     *
+     * @param content The content to search
+     * @return The first message containing it
+     */
+    public LogEvent findFirstMessage(String content) {
+        return getMessages().stream()
+                .filter(log -> log.getMessage().getFormattedMessage().contains(content))
+                .findFirst()
+                .orElse(null);
+    }
+
 }

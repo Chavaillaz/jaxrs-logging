@@ -22,7 +22,7 @@ The dependency is available in maven central (see badge for version):
 The logging of requests and responses is done through a filter that can be activated on a resource with:
 
 ```java
-@Logged(requestBody = true, responseBody = true)
+@Logged
 ```
 
 It will add the following information to MDC for the request processing:
@@ -43,7 +43,22 @@ with the following MDC fields set:
 
 * Response HTTP status
 * Response duration in milliseconds
-* Request and response body (if activated in annotation)
+
+Additional logging features can be activated using properties of the annotation:
+
+```java
+@Logged(requestBody = {LOG, MDC}, responseBody = {LOG, MDC}, filersBody = {YourBodyFilter.class})
+```
+
+* **requestBody**
+    * `LOG`: Logging the request body in a new log line `Received [method] [URI] [body]`
+    * `MDC`: Logging the request body as MDC only in the `Processed ...` log line
+* **responseBody**
+    * `LOG`: Logging the response body at the end of the `Processed ...` log line
+    * `MDC`: Logging the response body as MDC only in the `Processed ...` log line
+* **filtersBody**: Classes implementing the functional interface
+  [LoggedBodyFilter](src/main/java/com/chavaillaz/jakarta/rs/LoggedBodyFilter.java) to filter any body
+  before writing it in logs, for example to remove sensitive data that could be present.
 
 ## Example
 
@@ -54,7 +69,7 @@ Given an endpoint on which users can create new articles, annotated with `@Logge
 @Path("/article")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
-@Logged(requestBody = true, responseBody = true)
+@Logged(requestBody = MDC, responseBody = MDC)
 public class ArticleResource {
 
     @POST
@@ -96,8 +111,8 @@ with the following MDC fields:
 ## Extension
 
 An example of extension of the filter is available
-with [UserLogged](src%2Ftest%2Fjava%2Fcom%2Fchavaillaz%2Fjakarta%2Frs%2FUserLogged.java)
-and [UserLoggedFilter](src%2Ftest%2Fjava%2Fcom%2Fchavaillaz%2Fjakarta%2Frs%2FUserLoggedFilter.java).
+with [UserLogged](src/test/java/com/chavaillaz/jakarta/rs/UserLogged.java)
+and [UserLoggedFilter](src/test/java/com/chavaillaz/jakarta/rs/UserLoggedFilter.java).
 In this example, you can find the following customization of the original filter:
 
 * Log new **user-id** field in MDC

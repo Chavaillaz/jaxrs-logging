@@ -29,6 +29,7 @@ public class UserLoggedFilter extends LoggedFilter {
     @Override
     protected Optional<Logged> getAnnotation() {
         // Need to give the base configuration to the parent
+        // But could also overwrite requestBodyLogging, responseBodyLogging and filersBody
         return getAnnotation(resourceInfo, UserLogged.class)
                 .map(UserLogged::logging);
     }

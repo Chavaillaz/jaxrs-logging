@@ -11,21 +11,21 @@ import org.slf4j.MDC;
 
 public abstract class AbstractFilterTest {
 
-    protected static final InMemoryAppender LIST_APPENDER = InMemoryAppender.createDefaultAppender();
+    protected static final InMemoryAppender listAppender = InMemoryAppender.createDefaultAppender();
 
     @BeforeAll
     static void registerListAppender() {
         LoggerContext loggerContext = (LoggerContext) LogManager.getContext(false);
         Configuration configuration = loggerContext.getConfiguration();
         LoggerConfig rootLoggerConfig = configuration.getLoggerConfig("");
-        rootLoggerConfig.addAppender(LIST_APPENDER, Level.ALL, null);
+        rootLoggerConfig.addAppender(listAppender, Level.ALL, null);
     }
 
     @BeforeEach
     void setupTest() {
         MDC.clear();
-        LIST_APPENDER.getMessages().clear();
-        LIST_APPENDER.start();
+        listAppender.getMessages().clear();
+        listAppender.start();
     }
 
 }

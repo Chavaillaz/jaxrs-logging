@@ -16,6 +16,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Optional.empty;
 import static java.util.Optional.of;
 import static java.util.UUID.randomUUID;
+import static java.util.stream.Collectors.toSet;
 
 import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
@@ -24,8 +25,12 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Stream;
 
+import com.chavaillaz.jakarta.rs.Logged.LogType;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.container.ContainerResponseContext;
@@ -33,7 +38,6 @@ import jakarta.ws.rs.container.ContainerResponseFilter;
 import jakarta.ws.rs.container.ResourceInfo;
 import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.core.UriInfo;
 import jakarta.ws.rs.ext.MessageBodyWriter;
 import jakarta.ws.rs.ext.Provider;
 import jakarta.ws.rs.ext.Providers;
@@ -137,13 +141,11 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     @Override
     public void filter(ContainerRequestContext requestContext) {
-        putMdc(REQUEST_ID, getRequestId(requestContext));
-
         requestContext.setProperty(REQUEST_TIME, nanoTime());
 
-        Optional.of(requestContext.getUriInfo())
-                .map(UriInfo::getPath)
-                .ifPresent(path -> putMdc(REQUEST_URI, path));
+        putMdc(REQUEST_ID, getRequestId(requestContext));
+
+        putMdc(REQUEST_URI, requestContext.getUriInfo().getPath());
 
         putMdc(REQUEST_METHOD, requestContext.getMethod());
 
@@ -154,6 +156,13 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         Optional.ofNullable(resourceInfo.getResourceMethod())
                 .map(Method::getName)
                 .ifPresent(value -> putMdc(RESOURCE_METHOD, value));
+
+        if (requestBodyLogging().contains(LogType.LOG) && requestContext.hasEntity()) {
+            log.info("Received {} {}\n{}",
+                    requestContext.getMethod(),
+                    requestContext.getUriInfo().getPath(),
+                    getRequestBody(requestContext));
+        }
     }
 
     @Override
@@ -167,40 +176,29 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
         putMdc(RESPONSE_STATUS, valueOf(responseContext.getStatus()));
 
-        logRequestBody(requestContext);
-        logResponseBody(responseContext);
+        if (requestBodyLogging().contains(LogType.MDC) && requestContext.hasEntity()) {
+            putMdc(REQUEST_BODY, getRequestBody(requestContext));
+        }
 
-        log.info("Processed {} {} with status {} in {}ms",
+        String responseBody = "";
+        if (!responseBodyLogging().isEmpty() && responseContext.hasEntity()) {
+            String body = getResponseBody(responseContext);
+            if (responseBodyLogging().contains(LogType.MDC)) {
+                putMdc(RESPONSE_BODY, body);
+            }
+            if (responseBodyLogging().contains(LogType.LOG)) {
+                responseBody = "\n" + body;
+            }
+        }
+
+        log.info("Processed {} {} with status {} in {}ms{}",
                 requestContext.getMethod(),
                 requestContext.getUriInfo().getPath(),
                 responseContext.getStatus(),
-                duration);
+                duration,
+                responseBody);
 
         cleanupMdc();
-    }
-
-    /**
-     * Logs the request body in the corresponding MDC field if activated in the annotation.
-     *
-     * @param requestContext The context of the request
-     */
-    protected void logRequestBody(ContainerRequestContext requestContext) {
-        getAnnotation()
-                .map(Logged::requestBody)
-                .filter(loggingActivated -> loggingActivated && requestContext.hasEntity())
-                .ifPresent(logging -> putMdc(REQUEST_BODY, getRequestBody(requestContext)));
-    }
-
-    /**
-     * Logs the response body in the corresponding MDC field if activated in the annotation.
-     *
-     * @param responseContext THe context of the response
-     */
-    protected void logResponseBody(ContainerResponseContext responseContext) {
-        getAnnotation()
-                .map(Logged::responseBody)
-                .filter(loggingActivated -> loggingActivated && responseContext.hasEntity())
-                .ifPresent(logging -> putMdc(RESPONSE_BODY, getResponseBody(responseContext)));
     }
 
     /**
@@ -213,7 +211,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         try (BufferedInputStream stream = new BufferedInputStream(requestContext.getEntityStream())) {
             String payload = IOUtils.toString(stream, UTF_8);
             requestContext.setEntityStream(IOUtils.toInputStream(payload, UTF_8));
-            return payload;
+            return filterBody(payload);
         } catch (IOException e) {
             return e.getMessage();
         }
@@ -247,9 +245,79 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                     responseContext.getHeaders(),
                     outputStream
             );
-            return outputStream.toString();
+            return filterBody(outputStream.toString());
         } catch (IOException e) {
             return e.getMessage();
+        }
+    }
+
+    /**
+     * Gets how the request body must be logged.
+     *
+     * @return The types of logging to be done
+     */
+    protected Set<LogType> requestBodyLogging() {
+        return getAnnotation()
+                .map(Logged::requestBody)
+                .stream()
+                .flatMap(Stream::of)
+                .collect(toSet());
+    }
+
+    /**
+     * Gets how the response body must be logged.
+     *
+     * @return The types of logging to be done
+     */
+    protected Set<LogType> responseBodyLogging() {
+        return getAnnotation()
+                .map(Logged::responseBody)
+                .stream()
+                .flatMap(Stream::of)
+                .collect(toSet());
+    }
+
+    /**
+     * Gets the filters that must be applied before logging the request or response body.
+     *
+     * @return The list of filters to be applied
+     */
+    protected Set<LoggedBodyFilter> filersBody() {
+        return getAnnotation()
+                .map(Logged::filersBody)
+                .stream()
+                .flatMap(Stream::of)
+                .map(this::instantiateFilter)
+                .filter(Objects::nonNull)
+                .collect(toSet());
+    }
+
+    /**
+     * Applies the defined body filters to the given payload.
+     *
+     * @param payload The payload to be filtered
+     * @return The payload filtered
+     */
+    protected String filterBody(String payload) {
+        for (LoggedBodyFilter filter : filersBody()) {
+            payload = filter.filterBody(payload);
+        }
+        return payload;
+    }
+
+    /**
+     * Creates a new instance of the given body filter type.
+     *
+     * @param type The body filter class to be instantiated
+     * @param <T>  The body filter type
+     * @return The instance created or {@code null} if it failed
+     */
+    protected <T extends LoggedBodyFilter> T instantiateFilter(Class<T> type) {
+        try {
+            return type.getConstructor().newInstance();
+        } catch (Exception e) {
+            log.error("Unable to instantiate request body filter {}", type, e);
+            return null;
         }
     }
 

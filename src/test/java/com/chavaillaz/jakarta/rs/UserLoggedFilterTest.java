@@ -9,8 +9,8 @@ import static org.mockito.Mockito.doReturn;
 
 import java.net.URISyntaxException;
 
+import com.chavaillaz.jakarta.rs.Logged.LogType;
 import jakarta.ws.rs.container.ResourceInfo;
-import jakarta.ws.rs.ext.Providers;
 import org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext;
 import org.jboss.resteasy.mock.MockHttpRequest;
 import org.junit.jupiter.api.DisplayName;
@@ -23,14 +23,11 @@ import org.slf4j.MDC;
 
 @ExtendWith(MockitoExtension.class)
 @DisplayName("Custom filter")
-@UserLogged(logging = @Logged(requestBody = true, responseBody = true), userAgent = true)
+@UserLogged(logging = @Logged(requestBody = {LogType.MDC}, responseBody = LogType.MDC), userAgent = true)
 class UserLoggedFilterTest extends AbstractFilterTest {
 
     @Mock
     ResourceInfo resourceInfo;
-
-    @Mock
-    Providers providers;
 
     @InjectMocks
     UserLoggedFilter requestLoggingFilter;
@@ -44,8 +41,8 @@ class UserLoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check filter on request sets up MDC fields")
-    void filterRequestCheckMdc() throws URISyntaxException {
+    @DisplayName("Check filter sets up MDC fields")
+    void checkFilterAction() throws URISyntaxException {
         // Given
         PreMatchContainerRequestContext requestContext = getRequestContext();
 
