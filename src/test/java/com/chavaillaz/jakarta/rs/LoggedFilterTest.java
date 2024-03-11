@@ -49,8 +49,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.MDC;
 
-@ExtendWith(MockitoExtension.class)
 @DisplayName("Original filter")
+@ExtendWith(MockitoExtension.class)
 class LoggedFilterTest extends AbstractFilterTest {
 
     private static final LogType[] NO_LOGGING = new LogType[]{};

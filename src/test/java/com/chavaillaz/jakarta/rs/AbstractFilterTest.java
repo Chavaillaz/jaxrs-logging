@@ -19,10 +19,11 @@ public abstract class AbstractFilterTest {
         Configuration configuration = loggerContext.getConfiguration();
         LoggerConfig rootLoggerConfig = configuration.getLoggerConfig("");
         rootLoggerConfig.addAppender(listAppender, Level.ALL, null);
+        listAppender.start();
     }
 
     @BeforeEach
-    void setupTest() {
+    void setupTest() throws Exception {
         MDC.clear();
         listAppender.getMessages().clear();
         listAppender.start();

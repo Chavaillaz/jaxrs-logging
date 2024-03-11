@@ -7,12 +7,14 @@ import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN_TYPE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.doReturn;
 
+import java.lang.reflect.Method;
 import java.net.URISyntaxException;
 
 import com.chavaillaz.jakarta.rs.Logged.LogType;
 import jakarta.ws.rs.container.ResourceInfo;
 import org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext;
 import org.jboss.resteasy.mock.MockHttpRequest;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,9 +23,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.MDC;
 
-@ExtendWith(MockitoExtension.class)
 @DisplayName("Custom filter")
-@UserLogged(logging = @Logged(requestBody = {LogType.MDC}, responseBody = LogType.MDC), userAgent = true)
+@ExtendWith(MockitoExtension.class)
 class UserLoggedFilterTest extends AbstractFilterTest {
 
     @Mock
@@ -33,11 +34,13 @@ class UserLoggedFilterTest extends AbstractFilterTest {
     UserLoggedFilter requestLoggingFilter;
 
     @Override
-    void setupTest() {
+    @BeforeEach
+    void setupTest() throws Exception {
         super.setupTest();
-        // Returns this method and class as the resource matched by the queries in tests
-        doReturn(new Object() {}.getClass().getEnclosingMethod()).when(resourceInfo).getResourceMethod();
-        doReturn(this.getClass()).when(resourceInfo).getResourceClass();
+        Class<?> type = AnnotatedResource.class;
+        doReturn(type).when(resourceInfo).getResourceClass();
+        Method resourceMethod = type.getDeclaredMethod("inherit");
+        doReturn(resourceMethod).when(resourceInfo).getResourceMethod();
     }
 
     @Test
@@ -61,6 +64,13 @@ class UserLoggedFilterTest extends AbstractFilterTest {
                         .header("X-Case-ID", "CaseId")
                         .header("User-Agent", "Opera")
                         .contentType(TEXT_PLAIN_TYPE));
+    }
+
+    @UserLogged(logging = @Logged(requestBody = {LogType.MDC}, responseBody = LogType.MDC), userAgent = true)
+    interface AnnotatedResource {
+
+        void inherit();
+
     }
 
 }

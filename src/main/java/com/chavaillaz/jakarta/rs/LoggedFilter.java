@@ -74,7 +74,12 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     /**
      * Name of the property stored in container context to compute the duration time.
      */
-    protected static final String REQUEST_TIME = "request-time";
+    protected static final String REQUEST_TIME_PROPERTY = "request-time";
+
+    /**
+     * Name of the property stored in container context to retrieve the request body after its processing.
+     */
+    protected static final String REQUEST_BODY_PROPERTY = "request-body";
 
     /**
      * Names of MDC fields to be used for all logged fields.
@@ -141,7 +146,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     @Override
     public void filter(ContainerRequestContext requestContext) {
-        requestContext.setProperty(REQUEST_TIME, nanoTime());
+        requestContext.setProperty(REQUEST_TIME_PROPERTY, nanoTime());
 
         putMdc(REQUEST_ID, getRequestId(requestContext));
 
@@ -157,17 +162,23 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 .map(Method::getName)
                 .ifPresent(value -> putMdc(RESOURCE_METHOD, value));
 
-        if (requestBodyLogging().contains(LogType.LOG) && requestContext.hasEntity()) {
-            log.info("Received {} {}\n{}",
-                    requestContext.getMethod(),
-                    requestContext.getUriInfo().getPath(),
-                    getRequestBody(requestContext));
+        if (!requestBodyLogging().isEmpty() && requestContext.hasEntity()) {
+            String requestBody = getRequestBody(requestContext);
+            if (requestBodyLogging().contains(LogType.LOG)) {
+                log.info("Received {} {}\n{}",
+                        requestContext.getMethod(),
+                        requestContext.getUriInfo().getPath(),
+                        requestBody);
+            }
+            if (requestBodyLogging().contains(LogType.MDC)) {
+                requestContext.setProperty(REQUEST_BODY_PROPERTY, requestBody);
+            }
         }
     }
 
     @Override
     public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext) {
-        long requestStartTime = Optional.ofNullable(requestContext.getProperty(REQUEST_TIME))
+        long requestStartTime = Optional.ofNullable(requestContext.getProperty(REQUEST_TIME_PROPERTY))
                 .map(Object::toString)
                 .map(Long::parseLong)
                 .orElse(nanoTime());
@@ -177,7 +188,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         putMdc(RESPONSE_STATUS, valueOf(responseContext.getStatus()));
 
         if (requestBodyLogging().contains(LogType.MDC) && requestContext.hasEntity()) {
-            putMdc(REQUEST_BODY, getRequestBody(requestContext));
+            putMdc(REQUEST_BODY, (String) requestContext.getProperty(REQUEST_BODY_PROPERTY));
         }
 
         String responseBody = "";
