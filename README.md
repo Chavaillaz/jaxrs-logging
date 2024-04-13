@@ -25,11 +25,13 @@ The logging of requests and responses is done through a filter that can be activ
 @Logged
 ```
 
-It will add the following information to MDC for the request processing:
+It will add the following information to MDC for the request processing
+(meaning that all logs within the processing of the request by the resource will have them):
 
 * Request identifier (from X-Request-ID header or random UUID)
 * Request HTTP method
 * Request URI path relative to the base URI
+* Request query parameters
 * Resource class matched by the current request
 * Resource method matched by the current request
 
@@ -59,6 +61,8 @@ Additional logging features can be activated using properties of the annotation:
 * **filtersBody**: Classes implementing the functional interface
   [LoggedBodyFilter](src/main/java/com/chavaillaz/jakarta/rs/LoggedBodyFilter.java) to filter any body
   before writing it in logs, for example to remove sensitive data that could be present.
+
+By careful when activating logging of request or response body, it may produce issues depending on the payload size.
 
 ## Example
 
