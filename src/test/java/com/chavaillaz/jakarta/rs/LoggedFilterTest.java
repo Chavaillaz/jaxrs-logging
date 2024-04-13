@@ -4,6 +4,7 @@ import static com.chavaillaz.jakarta.rs.LoggedField.DURATION;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_METHOD;
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_PARAMETERS;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_URI;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_CLASS;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
@@ -57,8 +58,9 @@ class LoggedFilterTest extends AbstractFilterTest {
     private static final LogType[] LOG_LOGGING = new LogType[]{LogType.LOG};
     private static final LogType[] MDC_LOGGING = new LogType[]{LogType.MDC};
     private static final LogType[] ALL_LOGGING = new LogType[]{LogType.MDC, LogType.LOG};
-    private static final Class[] NO_FILTERING = new Class[]{};
-    private static final Class[] SENSITIVE_FILTERING = new Class[]{SensitiveBodyFilter.class};
+    private static final Class<?>[] NO_FILTERING = new Class[]{};
+    private static final Class<?>[] SENSITIVE_FILTERING = new Class[]{SensitiveBodyFilter.class};
+    private static final String PARAMETERS = "param1=value1&param2=value2";
     private static final String INPUT = """
                         {
                             "content": "My Article",
@@ -134,6 +136,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         // Then
         assertNotNull(getMdc(REQUEST_ID));
         assertEquals(requestContext.getUriInfo().getPath(), getMdc(REQUEST_URI));
+        assertEquals(PARAMETERS, getMdc(REQUEST_PARAMETERS));
         assertEquals(requestContext.getMethod(), getMdc(REQUEST_METHOD));
         assertEquals(type.getSimpleName(), getMdc(RESOURCE_CLASS));
         assertEquals(method, getMdc(RESOURCE_METHOD));
@@ -207,7 +210,7 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     PreMatchContainerRequestContext getRequestContext() throws URISyntaxException {
-        MockHttpRequest request = MockHttpRequest.create("POST", "example.company.com/service");
+        MockHttpRequest request = MockHttpRequest.create("POST", "example.company.com/service?" + PARAMETERS);
         request.setInputStream(IOUtils.toInputStream(INPUT, UTF_8));
         request.contentType(TEXT_PLAIN_TYPE);
         return new PreMatchContainerRequestContext(request);

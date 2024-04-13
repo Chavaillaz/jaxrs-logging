@@ -4,18 +4,22 @@ import static com.chavaillaz.jakarta.rs.LoggedField.DURATION;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_METHOD;
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_PARAMETERS;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_URI;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_CLASS;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
 import static com.chavaillaz.jakarta.rs.LoggedField.getDefaultFields;
+import static java.lang.String.join;
 import static java.lang.String.valueOf;
 import static java.lang.System.nanoTime;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.Map.Entry.comparingByKey;
 import static java.util.Optional.empty;
 import static java.util.Optional.of;
 import static java.util.UUID.randomUUID;
+import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toSet;
 
 import java.io.BufferedInputStream;
@@ -151,6 +155,14 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         putMdc(REQUEST_ID, getRequestId(requestContext));
 
         putMdc(REQUEST_URI, requestContext.getUriInfo().getPath());
+
+        putMdc(REQUEST_PARAMETERS, requestContext.getUriInfo()
+                .getQueryParameters()
+                .entrySet()
+                .stream()
+                .sorted(comparingByKey())
+                .map(entry -> entry.getKey() + "=" + join(",", entry.getValue()))
+                .collect(joining("&")));
 
         putMdc(REQUEST_METHOD, requestContext.getMethod());
 

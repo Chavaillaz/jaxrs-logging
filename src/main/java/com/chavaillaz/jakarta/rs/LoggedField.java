@@ -12,6 +12,7 @@ public enum LoggedField {
     REQUEST_ID("request-id"),
     REQUEST_METHOD("request-method"),
     REQUEST_URI("request-uri"),
+    REQUEST_PARAMETERS("request-parameters"),
     REQUEST_BODY("request-body"),
     RESPONSE_BODY("response-body"),
     RESPONSE_STATUS("response-status"),
