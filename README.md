@@ -11,6 +11,7 @@ This library allows you to easily log (with MDC) requests and responses by annot
 The dependency is available in maven central (see badge for version):
 
 ```xml
+
 <dependency>
     <groupId>com.chavaillaz</groupId>
     <artifactId>jaxrs-logging</artifactId>
@@ -61,6 +62,7 @@ Additional logging features can be activated using properties of the annotation:
 * **filtersBody**: Classes implementing the functional interface
   [LoggedBodyFilter](src/main/java/com/chavaillaz/jakarta/rs/LoggedBodyFilter.java) to filter any body
   before writing it in logs, for example to remove sensitive data that could be present.
+* **limitBody**: Size limit in bytes of the request / response body logged (not limited by default).
 
 By careful when activating logging of request or response body, it may produce issues depending on the payload size.
 
@@ -70,6 +72,7 @@ Given an endpoint on which users can create new articles, annotated with `@Logge
 (the annotation can also be on methods, for example in case of specific configuration):
 
 ```java
+
 @Path("/article")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
