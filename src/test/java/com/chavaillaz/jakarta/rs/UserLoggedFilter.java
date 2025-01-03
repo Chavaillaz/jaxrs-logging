@@ -30,7 +30,7 @@ public class UserLoggedFilter extends LoggedFilter {
     protected Optional<Logged> getAnnotation() {
         // Need to give the base configuration to the parent
         // But could also overwrite requestBodyLogging, responseBodyLogging and filtersBody
-        return getAnnotation(resourceInfo, UserLogged.class)
+        return LoggedUtils.getAnnotation(resourceInfo, UserLogged.class)
                 .map(UserLogged::logging);
     }
 
@@ -52,7 +52,7 @@ public class UserLoggedFilter extends LoggedFilter {
     }
 
     private void logUserAgent(ContainerRequestContext requestContext) {
-        getAnnotation(resourceInfo, UserLogged.class)
+        LoggedUtils.getAnnotation(resourceInfo, UserLogged.class)
                 .map(UserLogged::userAgent)
                 .filter(loggingActivated -> loggingActivated)
                 .map(logging -> requestContext.getHeaderString("User-Agent"))

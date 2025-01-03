@@ -20,17 +20,27 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.net.URISyntaxException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 import com.chavaillaz.jakarta.rs.Logged.LogType;
 import jakarta.ws.rs.container.ResourceInfo;
-import jakarta.ws.rs.ext.Providers;
+import jakarta.ws.rs.ext.ReaderInterceptorContext;
+import jakarta.ws.rs.ext.WriterInterceptorContext;
 import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.core.LogEvent;
 import org.jboss.resteasy.core.Headers;
@@ -38,7 +48,6 @@ import org.jboss.resteasy.core.interception.jaxrs.ContainerResponseContextImpl;
 import org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext;
 import org.jboss.resteasy.mock.MockHttpRequest;
 import org.jboss.resteasy.mock.MockHttpResponse;
-import org.jboss.resteasy.plugins.providers.DefaultTextPlain;
 import org.jboss.resteasy.specimpl.BuiltResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -91,15 +100,13 @@ class LoggedFilterTest extends AbstractFilterTest {
     @Mock
     ResourceInfo resourceInfo;
 
-    @Mock
-    Providers providers;
-
     @InjectMocks
     LoggedFilter loggingFilter;
 
     static Stream<Arguments> arguments() {
         return Stream.of(
                 Arguments.of(AnnotatedResource.class, "inherit", ALL_LOGGING, ALL_LOGGING, SENSITIVE_FILTERING),
+                Arguments.of(AnnotatedResource.class, "inheritParent", NO_LOGGING, NO_LOGGING, NO_FILTERING),
                 Arguments.of(AnnotatedResource.class, "bodyAsMdcAndLogWithFilter", ALL_LOGGING, ALL_LOGGING, SENSITIVE_FILTERING),
                 Arguments.of(AnnotatedResource.class, "bodyAsMdcAndLog", ALL_LOGGING, ALL_LOGGING, NO_FILTERING),
                 Arguments.of(AnnotatedResource.class, "bodyAsMdcWithFilter", MDC_LOGGING, MDC_LOGGING, SENSITIVE_FILTERING),
@@ -124,14 +131,62 @@ class LoggedFilterTest extends AbstractFilterTest {
         setupTest(type, method);
 
         // Given
+        Map<String, Object> properties = new HashMap<>();
+
         PreMatchContainerRequestContext requestContext = getRequestContext();
-        ContainerResponseContextImpl responseContext = getResponseContext(requestContext);
-        if (!Set.of(expectedResponseLogging).isEmpty()) {
-            doReturn(new DefaultTextPlain()).when(providers).getMessageBodyWriter(any(), any(), any(), any());
+        ReaderInterceptorContext requestInterceptorContext = mock(ReaderInterceptorContext.class);
+        if (expectedRequestLogging.length > 0) {
+            AtomicReference<InputStream> inputStream = new AtomicReference<>(requestContext.getEntityStream());
+            doAnswer(invocation ->
+                    inputStream.get()
+            ).when(requestInterceptorContext).getInputStream();
+            doAnswer(invocation -> {
+                inputStream.set(invocation.getArgument(0, InputStream.class));
+                return null;
+            }).when(requestInterceptorContext).setInputStream(any());
+            doAnswer(invocation -> {
+                inputStream.get().readAllBytes();
+                return null;
+            }).when(requestInterceptorContext).proceed();
+
+            lenient().doAnswer(invocation ->
+                    properties.get(invocation.getArgument(0, String.class))
+            ).when(requestInterceptorContext).getProperty(any());
+            lenient().doAnswer(invocation -> {
+                properties.put(invocation.getArgument(0, String.class), invocation.getArgument(1, Object.class));
+                return null;
+            }).when(requestInterceptorContext).setProperty(any(), any());
         }
+
+        ContainerResponseContextImpl responseContext = getResponseContext(requestContext);
+        WriterInterceptorContext responseInterceptorContext = mock(WriterInterceptorContext.class);
+        if (expectedResponseLogging.length > 0) {
+            AtomicReference<OutputStream> output = new AtomicReference<>(new ByteArrayOutputStream());
+            doAnswer(invocation ->
+                    output.get()
+            ).when(responseInterceptorContext).getOutputStream();
+            doAnswer(invocation -> {
+                output.set(invocation.getArgument(0, OutputStream.class));
+                return null;
+            }).when(responseInterceptorContext).setOutputStream(any());
+            doAnswer(invocation -> {
+                output.get().write(OUTPUT.getBytes());
+                return null;
+            }).when(responseInterceptorContext).proceed();
+
+            lenient().doAnswer(invocation ->
+                    properties.get(invocation.getArgument(0, String.class))
+            ).when(responseInterceptorContext).getProperty(any());
+            lenient().doAnswer(invocation -> {
+                properties.put(invocation.getArgument(0, String.class), invocation.getArgument(1, Object.class));
+                return null;
+            }).when(responseInterceptorContext).setProperty(any(), any());
+        }
+
 
         // When
         loggingFilter.filter(requestContext);
+        loggingFilter.aroundReadFrom(requestInterceptorContext);
 
         // Then
         assertNotNull(getMdc(REQUEST_ID));
@@ -143,6 +198,7 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         // When
         loggingFilter.filter(requestContext, responseContext);
+        loggingFilter.aroundWriteTo(responseInterceptorContext);
 
         // Then
         assertNotNull(getMdcLogged(REQUEST_ID));
@@ -243,9 +299,12 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Logged(requestBody = {LogType.MDC, LogType.LOG}, responseBody = {LogType.MDC, LogType.LOG}, filtersBody = {SensitiveBodyFilter.class})
-    interface AnnotatedResource {
+    interface AnnotatedResource extends AnnotatedResourceParent {
 
         void inherit();
+
+        @Override
+        void inheritParent();
 
         @Logged(requestBody = {LogType.MDC, LogType.LOG}, responseBody = {LogType.MDC, LogType.LOG}, filtersBody = SensitiveBodyFilter.class)
         void bodyAsMdcAndLogWithFilter();
@@ -270,6 +329,13 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         @Logged
         void noBodyLogging();
+
+    }
+
+    interface AnnotatedResourceParent {
+
+        @Logged
+        void inheritParent();
 
     }
 

@@ -42,6 +42,15 @@ public @interface Logged {
     LogType[] responseBody() default {};
 
     /**
+     * Limits the size of the request and response body to be logged (if activated).
+     * <p>
+     * By default, no limit is applied (note that it can lead to performance or memory issues).
+     *
+     * @return The maximum size of the body to be logged in bytes
+     */
+    int limitBody() default -1;
+
+    /**
      * Indicates which filters must be applied before logging the request or response body.
      *
      * @return The list of filters to be applied

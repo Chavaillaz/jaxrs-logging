@@ -11,23 +11,19 @@ import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
 import static com.chavaillaz.jakarta.rs.LoggedField.getDefaultFields;
+import static jakarta.ws.rs.RuntimeType.SERVER;
 import static java.lang.String.join;
 import static java.lang.String.valueOf;
 import static java.lang.System.nanoTime;
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Map.Entry.comparingByKey;
-import static java.util.Optional.empty;
 import static java.util.Optional.of;
 import static java.util.UUID.randomUUID;
 import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toSet;
 
-import java.io.BufferedInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
-import java.lang.reflect.Type;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -35,17 +31,21 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 import com.chavaillaz.jakarta.rs.Logged.LogType;
+import jakarta.ws.rs.ConstrainedTo;
+import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.container.ContainerResponseContext;
 import jakarta.ws.rs.container.ContainerResponseFilter;
 import jakarta.ws.rs.container.ResourceInfo;
 import jakarta.ws.rs.core.Context;
-import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.ext.MessageBodyWriter;
 import jakarta.ws.rs.ext.Provider;
-import jakarta.ws.rs.ext.Providers;
-import org.apache.commons.io.IOUtils;
+import jakarta.ws.rs.ext.ReaderInterceptor;
+import jakarta.ws.rs.ext.ReaderInterceptorContext;
+import jakarta.ws.rs.ext.WriterInterceptor;
+import jakarta.ws.rs.ext.WriterInterceptorContext;
+import org.apache.commons.io.input.TeeInputStream;
+import org.apache.commons.io.output.TeeOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -67,11 +67,12 @@ import org.slf4j.MDC;
  *     <li>Response duration in milliseconds</li>
  *     <li>Request and response body (if activated in annotation)</li>
  * </ul>
- * This filter can be activated using the annotation {@link Logged} on resources.
+ * This provider can be activated using the annotation {@link Logged} on resources.
  */
 @Logged
 @Provider
-public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFilter {
+@ConstrainedTo(SERVER)
+public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFilter, ReaderInterceptor, WriterInterceptor {
 
     protected static final Logger log = LoggerFactory.getLogger(LoggedFilter.class);
 
@@ -94,44 +95,33 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     @Context
     ResourceInfo resourceInfo;
 
-    @Context
-    Providers providers;
-
     /**
-     * Gets the given annotation from the resource method or class matched by the current request.
-     *
-     * @param resourceInfo The instance to access resource class and method
-     * @param annotation   The annotation type to get
-     * @param <A>          The annotation type
-     * @return The annotation found or {@link Optional#empty} otherwise
-     */
-    protected static <A extends Annotation> Optional<A> getAnnotation(ResourceInfo resourceInfo, Class<A> annotation) {
-        if (resourceInfo.getResourceMethod().isAnnotationPresent(annotation)) {
-            return of(resourceInfo.getResourceMethod().getAnnotation(annotation));
-        } else if (resourceInfo.getResourceClass().isAnnotationPresent(annotation)) {
-            return of(resourceInfo.getResourceClass().getAnnotation(annotation));
-        } else {
-            return empty();
-        }
-    }
-
-    /**
-     * Gets the annotation type used to activate this filter.
+     * Gets the annotation type used to activate this provider.
      *
      * @return The annotation type
      */
     protected Optional<Logged> getAnnotation() {
-        return getAnnotation(resourceInfo, Logged.class);
+        return LoggedUtils.getAnnotation(resourceInfo, Logged.class);
     }
 
     /**
      * Puts a diagnostic context value identified by the given field into the current thread's context map.
      *
      * @param field The field for which put the given value
-     * @param value The value to put
+     * @param value The value to be associated with the given field
      */
     private void putMdc(LoggedField field, String value) {
         MDC.put(mdcFields.get(field.name()), value);
+    }
+
+    /**
+     * Gets a diagnostic context value identified by the given field from the current thread's context map.
+     *
+     * @param field The field for which get the value
+     * @return The value associated with the given field
+     */
+    private String getMdc(LoggedField field) {
+        return MDC.get(mdcFields.get(field.name()));
     }
 
     /**
@@ -151,11 +141,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     @Override
     public void filter(ContainerRequestContext requestContext) {
         requestContext.setProperty(REQUEST_TIME_PROPERTY, nanoTime());
-
         putMdc(REQUEST_ID, getRequestId(requestContext));
-
         putMdc(REQUEST_URI, requestContext.getUriInfo().getPath());
-
         putMdc(REQUEST_PARAMETERS, requestContext.getUriInfo()
                 .getQueryParameters()
                 .entrySet()
@@ -163,29 +150,38 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 .sorted(comparingByKey())
                 .map(entry -> entry.getKey() + "=" + join(",", entry.getValue()))
                 .collect(joining("&")));
-
         putMdc(REQUEST_METHOD, requestContext.getMethod());
-
         Optional.ofNullable(resourceInfo.getResourceClass())
                 .map(Class::getSimpleName)
                 .ifPresent(value -> putMdc(RESOURCE_CLASS, value));
-
         Optional.ofNullable(resourceInfo.getResourceMethod())
                 .map(Method::getName)
                 .ifPresent(value -> putMdc(RESOURCE_METHOD, value));
+    }
 
-        if (!requestBodyLogging().isEmpty() && requestContext.hasEntity()) {
-            String requestBody = getRequestBody(requestContext);
+    @Override
+    public Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
+        Object entity;
+        if (!requestBodyLogging().isEmpty()) {
+            var outputStream = new ByteArrayOutputStream();
+            var teeInputStream = new TeeInputStream(context.getInputStream(), new BoundedOutputStream(outputStream, limitBodyLogging()));
+            context.setInputStream(teeInputStream);
+            entity = context.proceed();
+            String requestBody = filterBody(outputStream.toString());
             if (requestBodyLogging().contains(LogType.LOG)) {
                 log.info("Received {} {}\n{}",
-                        requestContext.getMethod(),
-                        requestContext.getUriInfo().getPath(),
+                        getMdc(REQUEST_METHOD),
+                        getMdc(REQUEST_URI),
                         requestBody);
             }
             if (requestBodyLogging().contains(LogType.MDC)) {
-                requestContext.setProperty(REQUEST_BODY_PROPERTY, requestBody);
+                context.setProperty(REQUEST_BODY_PROPERTY, requestBody);
             }
+        } else {
+            entity = context.proceed();
         }
+
+        return entity;
     }
 
     @Override
@@ -196,81 +192,42 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 .orElse(nanoTime());
         long duration = (nanoTime() - requestStartTime) / 1_000_000;
         putMdc(DURATION, valueOf(duration));
-
         putMdc(RESPONSE_STATUS, valueOf(responseContext.getStatus()));
-
-        if (requestBodyLogging().contains(LogType.MDC) && requestContext.hasEntity()) {
-            putMdc(REQUEST_BODY, (String) requestContext.getProperty(REQUEST_BODY_PROPERTY));
-        }
-
-        String responseBody = "";
-        if (!responseBodyLogging().isEmpty() && responseContext.hasEntity()) {
-            String body = getResponseBody(responseContext);
-            if (responseBodyLogging().contains(LogType.MDC)) {
-                putMdc(RESPONSE_BODY, body);
-            }
-            if (responseBodyLogging().contains(LogType.LOG)) {
-                responseBody = "\n" + body;
-            }
-        }
-
-        log.info("Processed {} {} with status {} in {}ms{}",
-                requestContext.getMethod(),
-                requestContext.getUriInfo().getPath(),
-                responseContext.getStatus(),
-                duration,
-                responseBody);
-
-        cleanupMdc();
     }
 
-    /**
-     * Extracts the request body as {@link String}.
-     *
-     * @param requestContext The context of the request
-     * @return The request body or the message of the exception thrown
-     */
-    protected String getRequestBody(ContainerRequestContext requestContext) {
-        try (BufferedInputStream stream = new BufferedInputStream(requestContext.getEntityStream())) {
-            String payload = IOUtils.toString(stream, UTF_8);
-            requestContext.setEntityStream(IOUtils.toInputStream(payload, UTF_8));
-            return filterBody(payload);
-        } catch (IOException e) {
-            return e.getMessage();
-        }
-    }
+    @Override
+    public void aroundWriteTo(WriterInterceptorContext context) throws IOException, WebApplicationException {
+        try (var output = new ByteArrayOutputStream();
+             var teeOutput = new TeeOutputStream(context.getOutputStream(), new BoundedOutputStream(output, limitBodyLogging()))) {
 
-    /**
-     * Extracts the response body and parses it to {@link String} using the right body writer.
-     *
-     * @param responseContext The context of the response
-     * @return The response body or the message of the exception thrown
-     */
-    protected String getResponseBody(ContainerResponseContext responseContext) {
-        try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
-            Class<?> entityClass = responseContext.getEntityClass();
-            Type entityType = responseContext.getEntityType();
-            Annotation[] entityAnnotations = responseContext.getEntityAnnotations();
-            MediaType mediaType = responseContext.getMediaType();
-            // Get the right body writer to be used for the entity in response
-            var bodyWriter = (MessageBodyWriter<Object>) providers.getMessageBodyWriter(
-                    entityClass,
-                    entityType,
-                    entityAnnotations,
-                    mediaType
-            );
-            bodyWriter.writeTo(
-                    responseContext.getEntity(),
-                    entityClass,
-                    entityType,
-                    entityAnnotations,
-                    mediaType,
-                    responseContext.getHeaders(),
-                    outputStream
-            );
-            return filterBody(outputStream.toString());
-        } catch (IOException e) {
-            return e.getMessage();
+            String responseBody = "";
+            if (!responseBodyLogging().isEmpty()) {
+                context.setOutputStream(teeOutput);
+                context.proceed();
+                String body = filterBody(output.toString());
+                if (responseBodyLogging().contains(LogType.MDC)) {
+                    putMdc(RESPONSE_BODY, body);
+                }
+                if (responseBodyLogging().contains(LogType.LOG)) {
+                    responseBody = "\n" + body;
+                }
+            } else {
+                context.proceed();
+            }
+
+            if (requestBodyLogging().contains(LogType.MDC)) {
+                putMdc(REQUEST_BODY, (String) context.getProperty(REQUEST_BODY_PROPERTY));
+            }
+
+            log.info("Processed {} {} with status {} in {}ms{}",
+                    getMdc(REQUEST_METHOD),
+                    getMdc(REQUEST_URI),
+                    getMdc(RESPONSE_STATUS),
+                    getMdc(DURATION),
+                    responseBody);
+
+        } finally {
+            cleanupMdc();
         }
     }
 
@@ -298,6 +255,17 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 .stream()
                 .flatMap(Stream::of)
                 .collect(toSet());
+    }
+
+    /**
+     * Gets the size limit of the body to be logged or -1 if no limit is applied.
+     *
+     * @return The maximum size of the body to be logged in bytes
+     */
+    protected int limitBodyLogging() {
+        return getAnnotation()
+                .map(Logged::limitBody)
+                .orElse(-1);
     }
 
     /**
@@ -345,8 +313,13 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Removes all MDC fields defined in {@link #filter(ContainerRequestContext)}
-     * and {@link #filter(ContainerRequestContext, ContainerResponseContext)}.
+     * Removes all MDC fields defined in
+     * <ul>
+     *     <li>{@link #filter(ContainerRequestContext)}</li>
+     *     <li>{@link #aroundReadFrom(ReaderInterceptorContext)}</li>
+     *     <li>{@link #filter(ContainerRequestContext, ContainerResponseContext)}</li>
+     *     <li>{@link #aroundWriteTo(WriterInterceptorContext)}</li>
+     * </ul>
      */
     protected void cleanupMdc() {
         mdcFields.values().forEach(MDC::remove);

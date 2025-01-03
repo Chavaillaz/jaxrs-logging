@@ -63,6 +63,7 @@ class UserLoggedFilterTest extends AbstractFilterTest {
                 MockHttpRequest.create("POST", "example.company.com/service")
                         .header("X-Case-ID", "CaseId")
                         .header("User-Agent", "Opera")
+                        .content("Hello, world!".getBytes())
                         .contentType(TEXT_PLAIN_TYPE));
     }
 
