@@ -16,10 +16,14 @@ import static java.lang.String.join;
 import static java.lang.String.valueOf;
 import static java.lang.System.nanoTime;
 import static java.util.Map.Entry.comparingByKey;
+import static java.util.Objects.requireNonNullElse;
 import static java.util.Optional.of;
 import static java.util.UUID.randomUUID;
 import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toSet;
+import static org.apache.commons.lang3.StringUtils.EMPTY;
+import static org.apache.commons.lang3.StringUtils.LF;
+import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -31,6 +35,7 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 import com.chavaillaz.jakarta.rs.Logged.LogType;
+import jakarta.inject.Inject;
 import jakarta.ws.rs.ConstrainedTo;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.container.ContainerRequestContext;
@@ -95,6 +100,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     @Context
     ResourceInfo resourceInfo;
 
+    @Inject
+    ContainerRequestContext requestContext;
+
     /**
      * Gets the annotation type used to activate this provider.
      *
@@ -111,7 +119,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param value The value to be associated with the given field
      */
     private void putMdc(LoggedField field, String value) {
-        MDC.put(mdcFields.get(field.name()), value);
+        if (value != null) {
+            MDC.put(mdcFields.get(field.name()), value);
+        }
     }
 
     /**
@@ -157,6 +167,15 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         Optional.ofNullable(resourceInfo.getResourceMethod())
                 .map(Method::getName)
                 .ifPresent(value -> putMdc(RESOURCE_METHOD, value));
+
+        // Logs directly from filter in case no request body is expected as aroundReadFrom will not be called
+        if (requestBodyLogging().contains(LogType.LOG) && !hasEntity(requestContext)) {
+            logRequest(EMPTY);
+        }
+    }
+
+    private boolean hasEntity(ContainerRequestContext requestContext) {
+        return requestContext.hasEntity() && requestContext.getLength() != 0;
     }
 
     @Override
@@ -168,20 +187,25 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             context.setInputStream(teeInputStream);
             entity = context.proceed();
             String requestBody = filterBody(outputStream.toString());
-            if (requestBodyLogging().contains(LogType.LOG)) {
-                log.info("Received {} {}\n{}",
-                        getMdc(REQUEST_METHOD),
-                        getMdc(REQUEST_URI),
-                        requestBody);
+            if (requestBodyLogging().contains(LogType.LOG) && isNotBlank(requestBody)) {
+                logRequest(requestBody);
             }
             if (requestBodyLogging().contains(LogType.MDC)) {
-                context.setProperty(REQUEST_BODY_PROPERTY, requestBody);
+                requestContext.setProperty(REQUEST_BODY_PROPERTY, requestBody);
             }
         } else {
             entity = context.proceed();
         }
 
         return entity;
+    }
+
+    private void logRequest(String requestBody) {
+        log.info("Received {} {}{}{}",
+                getMdc(REQUEST_METHOD),
+                getMdc(REQUEST_URI),
+                isNotBlank(requestBody) ? LF : EMPTY,
+                requestBody);
     }
 
     @Override
@@ -193,15 +217,19 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         long duration = (nanoTime() - requestStartTime) / 1_000_000;
         putMdc(DURATION, valueOf(duration));
         putMdc(RESPONSE_STATUS, valueOf(responseContext.getStatus()));
+
+        // Logs directly from filter in case no response body is present as aroundWriteTo will not be called
+        if (!responseBodyLogging().isEmpty() && !responseContext.hasEntity()) {
+            logResponse(EMPTY);
+        }
     }
 
     @Override
     public void aroundWriteTo(WriterInterceptorContext context) throws IOException, WebApplicationException {
-        try (var output = new ByteArrayOutputStream();
-             var teeOutput = new TeeOutputStream(context.getOutputStream(), new BoundedOutputStream(output, limitBodyLogging()))) {
-
-            String responseBody = "";
+        try (var output = new ByteArrayOutputStream()) {
+            String responseBody = null;
             if (!responseBodyLogging().isEmpty()) {
+                var teeOutput = new TeeOutputStream(context.getOutputStream(), new BoundedOutputStream(output, limitBodyLogging()));
                 context.setOutputStream(teeOutput);
                 context.proceed();
                 String body = filterBody(output.toString());
@@ -209,25 +237,34 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                     putMdc(RESPONSE_BODY, body);
                 }
                 if (responseBodyLogging().contains(LogType.LOG)) {
-                    responseBody = "\n" + body;
+                    responseBody = body;
                 }
             } else {
                 context.proceed();
             }
 
+            logResponse(requireNonNullElse(responseBody, EMPTY));
+        } finally {
+            cleanupMdc();
+        }
+    }
+
+    private void logResponse(String responseBody) {
+        try {
             if (requestBodyLogging().contains(LogType.MDC)) {
-                putMdc(REQUEST_BODY, (String) context.getProperty(REQUEST_BODY_PROPERTY));
+                putMdc(REQUEST_BODY, (String) requestContext.getProperty(REQUEST_BODY_PROPERTY));
             }
 
-            log.info("Processed {} {} with status {} in {}ms{}",
+            log.info("Processed {} {} with status {} in {}ms{}{}",
                     getMdc(REQUEST_METHOD),
                     getMdc(REQUEST_URI),
                     getMdc(RESPONSE_STATUS),
                     getMdc(DURATION),
+                    isNotBlank(responseBody) ? LF : EMPTY,
                     responseBody);
 
         } finally {
-            cleanupMdc();
+            MDC.remove(REQUEST_BODY.name());
         }
     }
 

@@ -38,6 +38,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 import com.chavaillaz.jakarta.rs.Logged.LogType;
+import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ResourceInfo;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
 import jakarta.ws.rs.ext.WriterInterceptorContext;
@@ -99,6 +100,9 @@ class LoggedFilterTest extends AbstractFilterTest {
 
     @Mock
     ResourceInfo resourceInfo;
+
+    @Mock
+    ContainerRequestContext containerRequestContext;
 
     @InjectMocks
     LoggedFilter loggingFilter;
@@ -183,6 +187,14 @@ class LoggedFilterTest extends AbstractFilterTest {
             }).when(responseInterceptorContext).setProperty(any(), any());
         }
 
+        Map<String, Object> contextProperty = new HashMap<>();
+        lenient().doAnswer(invocation ->
+                contextProperty.get(invocation.getArgument(0, String.class))
+        ).when(containerRequestContext).getProperty(any());
+        lenient().doAnswer(invocation -> {
+            contextProperty.put(invocation.getArgument(0, String.class), invocation.getArgument(1, Object.class));
+            return null;
+        }).when(containerRequestContext).setProperty(any(), any());
 
         // When
         loggingFilter.filter(requestContext);
