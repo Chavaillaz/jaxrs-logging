@@ -194,11 +194,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                     new BoundedOutputStream(outputStream, limitBodyLogging()));
             context.setInputStream(teeInputStream);
             entity = context.proceed();
-
-            StringBuilder bodyBuilder = new StringBuilder(outputStream.toString());
-            filtersBody().forEach(filter -> filter.filterBody(bodyBuilder));
-            String body = bodyBuilder.toString();
-
+            String body = filterBody(outputStream);
             if (requestBodyLogging().contains(LogType.LOG) && isNotBlank(body)) {
                 logRequest(body);
             }
@@ -238,19 +234,15 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     @Override
     public void aroundWriteTo(WriterInterceptorContext context) throws IOException, WebApplicationException {
-        try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+        try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
             String responseBody = null;
             if (!responseBodyLogging().isEmpty()) {
-                TeeOutputStream teeOutput = new TeeOutputStream(
+                TeeOutputStream teeOutputStream = new TeeOutputStream(
                         context.getOutputStream(),
-                        new BoundedOutputStream(output, limitBodyLogging()));
-                context.setOutputStream(teeOutput);
+                        new BoundedOutputStream(outputStream, limitBodyLogging()));
+                context.setOutputStream(teeOutputStream);
                 context.proceed();
-
-                StringBuilder bodyBuilder = new StringBuilder(output.toString());
-                filtersBody().forEach(filter -> filter.filterBody(bodyBuilder));
-                String body = bodyBuilder.toString();
-
+                String body = filterBody(outputStream);
                 if (responseBodyLogging().contains(LogType.MDC)) {
                     putMdc(RESPONSE_BODY, body);
                 }
@@ -282,6 +274,22 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         } finally {
             cleanupMdc();
         }
+    }
+
+    /**
+     * Applies the defined body filters to the given payload.
+     *
+     * @param outputStream The payload to be filtered
+     * @return The payload filtered
+     */
+    protected String filterBody(ByteArrayOutputStream outputStream) {
+        if (filtersBody().isEmpty()) {
+            return outputStream.toString();
+        }
+
+        StringBuilder bodyBuilder = new StringBuilder(outputStream.toString());
+        filtersBody().forEach(filter -> filter.filterBody(bodyBuilder));
+        return bodyBuilder.toString();
     }
 
     /**
