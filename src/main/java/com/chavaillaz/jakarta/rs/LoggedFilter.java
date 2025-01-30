@@ -244,8 +244,6 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             }
 
             logResponse(requireNonNullElse(responseBody, EMPTY));
-        } finally {
-            cleanupMdc();
         }
     }
 
@@ -264,7 +262,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                     responseBody);
 
         } finally {
-            MDC.remove(REQUEST_BODY.name());
+            cleanupMdc();
         }
     }
 
