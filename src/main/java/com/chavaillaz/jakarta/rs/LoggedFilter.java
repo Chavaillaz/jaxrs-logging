@@ -28,6 +28,7 @@ import static org.apache.commons.lang3.StringUtils.isNotBlank;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Method;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -96,6 +97,11 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * Allows changes from children classes.
      */
     protected final Map<String, String> mdcFields = getDefaultFields();
+
+    /**
+     * The request and response body filters instance cache.
+     */
+    protected final Map<Class<?>, LoggedBodyFilter> filters = new HashMap<>();
 
     @Context
     ResourceInfo resourceInfo;
@@ -182,16 +188,22 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     public Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
         Object entity;
         if (!requestBodyLogging().isEmpty()) {
-            var outputStream = new ByteArrayOutputStream();
-            var teeInputStream = new TeeInputStream(context.getInputStream(), new BoundedOutputStream(outputStream, limitBodyLogging()));
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            TeeInputStream teeInputStream = new TeeInputStream(
+                    context.getInputStream(),
+                    new BoundedOutputStream(outputStream, limitBodyLogging()));
             context.setInputStream(teeInputStream);
             entity = context.proceed();
-            String requestBody = filterBody(outputStream.toString());
-            if (requestBodyLogging().contains(LogType.LOG) && isNotBlank(requestBody)) {
-                logRequest(requestBody);
+
+            StringBuilder bodyBuilder = new StringBuilder(outputStream.toString());
+            filtersBody().forEach(filter -> filter.filterBody(bodyBuilder));
+            String body = bodyBuilder.toString();
+
+            if (requestBodyLogging().contains(LogType.LOG) && isNotBlank(body)) {
+                logRequest(body);
             }
             if (requestBodyLogging().contains(LogType.MDC)) {
-                requestContext.setProperty(REQUEST_BODY_PROPERTY, requestBody);
+                requestContext.setProperty(REQUEST_BODY_PROPERTY, body);
             }
         } else {
             entity = context.proceed();
@@ -226,13 +238,19 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     @Override
     public void aroundWriteTo(WriterInterceptorContext context) throws IOException, WebApplicationException {
-        try (var output = new ByteArrayOutputStream()) {
+        try (ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             String responseBody = null;
             if (!responseBodyLogging().isEmpty()) {
-                var teeOutput = new TeeOutputStream(context.getOutputStream(), new BoundedOutputStream(output, limitBodyLogging()));
+                TeeOutputStream teeOutput = new TeeOutputStream(
+                        context.getOutputStream(),
+                        new BoundedOutputStream(output, limitBodyLogging()));
                 context.setOutputStream(teeOutput);
                 context.proceed();
-                String body = filterBody(output.toString());
+
+                StringBuilder bodyBuilder = new StringBuilder(output.toString());
+                filtersBody().forEach(filter -> filter.filterBody(bodyBuilder));
+                String body = bodyBuilder.toString();
+
                 if (responseBodyLogging().contains(LogType.MDC)) {
                     putMdc(RESPONSE_BODY, body);
                 }
@@ -313,22 +331,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 .map(Logged::filtersBody)
                 .stream()
                 .flatMap(Stream::of)
-                .map(this::instantiateFilter)
+                .map(type -> filters.computeIfAbsent(type, ignored -> instantiateFilter(type)))
                 .filter(Objects::nonNull)
                 .collect(toSet());
-    }
-
-    /**
-     * Applies the defined body filters to the given payload.
-     *
-     * @param payload The payload to be filtered
-     * @return The payload filtered
-     */
-    protected String filterBody(String payload) {
-        for (LoggedBodyFilter filter : filtersBody()) {
-            payload = filter.filterBody(payload);
-        }
-        return payload;
     }
 
     /**
@@ -338,7 +343,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param <T>  The body filter type
      * @return The instance created or {@code null} if it failed
      */
-    protected <T extends LoggedBodyFilter> T instantiateFilter(Class<T> type) {
+    protected <T extends LoggedBodyFilter> LoggedBodyFilter instantiateFilter(Class<T> type) {
         try {
             return type.getConstructor().newInstance();
         } catch (Exception e) {

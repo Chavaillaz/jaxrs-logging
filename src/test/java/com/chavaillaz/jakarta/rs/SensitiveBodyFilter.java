@@ -11,18 +11,11 @@ public class SensitiveBodyFilter implements LoggedBodyFilter {
     protected static final Pattern SECRET = Pattern.compile("\"secret-code\": \"([a-zA-Z0-9-]*)\"");
 
     @Override
-    public String filterBody(String body) {
+    public void filterBody(StringBuilder body) {
         Matcher matcher = SECRET.matcher(body);
-        StringBuilder builder = new StringBuilder();
         while (matcher.find()) {
-            matcher.appendReplacement(
-                    builder,
-                    matcher.group(0).replaceFirst(
-                            Pattern.quote(matcher.group(1)),
-                            "masked"));
+            body.replace(matcher.start(1), matcher.end(1), "masked");
         }
-        matcher.appendTail(builder);
-        return builder.toString();
     }
 
 }
