@@ -208,7 +208,13 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         return entity;
     }
 
-    private void logRequest(String requestBody) {
+    /**
+     * Logs the request received by the server.
+     * Note that the request method and URI must have been stored in MDC before calling this method.
+     *
+     * @param requestBody The request body to be logged
+     */
+    protected void logRequest(String requestBody) {
         log.info("Received {} {}{}{}",
                 getMdc(REQUEST_METHOD),
                 getMdc(REQUEST_URI),
@@ -257,7 +263,13 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         }
     }
 
-    private void logResponse(String responseBody) {
+    /**
+     * Logs the response sent by the server.
+     * Note that the response status and duration must have been stored in MDC before calling this method.
+     *
+     * @param responseBody The response body to be logged
+     */
+    protected void logResponse(String responseBody) {
         try {
             if (requestBodyLogging().contains(LogType.MDC)) {
                 putMdc(REQUEST_BODY, (String) requestContext.getProperty(REQUEST_BODY_PROPERTY));
