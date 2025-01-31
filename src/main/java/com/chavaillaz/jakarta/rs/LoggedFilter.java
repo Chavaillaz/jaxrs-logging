@@ -99,9 +99,21 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected final Map<String, String> mdcFields = getDefaultFields();
 
     /**
-     * The request and response body filters instance cache.
+     * Instances cache for request and response body filters.
      */
     protected final Map<Class<?>, LoggedBodyFilter> filters = new HashMap<>();
+
+    /**
+     * MDC keys with the associated <strong>path</strong> parameters names to be stored in MDC.
+     * The first matching and available parameter will be stored in MDC using the key.
+     */
+    protected final Map<String, Set<String>> pathParameters = new HashMap<>();
+
+    /**
+     * MDC keys with the associated <strong>query</strong> parameters names to be stored in MDC.
+     * The first matching and available parameter will be stored in MDC using the key.
+     */
+    protected final Map<String, Set<String>> queryParameters = new HashMap<>();
 
     @Context
     ResourceInfo resourceInfo;
@@ -166,6 +178,16 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 .sorted(comparingByKey())
                 .map(entry -> entry.getKey() + "=" + join(",", entry.getValue()))
                 .collect(joining("&")));
+        pathParameters.forEach((key, parameters) -> parameters.stream()
+                .map(requestContext.getUriInfo().getPathParameters()::getFirst)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .ifPresent(value -> MDC.put(key, value)));
+        queryParameters.forEach((key, parameters) -> parameters.stream()
+                .map(requestContext.getUriInfo().getQueryParameters()::getFirst)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .ifPresent(value -> MDC.put(key, value)));
         putMdc(REQUEST_METHOD, requestContext.getMethod());
         Optional.ofNullable(resourceInfo.getResourceClass())
                 .map(Class::getSimpleName)
