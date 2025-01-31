@@ -11,6 +11,9 @@ import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
 import static com.chavaillaz.jakarta.rs.LoggedField.getDefaultFields;
+import static com.chavaillaz.jakarta.rs.LoggedMapping.LoggedMappingType.HEADER;
+import static com.chavaillaz.jakarta.rs.LoggedMapping.LoggedMappingType.PATH;
+import static com.chavaillaz.jakarta.rs.LoggedMapping.LoggedMappingType.QUERY;
 import static jakarta.ws.rs.RuntimeType.SERVER;
 import static java.lang.String.join;
 import static java.lang.String.valueOf;
@@ -103,18 +106,6 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      */
     protected final Map<Class<?>, LoggedBodyFilter> filters = new HashMap<>();
 
-    /**
-     * MDC keys with the associated <strong>path</strong> parameters names to be stored in MDC.
-     * The first matching and available parameter will be stored in MDC using the key.
-     */
-    protected final Map<String, Set<String>> pathParameters = new HashMap<>();
-
-    /**
-     * MDC keys with the associated <strong>query</strong> parameters names to be stored in MDC.
-     * The first matching and available parameter will be stored in MDC using the key.
-     */
-    protected final Map<String, Set<String>> queryParameters = new HashMap<>();
-
     @Context
     ResourceInfo resourceInfo;
 
@@ -178,16 +169,6 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 .sorted(comparingByKey())
                 .map(entry -> entry.getKey() + "=" + join(",", entry.getValue()))
                 .collect(joining("&")));
-        pathParameters.forEach((key, parameters) -> parameters.stream()
-                .map(requestContext.getUriInfo().getPathParameters()::getFirst)
-                .filter(Objects::nonNull)
-                .findFirst()
-                .ifPresent(value -> MDC.put(key, value)));
-        queryParameters.forEach((key, parameters) -> parameters.stream()
-                .map(requestContext.getUriInfo().getQueryParameters()::getFirst)
-                .filter(Objects::nonNull)
-                .findFirst()
-                .ifPresent(value -> MDC.put(key, value)));
         putMdc(REQUEST_METHOD, requestContext.getMethod());
         Optional.ofNullable(resourceInfo.getResourceClass())
                 .map(Class::getSimpleName)
@@ -196,10 +177,45 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 .map(Method::getName)
                 .ifPresent(value -> putMdc(RESOURCE_METHOD, value));
 
+        Set<LoggedMapping> mappings = mappingsLogging();
+        mappings.stream()
+                .filter(mapping -> mapping.type() == PATH)
+                .forEach(mapping -> mapPathParameters(requestContext, mapping));
+        mappings.stream()
+                .filter(mapping -> mapping.type() == QUERY)
+                .forEach(mapping -> mapQueryParameters(requestContext, mapping));
+        mappings.stream()
+                .filter(mapping -> mapping.type() == HEADER)
+                .forEach(mapping -> mapHeaders(requestContext, mapping));
+
         // Logs directly from filter in case no request body is expected as aroundReadFrom will not be called
         if (requestBodyLogging().contains(LogType.LOG) && !hasEntity(requestContext)) {
             logRequest(EMPTY);
         }
+    }
+
+    private void mapPathParameters(ContainerRequestContext requestContext, LoggedMapping mapping) {
+        Stream.of(mapping.paramNames())
+                .map(requestContext.getUriInfo().getPathParameters()::getFirst)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .ifPresent(value -> MDC.put(mapping.mdcKey(), value));
+    }
+
+    private void mapQueryParameters(ContainerRequestContext requestContext, LoggedMapping mapping) {
+        Stream.of(mapping.paramNames())
+                .map(requestContext.getUriInfo().getQueryParameters()::getFirst)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .ifPresent(value -> MDC.put(mapping.mdcKey(), value));
+    }
+
+    private void mapHeaders(ContainerRequestContext requestContext, LoggedMapping mapping) {
+        Stream.of(mapping.paramNames())
+                .map(requestContext.getHeaders()::getFirst)
+                .filter(Objects::nonNull)
+                .findFirst()
+                .ifPresent(value -> MDC.put(mapping.mdcKey(), value));
     }
 
     private boolean hasEntity(ContainerRequestContext requestContext) {
@@ -324,6 +340,19 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         StringBuilder bodyBuilder = new StringBuilder(outputStream.toString());
         filtersBody().forEach(filter -> filter.filterBody(bodyBuilder));
         return bodyBuilder.toString();
+    }
+
+    /**
+     * Gets the mappings for fields to be logged.
+     *
+     * @return The set of mappings
+     */
+    protected Set<LoggedMapping> mappingsLogging() {
+        return LoggedUtils.getAnnotation(resourceInfo, LoggedMappings.class)
+                .map(LoggedMappings::value)
+                .stream()
+                .flatMap(Stream::of)
+                .collect(toSet());
     }
 
     /**
