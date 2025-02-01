@@ -1,6 +1,7 @@
 package com.chavaillaz.jakarta.rs;
 
 import static java.util.Arrays.asList;
+import static org.apache.commons.lang3.ArrayUtils.containsAny;
 import static org.apache.commons.lang3.ClassUtils.getAllInterfaces;
 
 import java.lang.annotation.Annotation;
@@ -20,6 +21,42 @@ public class LoggedUtils {
 
     private LoggedUtils() {
         // Utility class
+    }
+
+    /**
+     * Merges the different LoggedMapping annotations from any LoggedMappings within the class or its interfaces.
+     *
+     * @param resourceInfo The instance to access resource class and method
+     * @return The set of merged LoggedMapping annotations
+     */
+    protected static Set<LoggedMapping> getMergedMappings(ResourceInfo resourceInfo) {
+        Set<LoggedMapping> mergedMappings = new HashSet<>();
+
+        // Priority: Method annotations > Interfaces annotations > Class annotation
+        Optional.ofNullable(resourceInfo.getResourceMethod().getAnnotation(LoggedMappings.class))
+                .ifPresent(mappings -> mergeMappings(mergedMappings, mappings.value()));
+        getAnnotationsInterfaces(resourceInfo.getResourceClass(), resourceInfo.getResourceMethod()).stream()
+                .filter(LoggedMapping.class::isInstance)
+                .map(LoggedMapping.class::cast)
+                .forEach(mappings -> mergeMappings(mergedMappings, mappings));
+        Optional.ofNullable(resourceInfo.getResourceClass().getAnnotation(LoggedMappings.class))
+                .ifPresent(mappings -> mergeMappings(mergedMappings, mappings.value()));
+
+        return mergedMappings;
+    }
+
+    /**
+     * Adds the given mappings to the merged mappings if they are not already present.
+     *
+     * @param mergedMappings The set of merged mappings
+     * @param mappings       The mappings to add
+     */
+    private static void mergeMappings(Set<LoggedMapping> mergedMappings, LoggedMapping... mappings) {
+        Arrays.stream(mappings)
+                .filter(newMapping -> mergedMappings.stream()
+                        .noneMatch(existingMapping -> newMapping.type() == existingMapping.type()
+                                && containsAny(newMapping.paramNames(), (Object[]) existingMapping.paramNames())))
+                .forEach(mergedMappings::add);
     }
 
     /**

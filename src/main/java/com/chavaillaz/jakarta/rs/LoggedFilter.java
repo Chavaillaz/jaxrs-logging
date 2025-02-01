@@ -11,6 +11,7 @@ import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
 import static com.chavaillaz.jakarta.rs.LoggedField.getDefaultFields;
+import static com.chavaillaz.jakarta.rs.LoggedUtils.getMergedMappings;
 import static jakarta.ws.rs.RuntimeType.SERVER;
 import static java.lang.String.join;
 import static java.lang.String.valueOf;
@@ -29,7 +30,6 @@ import static org.apache.commons.lang3.StringUtils.isNotBlank;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Method;
-import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -41,7 +41,7 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 import com.chavaillaz.jakarta.rs.Logged.LogType;
-import com.chavaillaz.jakarta.rs.LoggedMapping.LoggedMappingType;
+import com.chavaillaz.jakarta.rs.LoggedMapping.LogMappingType;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.ConstrainedTo;
 import jakarta.ws.rs.WebApplicationException;
@@ -180,8 +180,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 .map(Method::getName)
                 .ifPresent(value -> putMdc(RESOURCE_METHOD, value));
 
-        Map<LoggedMappingType, Set<String>> exclusion = new EnumMap<>(LoggedMappingType.class);
-        mappingsLogging().stream()
+        Map<LogMappingType, Set<String>> exclusion = new EnumMap<>(LogMappingType.class);
+        getMergedMappings(resourceInfo).stream()
                 .sorted(comparing(LoggedMapping::auto) // Order to have auto mappings at the end to avoid overriding manual mappings
                         .thenComparing(LoggedMapping::mdcKey)) // Order to have empty MDC key at the beginning for exclusions
                 .forEach(mapping ->
@@ -205,17 +205,18 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param exclusion  The parameters name to be excluded from mapping (already mapped or explicitly excluded)
      */
     protected void putMdcFromParameters(Map<String, List<String>> parameters, LoggedMapping mapping, Set<String> exclusion) {
+        Set<String> paramNames = Set.of(mapping.paramNames());
         if (mapping.auto()) {
             parameters.entrySet().stream()
                     .filter(entry -> !exclusion.contains(entry.getKey()))
                     .filter(entry -> entry.getValue() != null && !entry.getValue().isEmpty())
                     .forEach(entry -> MDC.put(mapping.mdcPrefix() + entry.getKey(), entry.getValue().getFirst()));
-        } else if (Arrays.stream(mapping.paramNames()).noneMatch(exclusion::contains)) {
+        } else if (paramNames.stream().noneMatch(exclusion::contains)) {
             // Avoid a field to be mapped multiple times
-            exclusion.addAll(Set.of(mapping.paramNames()));
+            exclusion.addAll(paramNames);
             // MDC key can be blank in case of exclusion
             if (isNotBlank(mapping.mdcKey())) {
-                Stream.of(mapping.paramNames())
+                paramNames.stream()
                         .map(parameters::get)
                         .filter(Objects::nonNull)
                         .filter(list -> !list.isEmpty())
@@ -344,19 +345,6 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         StringBuilder bodyBuilder = new StringBuilder(outputStream.toString());
         filtersBody().forEach(filter -> filter.filterBody(bodyBuilder));
         return bodyBuilder.toString();
-    }
-
-    /**
-     * Gets the mappings for fields to be logged.
-     *
-     * @return The set of mappings
-     */
-    protected Set<LoggedMapping> mappingsLogging() {
-        return LoggedUtils.getAnnotation(resourceInfo, LoggedMappings.class)
-                .map(LoggedMappings::value)
-                .stream()
-                .flatMap(Stream::of)
-                .collect(toSet());
     }
 
     /**
