@@ -30,18 +30,25 @@ public @interface LoggedMapping {
     LoggedMappingType type();
 
     /**
+     * Indicates if the mapping must be done automatically
+     * (one to one, without changing parameters names) for the given type.
+     */
+    boolean auto() default false;
+
+    /**
      * MDC key to which map any of the parameter names of the defined type.
+     * Can be empty to ignore the mapping for the given parameters.
      *
      * @return The MDC key
      */
-    String mdcKey();
+    String mdcKey() default "";
 
     /**
      * Names of the parameters of the defined type to be mapped to the given MDC key.
      *
      * @return The parameter names
      */
-    String[] paramNames();
+    String[] paramNames() default {};
 
     /**
      * Type of fields to be mapped.

@@ -11,13 +11,11 @@ import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
 import static com.chavaillaz.jakarta.rs.LoggedField.getDefaultFields;
-import static com.chavaillaz.jakarta.rs.LoggedMapping.LoggedMappingType.HEADER;
-import static com.chavaillaz.jakarta.rs.LoggedMapping.LoggedMappingType.PATH;
-import static com.chavaillaz.jakarta.rs.LoggedMapping.LoggedMappingType.QUERY;
 import static jakarta.ws.rs.RuntimeType.SERVER;
 import static java.lang.String.join;
 import static java.lang.String.valueOf;
 import static java.lang.System.nanoTime;
+import static java.util.Comparator.comparing;
 import static java.util.Map.Entry.comparingByKey;
 import static java.util.Objects.requireNonNullElse;
 import static java.util.Optional.of;
@@ -31,7 +29,11 @@ import static org.apache.commons.lang3.StringUtils.isNotBlank;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -39,6 +41,7 @@ import java.util.Set;
 import java.util.stream.Stream;
 
 import com.chavaillaz.jakarta.rs.Logged.LogType;
+import com.chavaillaz.jakarta.rs.LoggedMapping.LoggedMappingType;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.ConstrainedTo;
 import jakarta.ws.rs.WebApplicationException;
@@ -102,7 +105,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected final Map<String, String> mdcFields = getDefaultFields();
 
     /**
-     * Instances cache for request and response body filters.
+     * Cache of instances for request and response body filters.
      */
     protected final Map<Class<?>, LoggedBodyFilter> filters = new HashMap<>();
 
@@ -177,49 +180,50 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 .map(Method::getName)
                 .ifPresent(value -> putMdc(RESOURCE_METHOD, value));
 
-        Set<LoggedMapping> mappings = mappingsLogging();
-        mappings.stream()
-                .filter(mapping -> mapping.type() == PATH)
-                .forEach(mapping -> mapPathParameters(requestContext, mapping));
-        mappings.stream()
-                .filter(mapping -> mapping.type() == QUERY)
-                .forEach(mapping -> mapQueryParameters(requestContext, mapping));
-        mappings.stream()
-                .filter(mapping -> mapping.type() == HEADER)
-                .forEach(mapping -> mapHeaders(requestContext, mapping));
+        Map<LoggedMappingType, Set<String>> exclusion = new EnumMap<>(LoggedMappingType.class);
+        mappingsLogging().stream()
+                .sorted(comparing(LoggedMapping::auto) // Order to have auto mappings at the end to avoid overriding manual mappings
+                        .thenComparing(LoggedMapping::mdcKey)) // Order to have empty MDC key at the beginning for exclusions
+                .forEach(mapping ->
+                        putMdcFromParameters(switch (mapping.type()) {
+                            case PATH -> requestContext.getUriInfo().getPathParameters();
+                            case QUERY -> requestContext.getUriInfo().getQueryParameters();
+                            case HEADER -> requestContext.getHeaders();
+                        }, mapping, exclusion.computeIfAbsent(mapping.type(), type -> new HashSet<>())));
 
         // Logs directly from filter in case no request body is expected as aroundReadFrom will not be called
-        if (requestBodyLogging().contains(LogType.LOG) && !hasEntity(requestContext)) {
+        if (requestBodyLogging().contains(LogType.LOG) && !(requestContext.hasEntity() && requestContext.getLength() != 0)) {
             logRequest(EMPTY);
         }
     }
 
-    private void mapPathParameters(ContainerRequestContext requestContext, LoggedMapping mapping) {
-        Stream.of(mapping.paramNames())
-                .map(requestContext.getUriInfo().getPathParameters()::getFirst)
-                .filter(Objects::nonNull)
-                .findFirst()
-                .ifPresent(value -> MDC.put(mapping.mdcKey(), value));
-    }
-
-    private void mapQueryParameters(ContainerRequestContext requestContext, LoggedMapping mapping) {
-        Stream.of(mapping.paramNames())
-                .map(requestContext.getUriInfo().getQueryParameters()::getFirst)
-                .filter(Objects::nonNull)
-                .findFirst()
-                .ifPresent(value -> MDC.put(mapping.mdcKey(), value));
-    }
-
-    private void mapHeaders(ContainerRequestContext requestContext, LoggedMapping mapping) {
-        Stream.of(mapping.paramNames())
-                .map(requestContext.getHeaders()::getFirst)
-                .filter(Objects::nonNull)
-                .findFirst()
-                .ifPresent(value -> MDC.put(mapping.mdcKey(), value));
-    }
-
-    private boolean hasEntity(ContainerRequestContext requestContext) {
-        return requestContext.hasEntity() && requestContext.getLength() != 0;
+    /**
+     * Maps the given parameters (path, query or headers) to MDC entries using the given mapping.
+     *
+     * @param parameters The parameters to be mapped
+     * @param mapping    The mapping to be applied
+     * @param exclusion  The parameters name to be excluded from mapping (already mapped or explicitly excluded)
+     */
+    protected void putMdcFromParameters(Map<String, List<String>> parameters, LoggedMapping mapping, Set<String> exclusion) {
+        if (mapping.auto()) {
+            parameters.entrySet().stream()
+                    .filter(entry -> !exclusion.contains(entry.getKey()))
+                    .filter(entry -> entry.getValue() != null && !entry.getValue().isEmpty())
+                    .forEach(entry -> MDC.put(entry.getKey(), entry.getValue().getFirst()));
+        } else if (Arrays.stream(mapping.paramNames()).noneMatch(exclusion::contains)) {
+            // Avoid a field to be mapped multiple times
+            exclusion.addAll(Set.of(mapping.paramNames()));
+            // MDC key can be blank in case of exclusion
+            if (isNotBlank(mapping.mdcKey())) {
+                Stream.of(mapping.paramNames())
+                        .map(parameters::get)
+                        .filter(Objects::nonNull)
+                        .filter(list -> !list.isEmpty())
+                        .map(List::getFirst)
+                        .findFirst()
+                        .ifPresent(value -> MDC.put(mapping.mdcKey(), value));
+            }
+        }
     }
 
     @Override
