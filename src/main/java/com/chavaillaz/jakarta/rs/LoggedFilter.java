@@ -209,7 +209,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             parameters.entrySet().stream()
                     .filter(entry -> !exclusion.contains(entry.getKey()))
                     .filter(entry -> entry.getValue() != null && !entry.getValue().isEmpty())
-                    .forEach(entry -> MDC.put(entry.getKey(), entry.getValue().getFirst()));
+                    .forEach(entry -> MDC.put(mapping.mdcPrefix() + entry.getKey(), entry.getValue().getFirst()));
         } else if (Arrays.stream(mapping.paramNames()).noneMatch(exclusion::contains)) {
             // Avoid a field to be mapped multiple times
             exclusion.addAll(Set.of(mapping.paramNames()));
@@ -221,7 +221,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                         .filter(list -> !list.isEmpty())
                         .map(List::getFirst)
                         .findFirst()
-                        .ifPresent(value -> MDC.put(mapping.mdcKey(), value));
+                        .ifPresent(value -> MDC.put(mapping.mdcPrefix() + mapping.mdcKey(), value));
             }
         }
     }

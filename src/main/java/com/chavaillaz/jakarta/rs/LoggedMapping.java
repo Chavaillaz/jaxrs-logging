@@ -9,14 +9,11 @@ import java.lang.annotation.Repeatable;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
-import jakarta.ws.rs.NameBinding;
-
 /**
  * Annotation defining a mapping from a parameter to an MDC entry
  * to be used by the {@link LoggedFilter} when logging a request.
  */
 @Documented
-@NameBinding
 @Retention(RUNTIME)
 @Target({TYPE, METHOD})
 @Repeatable(LoggedMappings.class)
@@ -30,10 +27,18 @@ public @interface LoggedMapping {
     LoggedMappingType type();
 
     /**
-     * Indicates if the mapping must be done automatically
-     * (one to one, without changing parameters names) for the given type.
+     * Flag indicating if the mapping must be done automatically
+     * (one to one, without changing the names of parameters) for the given type.
      */
     boolean auto() default false;
+
+    /**
+     * Prefix to be added to the MDC key.
+     * Meant to be used with {@link #auto()} to avoid conflicts with other MDC entries.
+     *
+     * @return The prefix
+     */
+    String mdcPrefix() default "";
 
     /**
      * MDC key to which map any of the parameter names of the defined type.
