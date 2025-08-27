@@ -29,7 +29,7 @@ public class LoggedUtils {
      * @param resourceInfo The instance to access resource class and method
      * @return The set of merged LoggedMapping annotations
      */
-    protected static Set<LoggedMapping> getMergedMappings(ResourceInfo resourceInfo) {
+    public static Set<LoggedMapping> getMergedMappings(ResourceInfo resourceInfo) {
         Set<LoggedMapping> mergedMappings = new HashSet<>();
 
         // Priority: Method annotations > Interfaces annotations > Class annotation
@@ -51,7 +51,7 @@ public class LoggedUtils {
      * @param mergedMappings The set of merged mappings
      * @param mappings       The mappings to add
      */
-    private static void mergeMappings(Set<LoggedMapping> mergedMappings, LoggedMapping... mappings) {
+    public static void mergeMappings(Set<LoggedMapping> mergedMappings, LoggedMapping... mappings) {
         Arrays.stream(mappings)
                 .filter(newMapping -> mergedMappings.stream()
                         .noneMatch(existingMapping -> newMapping.type() == existingMapping.type()
@@ -67,7 +67,7 @@ public class LoggedUtils {
      * @param <A>          The annotation type
      * @return The annotation found or {@link Optional#empty} otherwise
      */
-    protected static <A extends Annotation> Optional<A> getAnnotation(ResourceInfo resourceInfo, Class<A> annotation) {
+    public static <A extends Annotation> Optional<A> getAnnotation(ResourceInfo resourceInfo, Class<A> annotation) {
         Set<Annotation> parentAnnotations = getAnnotationsInterfaces(resourceInfo.getResourceClass(), resourceInfo.getResourceMethod());
         // Priority: Method annotations > Interfaces annotations > Class annotation
         if (resourceInfo.getResourceMethod().isAnnotationPresent(annotation)) {
@@ -91,7 +91,7 @@ public class LoggedUtils {
      * @param method The method to get the annotations from
      * @return The set of annotations found
      */
-    protected static Set<Annotation> getAnnotationsInterfaces(Class<?> type, Method method) {
+    public static Set<Annotation> getAnnotationsInterfaces(Class<?> type, Method method) {
         Annotation[] baseAnnotations = Optional.ofNullable(method)
                 .map(AccessibleObject::getAnnotations)
                 .orElse(type.getAnnotations());
@@ -114,7 +114,7 @@ public class LoggedUtils {
      * @param method2 The second method
      * @return {@code true} if the methods are equal, {@code false} otherwise
      */
-    protected static boolean areMethodsEqual(Method method1, Method method2) {
+    public static boolean areMethodsEqual(Method method1, Method method2) {
         return method1 != null && method2 != null
                 && method1.getName().equals(method2.getName())
                 && Arrays.equals(method1.getParameterTypes(), method2.getParameterTypes());
