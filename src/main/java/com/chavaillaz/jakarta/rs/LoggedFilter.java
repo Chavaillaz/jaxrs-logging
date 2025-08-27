@@ -109,11 +109,21 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      */
     protected final Map<Class<?>, LoggedBodyFilter> filters = new HashMap<>();
 
-    @Context
-    ResourceInfo resourceInfo;
+    /**
+     * Provides access to the resource class and method matched by the current request.
+     */
+    protected ResourceInfo resourceInfo;
+
+    /**
+     * Provides request specific information for the filter.
+     */
+    protected ContainerRequestContext requestContext;
 
     @Inject
-    ContainerRequestContext requestContext;
+    public LoggedFilter(@Context ResourceInfo resourceInfo, ContainerRequestContext requestContext) {
+        this.resourceInfo = resourceInfo;
+        this.requestContext = requestContext;
+    }
 
     /**
      * Gets the annotation type used to activate this provider.
