@@ -29,6 +29,8 @@ public @interface LoggedMapping {
     /**
      * Flag indicating if the mapping must be done automatically
      * (one to one, without changing the names of parameters) for the given type.
+     *
+     * @return {@code true} to automatically map the parameters, {@code false} otherwise
      */
     boolean auto() default false;
 
