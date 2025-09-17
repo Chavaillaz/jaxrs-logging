@@ -42,7 +42,6 @@ import java.util.stream.Stream;
 
 import com.chavaillaz.jakarta.rs.Logged.LogType;
 import com.chavaillaz.jakarta.rs.LoggedMapping.LogMappingType;
-import jakarta.inject.Inject;
 import jakarta.ws.rs.ConstrainedTo;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.container.ContainerRequestContext;
@@ -112,18 +111,14 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     /**
      * Provides access to the resource class and method matched by the current request.
      */
+    @Context
     protected ResourceInfo resourceInfo;
 
     /**
      * Provides request specific information for the filter.
      */
+    @Context
     protected ContainerRequestContext requestContext;
-
-    @Inject
-    public LoggedFilter(@Context ResourceInfo resourceInfo, ContainerRequestContext requestContext) {
-        this.resourceInfo = resourceInfo;
-        this.requestContext = requestContext;
-    }
 
     /**
      * Gets the annotation type used to activate this provider.

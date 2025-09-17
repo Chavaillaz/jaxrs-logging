@@ -6,13 +6,11 @@ import java.util.Optional;
 
 import jakarta.inject.Inject;
 import jakarta.ws.rs.container.ContainerRequestContext;
-import jakarta.ws.rs.container.ResourceInfo;
-import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.ext.Provider;
 import org.slf4j.MDC;
 
-@UserLogged
 @Provider
+@UserLogged
 public class UserLoggedFilter extends LoggedFilter {
 
     protected static final String REQUEST_IDENTIFIER = "request-identifier";
@@ -20,9 +18,7 @@ public class UserLoggedFilter extends LoggedFilter {
     protected static final String USER_AGENT = "user-agent";
 
     @Inject
-    public UserLoggedFilter(@Context ResourceInfo resourceInfo, ContainerRequestContext requestContext) {
-        super(resourceInfo, requestContext);
-
+    public UserLoggedFilter() {
         // Add new MDC fields to be finally cleaned up
         this.mdcFields.put(USER_ID, USER_ID);
         this.mdcFields.put(USER_AGENT, USER_AGENT);
