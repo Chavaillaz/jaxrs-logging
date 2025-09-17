@@ -6,7 +6,7 @@
 
     <groupId>com.chavaillaz</groupId>
     <artifactId>jaxrs-logging</artifactId>
-    <version>3.3-SNAPSHOT</version>
+    <version>3.3.0</version>
     <packaging>jar</packaging>
 
     <name>${project.groupId}.${project.artifactId}</name>
