@@ -21,41 +21,18 @@ import jakarta.ws.rs.NameBinding;
 public @interface Logged {
 
     /**
-     * Indicates how the request body must be logged.
-     * <p>
-     * Do not activate it when expecting large payloads to avoid any performance or memory issue.
-     * <p>
-     * Note that for {@link LogType#MDC}, the request body will be stored in the request context
-     * in order to be retrieved and stored as MDC when logging the processing log line.
+     * Logging configuration for requests.
      *
-     * @return The types of logging to be done
+     * @return The request logging configuration
      */
-    LogType[] requestBody() default {};
+    RequestLogging request() default @RequestLogging();
 
     /**
-     * Indicates how the response body must be logged.
-     * <p>
-     * Do not activate it when expecting large payloads to avoid any performance or memory issue.
+     * Logging configuration for responses.
      *
-     * @return The types of logging to be done
+     * @return The response logging configuration
      */
-    LogType[] responseBody() default {};
-
-    /**
-     * Limits the size of the request and response body to be logged (if activated).
-     * <p>
-     * By default, no limit is applied (note that it can lead to performance or memory issues).
-     *
-     * @return The maximum size of the body to be logged in bytes
-     */
-    int limitBody() default -1;
-
-    /**
-     * Indicates which filters must be applied before logging the request or response body.
-     *
-     * @return The list of filters to be applied
-     */
-    Class<? extends LoggedBodyFilter>[] filtersBody() default {};
+    ResponseLogging response() default @ResponseLogging();
 
     /**
      * Type of logging to be applied to the request and response body.

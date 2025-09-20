@@ -131,7 +131,7 @@ class LoggedFilterTest extends AbstractFilterTest {
     @ParameterizedTest(name = "{1}")
     @MethodSource("arguments")
     @DisplayName("Check filter actions based on annotation")
-    void checkFilterAction(Class<?> type, String method, LogType[] expectedRequestLogging, LogType[] expectedResponseLogging, Class<? extends LoggedBodyFilter>[] expectedBodyFilters) throws Exception {
+    void checkFilterAction(Class<?> type, String method, LogType[] expectedRequestLogging, LogType[] expectedResponseLogging, Class<? extends BodyFilter>[] expectedBodyFilters) throws Exception {
         setupTest(type, method);
 
         // Given
@@ -225,7 +225,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         checkResponseLogging(expectedResponseLogging, expectedBodyFilters);
     }
 
-    void checkRequestLogging(LogType[] expectedRequestLogging, Class<? extends LoggedBodyFilter>[] expectedBodyFilters) {
+    void checkRequestLogging(LogType[] expectedRequestLogging, Class<? extends BodyFilter>[] expectedBodyFilters) {
         LogEvent logReceived = listAppender.findFirstMessage("Received");
 
         if (Set.of(expectedRequestLogging).contains(LogType.LOG)) {
@@ -250,7 +250,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         }
     }
 
-    void checkResponseLogging(LogType[] expectedResponseLogging, Class<? extends LoggedBodyFilter>[] expectedBodyFilters) {
+    void checkResponseLogging(LogType[] expectedResponseLogging, Class<? extends BodyFilter>[] expectedBodyFilters) {
         LogEvent logProcessed = listAppender.findFirstMessage("Processed");
         assertNotNull(logProcessed);
         String message = logProcessed.getMessage().getFormattedMessage();
@@ -310,7 +310,8 @@ class LoggedFilterTest extends AbstractFilterTest {
                 .orElse(null);
     }
 
-    @Logged(requestBody = {LogType.MDC, LogType.LOG}, responseBody = {LogType.MDC, LogType.LOG}, filtersBody = {SensitiveBodyFilter.class})
+    @Logged(request = @RequestLogging(value = {LogType.MDC, LogType.LOG}, filters = SensitiveBodyFilter.class),
+            response = @ResponseLogging(value = {LogType.MDC, LogType.LOG}, filters = SensitiveBodyFilter.class))
     interface AnnotatedResource extends AnnotatedResourceParent {
 
         void inherit();
@@ -318,25 +319,32 @@ class LoggedFilterTest extends AbstractFilterTest {
         @Override
         void inheritParent();
 
-        @Logged(requestBody = {LogType.MDC, LogType.LOG}, responseBody = {LogType.MDC, LogType.LOG}, filtersBody = SensitiveBodyFilter.class)
+        @Logged(request = @RequestLogging(value = {LogType.MDC, LogType.LOG}, filters = SensitiveBodyFilter.class),
+                response = @ResponseLogging(value = {LogType.MDC, LogType.LOG}, filters = SensitiveBodyFilter.class))
         void bodyAsMdcAndLogWithFilter();
 
-        @Logged(requestBody = {LogType.MDC, LogType.LOG}, responseBody = {LogType.MDC, LogType.LOG})
+        @Logged(request = @RequestLogging({LogType.MDC, LogType.LOG}),
+                response = @ResponseLogging({LogType.MDC, LogType.LOG}))
         void bodyAsMdcAndLog();
 
-        @Logged(requestBody = LogType.MDC, responseBody = LogType.MDC, filtersBody = SensitiveBodyFilter.class)
+        @Logged(request = @RequestLogging(value = LogType.MDC, filters = SensitiveBodyFilter.class),
+                response = @ResponseLogging(value = LogType.MDC, filters = SensitiveBodyFilter.class))
         void bodyAsMdcWithFilter();
 
-        @Logged(requestBody = LogType.LOG, responseBody = LogType.LOG, filtersBody = SensitiveBodyFilter.class)
+        @Logged(request = @RequestLogging(value = LogType.LOG, filters = SensitiveBodyFilter.class),
+                response = @ResponseLogging(value = LogType.LOG, filters = SensitiveBodyFilter.class))
         void bodyAsLogWithFilter();
 
-        @Logged(requestBody = LogType.MDC, responseBody = LogType.MDC)
+        @Logged(request = @RequestLogging(LogType.MDC),
+                response = @ResponseLogging(LogType.MDC))
         void bodyAsMdc();
 
-        @Logged(requestBody = LogType.LOG, responseBody = LogType.LOG)
+        @Logged(request = @RequestLogging(LogType.LOG),
+                response = @ResponseLogging(LogType.LOG))
         void bodyAsLog();
 
-        @Logged(requestBody = LogType.MDC, responseBody = LogType.LOG)
+        @Logged(request = @RequestLogging(LogType.MDC),
+                response = @ResponseLogging(LogType.LOG))
         void bodyAsMix();
 
         @Logged

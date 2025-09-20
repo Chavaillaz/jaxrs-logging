@@ -5,7 +5,7 @@ package com.chavaillaz.jakarta.rs;
  * Note that its implementations must be stateless and thread-safe.
  */
 @FunctionalInterface
-public interface LoggedBodyFilter {
+public interface BodyFilter {
 
     /**
      * Filters the given body to update or delete possible sensitive elements.

@@ -67,7 +67,7 @@ class UserLoggedFilterTest extends AbstractFilterTest {
                         .contentType(TEXT_PLAIN_TYPE));
     }
 
-    @UserLogged(logging = @Logged(requestBody = {LogType.MDC}, responseBody = LogType.MDC), userAgent = true)
+    @UserLogged(logging = @Logged(request = @RequestLogging(LogType.MDC), response = @ResponseLogging(LogType.MDC)), userAgent = true)
     interface AnnotatedResource {
 
         void inherit();

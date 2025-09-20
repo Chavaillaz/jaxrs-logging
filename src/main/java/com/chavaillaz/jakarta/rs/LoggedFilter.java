@@ -106,7 +106,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     /**
      * Cache of instances for request and response body filters.
      */
-    protected final Map<Class<?>, LoggedBodyFilter> filters = new HashMap<>();
+    protected final Map<Class<?>, BodyFilter> filtersCache = new HashMap<>();
 
     /**
      * Provides access to the resource class and method matched by the current request.
@@ -239,10 +239,10 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
             TeeInputStream teeInputStream = new TeeInputStream(
                     context.getInputStream(),
-                    new BoundedOutputStream(outputStream, limitBodyLogging()));
+                    new BoundedOutputStream(outputStream, limitBodyRequest()));
             context.setInputStream(teeInputStream);
             entity = context.proceed();
-            String body = filterBody(outputStream);
+            String body = filterBody(outputStream, filtersBodyRequest());
             if (requestBodyLogging().contains(LogType.LOG) && isNotBlank(body)) {
                 logRequest(body);
             }
@@ -293,10 +293,10 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             if (!responseBodyLogging().isEmpty()) {
                 TeeOutputStream teeOutputStream = new TeeOutputStream(
                         context.getOutputStream(),
-                        new BoundedOutputStream(outputStream, limitBodyLogging()));
+                        new BoundedOutputStream(outputStream, limitBodyResponse()));
                 context.setOutputStream(teeOutputStream);
                 context.proceed();
-                String body = filterBody(outputStream);
+                String body = filterBody(outputStream, filtersBodyResponse());
                 if (responseBodyLogging().contains(LogType.MDC)) {
                     putMdc(RESPONSE_BODY, body);
                 }
@@ -342,13 +342,13 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param outputStream The payload to be filtered
      * @return The payload filtered
      */
-    protected String filterBody(ByteArrayOutputStream outputStream) {
-        if (filtersBody().isEmpty()) {
+    protected String filterBody(ByteArrayOutputStream outputStream, Set<BodyFilter> filters) {
+        if (filters.isEmpty()) {
             return outputStream.toString();
         }
 
         StringBuilder bodyBuilder = new StringBuilder(outputStream.toString());
-        filtersBody().forEach(filter -> filter.filterBody(bodyBuilder));
+        filters.forEach(filter -> filter.filterBody(bodyBuilder));
         return bodyBuilder.toString();
     }
 
@@ -359,7 +359,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      */
     protected Set<LogType> requestBodyLogging() {
         return getAnnotation()
-                .map(Logged::requestBody)
+                .map(Logged::request)
+                .map(RequestLogging::value)
                 .stream()
                 .flatMap(Stream::of)
                 .collect(toSet());
@@ -372,34 +373,72 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      */
     protected Set<LogType> responseBodyLogging() {
         return getAnnotation()
-                .map(Logged::responseBody)
+                .map(Logged::response)
+                .map(ResponseLogging::value)
                 .stream()
                 .flatMap(Stream::of)
                 .collect(toSet());
     }
 
     /**
-     * Gets the size limit of the body to be logged or -1 if no limit is applied.
+     * Gets the size limit of the request body to be logged or -1 if no limit is applied.
      *
      * @return The maximum size of the body to be logged in bytes
      */
-    protected int limitBodyLogging() {
+    protected int limitBodyRequest() {
         return getAnnotation()
-                .map(Logged::limitBody)
+                .map(Logged::request)
+                .map(RequestLogging::limit)
                 .orElse(-1);
     }
 
     /**
-     * Gets the filters that must be applied before logging the request or response body.
+     * Gets the size limit of the response body to be logged or -1 if no limit is applied.
+     *
+     * @return The maximum size of the body to be logged in bytes
+     */
+    protected int limitBodyResponse() {
+        return getAnnotation()
+                .map(Logged::response)
+                .map(ResponseLogging::limit)
+                .orElse(-1);
+    }
+
+    /**
+     * Gets the filters that must be applied before logging the request body.
      *
      * @return The list of filters to be applied
      */
-    protected Set<LoggedBodyFilter> filtersBody() {
-        return getAnnotation()
-                .map(Logged::filtersBody)
-                .stream()
+    protected Set<BodyFilter> filtersBodyRequest() {
+        return filtersBody(getAnnotation()
+                .map(Logged::request)
+                .map(RequestLogging::filters)
+                .stream());
+    }
+
+    /**
+     * Gets the filters that must be applied before logging the response body.
+     *
+     * @return The list of filters to be applied
+     */
+    protected Set<BodyFilter> filtersBodyResponse() {
+        return filtersBody(getAnnotation()
+                .map(Logged::response)
+                .map(ResponseLogging::filters)
+                .stream());
+    }
+
+    /**
+     * Gets the filters instances that must be applied before logging a body.
+     * Instantiates the given filters if not already done (caching).
+     *
+     * @param filtersType The stream of filters classes to be instantiated
+     * @return The list of filters to be applied
+     */
+    protected Set<BodyFilter> filtersBody(Stream<Class<? extends BodyFilter>[]> filtersType) {
+        return filtersType
                 .flatMap(Stream::of)
-                .map(type -> filters.computeIfAbsent(type, ignored -> instantiateFilter(type)))
+                .map(type -> filtersCache.computeIfAbsent(type, ignored -> instantiateFilter(type)))
                 .filter(Objects::nonNull)
                 .collect(toSet());
     }
@@ -411,7 +450,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param <T>  The body filter type
      * @return The instance created or {@code null} if it failed
      */
-    protected <T extends LoggedBodyFilter> LoggedBodyFilter instantiateFilter(Class<T> type) {
+    protected <T extends BodyFilter> BodyFilter instantiateFilter(Class<T> type) {
         try {
             return type.getConstructor().newInstance();
         } catch (Exception e) {

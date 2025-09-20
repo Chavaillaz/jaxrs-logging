@@ -6,7 +6,7 @@ import java.util.regex.Pattern;
 /**
  * Example of body filter removing the secret code in JSON bodies.
  */
-public class SensitiveBodyFilter implements LoggedBodyFilter {
+public class SensitiveBodyFilter implements BodyFilter {
 
     protected static final Pattern SECRET = Pattern.compile("\"secret-code\": \"([a-zA-Z0-9-]*)\"");
 
