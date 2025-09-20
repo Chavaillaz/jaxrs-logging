@@ -21,17 +21,10 @@ import jakarta.ws.rs.NameBinding;
 public @interface Logged {
 
     /**
-     * Logging configuration for requests.
+     * Body logging configuration for requests and/or responses.
      *
      * @return The request logging configuration
      */
-    BodyLogging request() default @BodyLogging();
-
-    /**
-     * Logging configuration for responses.
-     *
-     * @return The response logging configuration
-     */
-    BodyLogging response() default @BodyLogging();
+    LoggedBody[] value() default {};
 
 }

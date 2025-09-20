@@ -1,5 +1,7 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.LoggedBody.Target.REQUEST;
+import static com.chavaillaz.jakarta.rs.LoggedBody.Target.RESPONSE;
 import static com.chavaillaz.jakarta.rs.LoggedField.DURATION;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
@@ -37,7 +39,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
-import com.chavaillaz.jakarta.rs.BodyLogging.LogType;
+import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ResourceInfo;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
@@ -131,7 +133,7 @@ class LoggedFilterTest extends AbstractFilterTest {
     @ParameterizedTest(name = "{1}")
     @MethodSource("arguments")
     @DisplayName("Check filter actions based on annotation")
-    void checkFilterAction(Class<?> type, String method, LogType[] expectedRequestLogging, LogType[] expectedResponseLogging, Class<? extends BodyFilter>[] expectedBodyFilters) throws Exception {
+    void checkFilterAction(Class<?> type, String method, LogType[] expectedRequestLogging, LogType[] expectedResponseLogging, Class<? extends LoggedBodyFilter>[] expectedBodyFilters) throws Exception {
         setupTest(type, method);
 
         // Given
@@ -225,7 +227,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         checkResponseLogging(expectedResponseLogging, expectedBodyFilters);
     }
 
-    void checkRequestLogging(LogType[] expectedRequestLogging, Class<? extends BodyFilter>[] expectedBodyFilters) {
+    void checkRequestLogging(LogType[] expectedRequestLogging, Class<? extends LoggedBodyFilter>[] expectedBodyFilters) {
         LogEvent logReceived = listAppender.findFirstMessage("Received");
 
         if (Set.of(expectedRequestLogging).contains(LogType.LOG)) {
@@ -250,7 +252,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         }
     }
 
-    void checkResponseLogging(LogType[] expectedResponseLogging, Class<? extends BodyFilter>[] expectedBodyFilters) {
+    void checkResponseLogging(LogType[] expectedResponseLogging, Class<? extends LoggedBodyFilter>[] expectedBodyFilters) {
         LogEvent logProcessed = listAppender.findFirstMessage("Processed");
         assertNotNull(logProcessed);
         String message = logProcessed.getMessage().getFormattedMessage();
@@ -310,8 +312,7 @@ class LoggedFilterTest extends AbstractFilterTest {
                 .orElse(null);
     }
 
-    @Logged(request = @BodyLogging(value = {LogType.MDC, LogType.LOG}, filters = SensitiveBodyFilter.class),
-            response = @BodyLogging(value = {LogType.MDC, LogType.LOG}, filters = SensitiveBodyFilter.class))
+    @Logged(@LoggedBody(value = {LogType.MDC, LogType.LOG}, filters = SensitiveBodyFilter.class))
     interface AnnotatedResource extends AnnotatedResourceParent {
 
         void inherit();
@@ -319,32 +320,26 @@ class LoggedFilterTest extends AbstractFilterTest {
         @Override
         void inheritParent();
 
-        @Logged(request = @BodyLogging(value = {LogType.MDC, LogType.LOG}, filters = SensitiveBodyFilter.class),
-                response = @BodyLogging(value = {LogType.MDC, LogType.LOG}, filters = SensitiveBodyFilter.class))
+        @LoggedBody(value = {LogType.MDC, LogType.LOG}, filters = SensitiveBodyFilter.class)
         void bodyAsMdcAndLogWithFilter();
 
-        @Logged(request = @BodyLogging({LogType.MDC, LogType.LOG}),
-                response = @BodyLogging({LogType.MDC, LogType.LOG}))
+        @LoggedBody({LogType.MDC, LogType.LOG})
         void bodyAsMdcAndLog();
 
-        @Logged(request = @BodyLogging(value = LogType.MDC, filters = SensitiveBodyFilter.class),
-                response = @BodyLogging(value = LogType.MDC, filters = SensitiveBodyFilter.class))
+        @LoggedBody(value = LogType.MDC, filters = SensitiveBodyFilter.class)
         void bodyAsMdcWithFilter();
 
-        @Logged(request = @BodyLogging(value = LogType.LOG, filters = SensitiveBodyFilter.class),
-                response = @BodyLogging(value = LogType.LOG, filters = SensitiveBodyFilter.class))
+        @LoggedBody(value = LogType.LOG, filters = SensitiveBodyFilter.class)
         void bodyAsLogWithFilter();
 
-        @Logged(request = @BodyLogging(LogType.MDC),
-                response = @BodyLogging(LogType.MDC))
+        @LoggedBody(LogType.MDC)
         void bodyAsMdc();
 
-        @Logged(request = @BodyLogging(LogType.LOG),
-                response = @BodyLogging(LogType.LOG))
+        @LoggedBody(LogType.LOG)
         void bodyAsLog();
 
-        @Logged(request = @BodyLogging(LogType.MDC),
-                response = @BodyLogging(LogType.LOG))
+        @LoggedBody(value = LogType.MDC, targets = REQUEST)
+        @LoggedBody(value = LogType.LOG, targets = RESPONSE)
         void bodyAsMix();
 
         @Logged

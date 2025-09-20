@@ -8,9 +8,12 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.AccessibleObject;
 import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 
 import jakarta.ws.rs.container.ResourceInfo;
 
@@ -62,25 +65,54 @@ public class LoggedUtils {
     /**
      * Gets the given annotation from the resource method, its interfaces or its class matched by the current request.
      *
-     * @param resourceInfo The instance to access resource class and method
-     * @param annotation   The annotation type to get
-     * @param <A>          The annotation type
+     * @param resourceInfo   The instance to access resource class and method
+     * @param annotationType The annotation type to get
+     * @param <A>            The annotation type
      * @return The annotation found or {@link Optional#empty} otherwise
      */
-    public static <A extends Annotation> Optional<A> getAnnotation(ResourceInfo resourceInfo, Class<A> annotation) {
+    public static <A extends Annotation> List<A> getAnnotation(ResourceInfo resourceInfo, Class<A> annotationType) {
+        return getAnnotation(resourceInfo, annotationType, null, null);
+    }
+
+    /**
+     * Gets the given annotation from the resource method, its interfaces or its class matched by the current request.
+     *
+     * @param resourceInfo   The instance to access resource class and method
+     * @param annotationType The annotation type to get
+     * @param wrapperType    The wrapper annotation type in case the annotation type is repeatable
+     * @param mapper         The function to extract the annotation to get (repeatable) from its wrapper
+     * @param <A>            The annotation type
+     * @param <W>            The wrapper annotation type
+     * @return The annotation found or {@link Optional#empty} otherwise
+     */
+    public static <A extends Annotation, W extends Annotation> List<A> getAnnotation(ResourceInfo resourceInfo, Class<A> annotationType, Class<W> wrapperType, Function<W, A[]> mapper) {
         Set<Annotation> parentAnnotations = getAnnotationsInterfaces(resourceInfo.getResourceClass(), resourceInfo.getResourceMethod());
         // Priority: Method annotations > Interfaces annotations > Class annotation
-        if (resourceInfo.getResourceMethod().isAnnotationPresent(annotation)) {
-            return Optional.of(resourceInfo.getResourceMethod().getAnnotation(annotation));
+        if (resourceInfo.getResourceMethod().isAnnotationPresent(annotationType)) {
+            return Arrays.asList(resourceInfo.getResourceMethod().getAnnotationsByType(annotationType));
+        } else if (wrapperType != null && resourceInfo.getResourceMethod().isAnnotationPresent(wrapperType)) {
+            return Arrays.stream(resourceInfo.getResourceMethod().getAnnotationsByType(wrapperType))
+                    .map(mapper)
+                    .flatMap(Arrays::stream)
+                    .toList();
         } else if (!parentAnnotations.isEmpty()) {
             return parentAnnotations.stream()
-                    .filter(annotation::isInstance)
-                    .map(annotation::cast)
-                    .findFirst();
-        } else if (resourceInfo.getResourceClass().isAnnotationPresent(annotation)) {
-            return Optional.of(resourceInfo.getResourceClass().getAnnotation(annotation));
+                    .map(instance -> wrapperType != null && wrapperType.isInstance(instance)
+                            ? Arrays.asList(mapper.apply(wrapperType.cast(instance)))
+                            : List.of(instance))
+                    .flatMap(List::stream)
+                    .filter(annotationType::isInstance)
+                    .map(annotationType::cast)
+                    .toList();
+        } else if (resourceInfo.getResourceClass().isAnnotationPresent(annotationType)) {
+            return Arrays.asList(resourceInfo.getResourceClass().getAnnotationsByType(annotationType));
+        } else if (wrapperType != null && resourceInfo.getResourceClass().isAnnotationPresent(wrapperType)) {
+            return Arrays.stream(resourceInfo.getResourceClass().getAnnotationsByType(wrapperType))
+                    .map(mapper)
+                    .flatMap(Arrays::stream)
+                    .toList();
         } else {
-            return Optional.empty();
+            return Collections.emptyList();
         }
     }
 

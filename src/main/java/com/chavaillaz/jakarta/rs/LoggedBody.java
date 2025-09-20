@@ -1,10 +1,13 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.LoggedBody.Target.REQUEST;
+import static com.chavaillaz.jakarta.rs.LoggedBody.Target.RESPONSE;
 import static java.lang.annotation.ElementType.METHOD;
 import static java.lang.annotation.ElementType.TYPE;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
 import java.lang.annotation.Documented;
+import java.lang.annotation.Repeatable;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
@@ -17,7 +20,8 @@ import jakarta.ws.rs.NameBinding;
 @NameBinding
 @Retention(RUNTIME)
 @Target({TYPE, METHOD})
-public @interface BodyLogging {
+@Repeatable(Logged.class)
+public @interface LoggedBody {
 
     /**
      * Indicates how the request or response body must be logged.
@@ -45,7 +49,14 @@ public @interface BodyLogging {
      *
      * @return The list of filters to be applied
      */
-    Class<? extends BodyFilter>[] filters() default {};
+    Class<? extends LoggedBodyFilter>[] filters() default {};
+
+    /**
+     * Indicates whether the logging configuration must be applied to the request, the response, or both.
+     *
+     * @return The targets to which the logging configuration must be applied
+     */
+    Target[] targets() default {REQUEST, RESPONSE};
 
     /**
      * Type of logging to be applied to the request and response body.
@@ -63,4 +74,22 @@ public @interface BodyLogging {
         MDC
 
     }
+
+    /**
+     * Target of the logging configuration.
+     */
+    enum Target {
+
+        /**
+         * Apply the logging configuration to the request body.
+         */
+        REQUEST,
+
+        /**
+         * Apply the logging configuration to the response body.
+         */
+        RESPONSE
+
+    }
+
 }
