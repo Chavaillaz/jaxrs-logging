@@ -25,30 +25,13 @@ public @interface Logged {
      *
      * @return The request logging configuration
      */
-    RequestLogging request() default @RequestLogging();
+    BodyLogging request() default @BodyLogging();
 
     /**
      * Logging configuration for responses.
      *
      * @return The response logging configuration
      */
-    ResponseLogging response() default @ResponseLogging();
-
-    /**
-     * Type of logging to be applied to the request and response body.
-     */
-    enum LogType {
-
-        /**
-         * Writes the element as a new log line.
-         */
-        LOG,
-
-        /**
-         * Writes the element as MDC field of the processed log line from {@link LoggedFilter}.
-         */
-        MDC
-
-    }
+    BodyLogging response() default @BodyLogging();
 
 }

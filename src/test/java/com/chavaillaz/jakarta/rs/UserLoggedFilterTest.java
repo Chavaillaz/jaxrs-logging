@@ -10,7 +10,7 @@ import static org.mockito.Mockito.doReturn;
 import java.lang.reflect.Method;
 import java.net.URISyntaxException;
 
-import com.chavaillaz.jakarta.rs.Logged.LogType;
+import com.chavaillaz.jakarta.rs.BodyLogging.LogType;
 import jakarta.ws.rs.container.ResourceInfo;
 import org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext;
 import org.jboss.resteasy.mock.MockHttpRequest;
@@ -67,7 +67,7 @@ class UserLoggedFilterTest extends AbstractFilterTest {
                         .contentType(TEXT_PLAIN_TYPE));
     }
 
-    @UserLogged(logging = @Logged(request = @RequestLogging(LogType.MDC), response = @ResponseLogging(LogType.MDC)), userAgent = true)
+    @UserLogged(logging = @Logged(request = @BodyLogging(LogType.MDC), response = @BodyLogging(LogType.MDC)), userAgent = true)
     interface AnnotatedResource {
 
         void inherit();

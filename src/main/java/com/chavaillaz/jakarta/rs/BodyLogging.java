@@ -11,25 +11,28 @@ import java.lang.annotation.Target;
 import jakarta.ws.rs.NameBinding;
 
 /**
- * Configuration for body logging of HTTP responses.
+ * Configuration for body logging of HTTP requests or responses.
  */
 @Documented
 @NameBinding
 @Retention(RUNTIME)
 @Target({TYPE, METHOD})
-public @interface ResponseLogging {
+public @interface BodyLogging {
 
     /**
-     * Indicates how the response body must be logged.
+     * Indicates how the request or response body must be logged.
      * <p>
      * Do not activate it when expecting large payloads to avoid any performance or memory issue.
+     * <p>
+     * Note that for {@link LogType#MDC}, the request or response body will be stored in the request context
+     * in order to be retrieved and stored as MDC when logging the processing log line.
      *
      * @return The types of logging to be done
      */
-    Logged.LogType[] value() default {};
+    LogType[] value() default {};
 
     /**
-     * Limits the size of the response body to be logged (if activated).
+     * Limits the size of the request or response body to be logged (if activated).
      * <p>
      * By default, no limit is applied (note that it can lead to performance or memory issues).
      *
@@ -38,10 +41,26 @@ public @interface ResponseLogging {
     int limit() default -1;
 
     /**
-     * Indicates which filters must be applied before logging the response body.
+     * Indicates which filters must be applied before logging the request or response body.
      *
      * @return The list of filters to be applied
      */
     Class<? extends BodyFilter>[] filters() default {};
 
+    /**
+     * Type of logging to be applied to the request and response body.
+     */
+    enum LogType {
+
+        /**
+         * Writes the element as a new log line.
+         */
+        LOG,
+
+        /**
+         * Writes the element as MDC field of the processed log line from {@link LoggedFilter}.
+         */
+        MDC
+
+    }
 }

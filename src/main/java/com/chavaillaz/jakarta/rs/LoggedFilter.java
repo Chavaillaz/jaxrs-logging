@@ -40,7 +40,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
 
-import com.chavaillaz.jakarta.rs.Logged.LogType;
+import com.chavaillaz.jakarta.rs.BodyLogging.LogType;
 import com.chavaillaz.jakarta.rs.LoggedMapping.LogMappingType;
 import jakarta.ws.rs.ConstrainedTo;
 import jakarta.ws.rs.WebApplicationException;
@@ -360,7 +360,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected Set<LogType> requestBodyLogging() {
         return getAnnotation()
                 .map(Logged::request)
-                .map(RequestLogging::value)
+                .map(BodyLogging::value)
                 .stream()
                 .flatMap(Stream::of)
                 .collect(toSet());
@@ -374,7 +374,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected Set<LogType> responseBodyLogging() {
         return getAnnotation()
                 .map(Logged::response)
-                .map(ResponseLogging::value)
+                .map(BodyLogging::value)
                 .stream()
                 .flatMap(Stream::of)
                 .collect(toSet());
@@ -388,7 +388,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected int limitBodyRequest() {
         return getAnnotation()
                 .map(Logged::request)
-                .map(RequestLogging::limit)
+                .map(BodyLogging::limit)
                 .orElse(-1);
     }
 
@@ -400,7 +400,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected int limitBodyResponse() {
         return getAnnotation()
                 .map(Logged::response)
-                .map(ResponseLogging::limit)
+                .map(BodyLogging::limit)
                 .orElse(-1);
     }
 
@@ -412,7 +412,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected Set<BodyFilter> filtersBodyRequest() {
         return filtersBody(getAnnotation()
                 .map(Logged::request)
-                .map(RequestLogging::filters)
+                .map(BodyLogging::filters)
                 .stream());
     }
 
@@ -424,7 +424,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected Set<BodyFilter> filtersBodyResponse() {
         return filtersBody(getAnnotation()
                 .map(Logged::response)
-                .map(ResponseLogging::filters)
+                .map(BodyLogging::filters)
                 .stream());
     }
 

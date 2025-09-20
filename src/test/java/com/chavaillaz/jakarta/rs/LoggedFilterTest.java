@@ -37,7 +37,7 @@ import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
-import com.chavaillaz.jakarta.rs.Logged.LogType;
+import com.chavaillaz.jakarta.rs.BodyLogging.LogType;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ResourceInfo;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
@@ -310,8 +310,8 @@ class LoggedFilterTest extends AbstractFilterTest {
                 .orElse(null);
     }
 
-    @Logged(request = @RequestLogging(value = {LogType.MDC, LogType.LOG}, filters = SensitiveBodyFilter.class),
-            response = @ResponseLogging(value = {LogType.MDC, LogType.LOG}, filters = SensitiveBodyFilter.class))
+    @Logged(request = @BodyLogging(value = {LogType.MDC, LogType.LOG}, filters = SensitiveBodyFilter.class),
+            response = @BodyLogging(value = {LogType.MDC, LogType.LOG}, filters = SensitiveBodyFilter.class))
     interface AnnotatedResource extends AnnotatedResourceParent {
 
         void inherit();
@@ -319,32 +319,32 @@ class LoggedFilterTest extends AbstractFilterTest {
         @Override
         void inheritParent();
 
-        @Logged(request = @RequestLogging(value = {LogType.MDC, LogType.LOG}, filters = SensitiveBodyFilter.class),
-                response = @ResponseLogging(value = {LogType.MDC, LogType.LOG}, filters = SensitiveBodyFilter.class))
+        @Logged(request = @BodyLogging(value = {LogType.MDC, LogType.LOG}, filters = SensitiveBodyFilter.class),
+                response = @BodyLogging(value = {LogType.MDC, LogType.LOG}, filters = SensitiveBodyFilter.class))
         void bodyAsMdcAndLogWithFilter();
 
-        @Logged(request = @RequestLogging({LogType.MDC, LogType.LOG}),
-                response = @ResponseLogging({LogType.MDC, LogType.LOG}))
+        @Logged(request = @BodyLogging({LogType.MDC, LogType.LOG}),
+                response = @BodyLogging({LogType.MDC, LogType.LOG}))
         void bodyAsMdcAndLog();
 
-        @Logged(request = @RequestLogging(value = LogType.MDC, filters = SensitiveBodyFilter.class),
-                response = @ResponseLogging(value = LogType.MDC, filters = SensitiveBodyFilter.class))
+        @Logged(request = @BodyLogging(value = LogType.MDC, filters = SensitiveBodyFilter.class),
+                response = @BodyLogging(value = LogType.MDC, filters = SensitiveBodyFilter.class))
         void bodyAsMdcWithFilter();
 
-        @Logged(request = @RequestLogging(value = LogType.LOG, filters = SensitiveBodyFilter.class),
-                response = @ResponseLogging(value = LogType.LOG, filters = SensitiveBodyFilter.class))
+        @Logged(request = @BodyLogging(value = LogType.LOG, filters = SensitiveBodyFilter.class),
+                response = @BodyLogging(value = LogType.LOG, filters = SensitiveBodyFilter.class))
         void bodyAsLogWithFilter();
 
-        @Logged(request = @RequestLogging(LogType.MDC),
-                response = @ResponseLogging(LogType.MDC))
+        @Logged(request = @BodyLogging(LogType.MDC),
+                response = @BodyLogging(LogType.MDC))
         void bodyAsMdc();
 
-        @Logged(request = @RequestLogging(LogType.LOG),
-                response = @ResponseLogging(LogType.LOG))
+        @Logged(request = @BodyLogging(LogType.LOG),
+                response = @BodyLogging(LogType.LOG))
         void bodyAsLog();
 
-        @Logged(request = @RequestLogging(LogType.MDC),
-                response = @ResponseLogging(LogType.LOG))
+        @Logged(request = @BodyLogging(LogType.MDC),
+                response = @BodyLogging(LogType.LOG))
         void bodyAsMix();
 
         @Logged
