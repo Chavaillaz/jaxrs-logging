@@ -131,9 +131,39 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param field The field for which put the given value
      * @param value The value to be associated with the given field
      */
-    private void putMdc(LoggedField field, String value) {
+    protected void putMdc(LoggedField field, String value) {
         if (value != null) {
             MDC.put(mdcFields.get(field.name()), value);
+        }
+    }
+
+    /**
+     * Maps the given parameters (path, query or headers) to MDC entries using the given mapping.
+     *
+     * @param parameters The parameters to be mapped
+     * @param mapping    The mapping to be applied
+     * @param exclusion  The parameters name to be excluded from mapping (already mapped or explicitly excluded)
+     */
+    protected void putMdcFromParameters(Map<String, List<String>> parameters, LoggedMapping mapping, Set<String> exclusion) {
+        Set<String> paramNames = Set.of(mapping.paramNames());
+        if (mapping.auto()) {
+            parameters.entrySet().stream()
+                    .filter(entry -> !exclusion.contains(entry.getKey()))
+                    .filter(entry -> entry.getValue() != null && !entry.getValue().isEmpty())
+                    .forEach(entry -> MDC.put(mapping.mdcPrefix() + entry.getKey(), entry.getValue().getFirst()));
+        } else if (paramNames.stream().noneMatch(exclusion::contains)) {
+            // Avoid a field to be mapped multiple times
+            exclusion.addAll(paramNames);
+            // MDC key can be blank in case of exclusion
+            if (isNotBlank(mapping.mdcKey())) {
+                paramNames.stream()
+                        .map(parameters::get)
+                        .filter(Objects::nonNull)
+                        .filter(list -> !list.isEmpty())
+                        .map(List::getFirst)
+                        .findFirst()
+                        .ifPresent(value -> MDC.put(mapping.mdcPrefix() + mapping.mdcKey(), value));
+            }
         }
     }
 
@@ -143,7 +173,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param field The field for which get the value
      * @return The value associated with the given field
      */
-    private String getMdc(LoggedField field) {
+    protected String getMdc(LoggedField field) {
         return MDC.get(mdcFields.get(field.name()));
     }
 
@@ -193,56 +223,26 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                         }, mapping, exclusion.computeIfAbsent(mapping.type(), type -> new HashSet<>())));
 
         // Logs directly from filter in case no request body is expected as aroundReadFrom will not be called
-        if (requestBodyLogging().contains(LogType.LOG) && !(requestContext.hasEntity() && requestContext.getLength() != 0)) {
+        if (getBodyLoggingRequest().contains(LogType.LOG) && !(requestContext.hasEntity() && requestContext.getLength() != 0)) {
             logRequest(EMPTY);
-        }
-    }
-
-    /**
-     * Maps the given parameters (path, query or headers) to MDC entries using the given mapping.
-     *
-     * @param parameters The parameters to be mapped
-     * @param mapping    The mapping to be applied
-     * @param exclusion  The parameters name to be excluded from mapping (already mapped or explicitly excluded)
-     */
-    protected void putMdcFromParameters(Map<String, List<String>> parameters, LoggedMapping mapping, Set<String> exclusion) {
-        Set<String> paramNames = Set.of(mapping.paramNames());
-        if (mapping.auto()) {
-            parameters.entrySet().stream()
-                    .filter(entry -> !exclusion.contains(entry.getKey()))
-                    .filter(entry -> entry.getValue() != null && !entry.getValue().isEmpty())
-                    .forEach(entry -> MDC.put(mapping.mdcPrefix() + entry.getKey(), entry.getValue().getFirst()));
-        } else if (paramNames.stream().noneMatch(exclusion::contains)) {
-            // Avoid a field to be mapped multiple times
-            exclusion.addAll(paramNames);
-            // MDC key can be blank in case of exclusion
-            if (isNotBlank(mapping.mdcKey())) {
-                paramNames.stream()
-                        .map(parameters::get)
-                        .filter(Objects::nonNull)
-                        .filter(list -> !list.isEmpty())
-                        .map(List::getFirst)
-                        .findFirst()
-                        .ifPresent(value -> MDC.put(mapping.mdcPrefix() + mapping.mdcKey(), value));
-            }
         }
     }
 
     @Override
     public Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
         Object entity;
-        if (!requestBodyLogging().isEmpty()) {
+        if (!getBodyLoggingRequest().isEmpty()) {
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
             TeeInputStream teeInputStream = new TeeInputStream(
                     context.getInputStream(),
-                    new BoundedOutputStream(outputStream, limitBodyRequest()));
+                    new BoundedOutputStream(outputStream, getBodyLimitRequest()));
             context.setInputStream(teeInputStream);
             entity = context.proceed();
-            String body = filterBody(outputStream, filtersBodyRequest());
-            if (requestBodyLogging().contains(LogType.LOG) && isNotBlank(body)) {
+            String body = getBodyFiltered(outputStream, getBodyFiltersRequest());
+            if (getBodyLoggingRequest().contains(LogType.LOG) && isNotBlank(body)) {
                 logRequest(body);
             }
-            if (requestBodyLogging().contains(LogType.MDC)) {
+            if (getBodyLoggingRequest().contains(LogType.MDC)) {
                 requestContext.setProperty(REQUEST_BODY_PROPERTY, body);
             }
         } else {
@@ -277,7 +277,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         putMdc(RESPONSE_STATUS, valueOf(responseContext.getStatus()));
 
         // Logs directly from filter in case no response body is present as aroundWriteTo will not be called
-        if (!responseBodyLogging().isEmpty() && !responseContext.hasEntity()) {
+        if (!getBodyLoggingResponse().isEmpty() && !responseContext.hasEntity()) {
             logResponse(EMPTY);
         }
     }
@@ -286,17 +286,17 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     public void aroundWriteTo(WriterInterceptorContext context) throws IOException, WebApplicationException {
         try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
             String responseBody = null;
-            if (!responseBodyLogging().isEmpty()) {
+            if (!getBodyLoggingResponse().isEmpty()) {
                 TeeOutputStream teeOutputStream = new TeeOutputStream(
                         context.getOutputStream(),
-                        new BoundedOutputStream(outputStream, limitBodyResponse()));
+                        new BoundedOutputStream(outputStream, getBodyLimitResponse()));
                 context.setOutputStream(teeOutputStream);
                 context.proceed();
-                String body = filterBody(outputStream, filtersBodyResponse());
-                if (responseBodyLogging().contains(LogType.MDC)) {
+                String body = getBodyFiltered(outputStream, getBodyFiltersResponse());
+                if (getBodyLoggingResponse().contains(LogType.MDC)) {
                     putMdc(RESPONSE_BODY, body);
                 }
-                if (responseBodyLogging().contains(LogType.LOG)) {
+                if (getBodyLoggingResponse().contains(LogType.LOG)) {
                     responseBody = body;
                 }
             } else {
@@ -315,7 +315,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      */
     protected void logResponse(String responseBody) {
         try {
-            if (requestBodyLogging().contains(LogType.MDC)) {
+            if (getBodyLoggingRequest().contains(LogType.MDC)) {
                 putMdc(REQUEST_BODY, (String) requestContext.getProperty(REQUEST_BODY_PROPERTY));
             }
 
@@ -338,13 +338,13 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param outputStream The payload to be filtered
      * @return The payload filtered
      */
-    protected String filterBody(ByteArrayOutputStream outputStream, Set<LoggedBodyFilter> filters) {
+    protected String getBodyFiltered(ByteArrayOutputStream outputStream, Set<LoggedBodyFilter> filters) {
         if (filters.isEmpty()) {
             return outputStream.toString();
         }
 
         StringBuilder bodyBuilder = new StringBuilder(outputStream.toString());
-        filters.forEach(filter -> filter.filterBody(bodyBuilder));
+        filters.forEach(filter -> filter.filter(bodyBuilder));
         return bodyBuilder.toString();
     }
 
@@ -356,7 +356,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param target The target for which to find the body logging configuration
      * @return The most specific body logging configuration if present
      */
-    protected Optional<LoggedBody> bodyLoggingConfiguration(Target target) {
+    protected Optional<LoggedBody> getBodyConfiguration(Target target) {
         LoggedBody both = null;
         for (LoggedBody logging : getAnnotation(resourceInfo, LoggedBody.class, Logged.class, Logged::value)) {
             List<Target> targets = Arrays.asList(logging.targets());
@@ -375,8 +375,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      *
      * @return The types of logging to be done
      */
-    protected Set<LogType> requestBodyLogging() {
-        return bodyLoggingConfiguration(REQUEST)
+    protected Set<LogType> getBodyLoggingRequest() {
+        return getBodyConfiguration(REQUEST)
                 .map(LoggedBody::value)
                 .stream()
                 .flatMap(Stream::of)
@@ -388,8 +388,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      *
      * @return The types of logging to be done
      */
-    protected Set<LogType> responseBodyLogging() {
-        return bodyLoggingConfiguration(RESPONSE)
+    protected Set<LogType> getBodyLoggingResponse() {
+        return getBodyConfiguration(RESPONSE)
                 .map(LoggedBody::value)
                 .stream()
                 .flatMap(Stream::of)
@@ -401,8 +401,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      *
      * @return The maximum size of the body to be logged in bytes
      */
-    protected int limitBodyRequest() {
-        return bodyLoggingConfiguration(REQUEST)
+    protected int getBodyLimitRequest() {
+        return getBodyConfiguration(REQUEST)
                 .map(LoggedBody::limit)
                 .orElse(-1);
     }
@@ -412,8 +412,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      *
      * @return The maximum size of the body to be logged in bytes
      */
-    protected int limitBodyResponse() {
-        return bodyLoggingConfiguration(RESPONSE)
+    protected int getBodyLimitResponse() {
+        return getBodyConfiguration(RESPONSE)
                 .map(LoggedBody::limit)
                 .orElse(-1);
     }
@@ -423,8 +423,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      *
      * @return The list of filters to be applied
      */
-    protected Set<LoggedBodyFilter> filtersBodyRequest() {
-        return filtersBody(bodyLoggingConfiguration(REQUEST)
+    protected Set<LoggedBodyFilter> getBodyFiltersRequest() {
+        return getBodyFilters(getBodyConfiguration(REQUEST)
                 .map(LoggedBody::filters)
                 .stream());
     }
@@ -434,8 +434,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      *
      * @return The list of filters to be applied
      */
-    protected Set<LoggedBodyFilter> filtersBodyResponse() {
-        return filtersBody(bodyLoggingConfiguration(RESPONSE)
+    protected Set<LoggedBodyFilter> getBodyFiltersResponse() {
+        return getBodyFilters(getBodyConfiguration(RESPONSE)
                 .map(LoggedBody::filters)
                 .stream());
     }
@@ -447,10 +447,10 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param filtersType The stream of filters classes to be instantiated
      * @return The list of filters to be applied
      */
-    protected Set<LoggedBodyFilter> filtersBody(Stream<Class<? extends LoggedBodyFilter>[]> filtersType) {
+    protected Set<LoggedBodyFilter> getBodyFilters(Stream<Class<? extends LoggedBodyFilter>[]> filtersType) {
         return filtersType
                 .flatMap(Stream::of)
-                .map(type -> filtersCache.computeIfAbsent(type, ignored -> instantiateFilter(type)))
+                .map(this::getBodyFiltersInstance)
                 .filter(Objects::nonNull)
                 .collect(toSet());
     }
@@ -462,13 +462,15 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param <T>  The body filter type
      * @return The instance created or {@code null} if it failed
      */
-    protected <T extends LoggedBodyFilter> LoggedBodyFilter instantiateFilter(Class<T> type) {
-        try {
-            return type.getConstructor().newInstance();
-        } catch (Exception e) {
-            log.error("Unable to instantiate request body filter {}", type, e);
-            return null;
-        }
+    protected <T extends LoggedBodyFilter> LoggedBodyFilter getBodyFiltersInstance(Class<T> type) {
+        return filtersCache.computeIfAbsent(type, ignored -> {
+            try {
+                return type.getConstructor().newInstance();
+            } catch (Exception e) {
+                log.error("Unable to instantiate body filter {}", type, e);
+                return null;
+            }
+        });
     }
 
     /**

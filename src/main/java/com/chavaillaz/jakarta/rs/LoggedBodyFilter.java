@@ -12,6 +12,6 @@ public interface LoggedBodyFilter {
      *
      * @param body The body content
      */
-    void filterBody(StringBuilder body);
+    void filter(StringBuilder body);
 
 }
