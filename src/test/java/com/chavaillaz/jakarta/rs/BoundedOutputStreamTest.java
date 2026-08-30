@@ -2,6 +2,7 @@ package com.chavaillaz.jakarta.rs;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -14,6 +15,16 @@ class BoundedOutputStreamTest {
 
     public static final String DATA = "If debugging is the process of removing software bugs, " +
             "then programming must be the process of putting them in";
+
+    @ParameterizedTest
+    @ValueSource(ints = {-2, -10, Integer.MIN_VALUE})
+    void invalidLimit_rejected(int limit) {
+        // given
+        var wrapped = new ByteArrayOutputStream();
+
+        // when / then
+        assertThrows(IllegalArgumentException.class, () -> new BoundedOutputStream(wrapped, limit));
+    }
 
     @Test
     void moreThanLimit_full() throws IOException {
