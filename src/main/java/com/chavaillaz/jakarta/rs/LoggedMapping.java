@@ -24,7 +24,7 @@ public @interface LoggedMapping {
      *
      * @return The type of mapping
      */
-    LogMappingType type();
+    MappingType type();
 
     /**
      * Flag indicating if the mapping must be done automatically
@@ -69,7 +69,7 @@ public @interface LoggedMapping {
     /**
      * Type of fields to be mapped.
      */
-    enum LogMappingType {
+    enum MappingType {
 
         /**
          * Represents a query parameter from a request.

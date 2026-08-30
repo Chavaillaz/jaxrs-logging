@@ -48,7 +48,7 @@ import java.util.stream.Stream;
 
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
 import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
-import com.chavaillaz.jakarta.rs.LoggedMapping.LogMappingType;
+import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
 import jakarta.ws.rs.ConstrainedTo;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.container.ContainerRequestContext;
@@ -242,7 +242,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 .map(Method::getName)
                 .ifPresent(value -> putMdc(RESOURCE_METHOD, value));
 
-        Map<LogMappingType, Set<String>> exclusion = new EnumMap<>(LogMappingType.class);
+        Map<MappingType, Set<String>> exclusion = new EnumMap<>(MappingType.class);
         getMergedMappings(resourceInfo).stream()
                 .sorted(comparing(LoggedMapping::auto) // Order to have auto mappings at the end to avoid overriding manual mappings
                         .thenComparing(LoggedMapping::mdcKey)) // Order to have empty MDC key at the beginning for exclusions
