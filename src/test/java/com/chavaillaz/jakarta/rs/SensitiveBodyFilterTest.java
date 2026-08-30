@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+@DisplayName("Sensitive body filter")
 class SensitiveBodyFilterTest {
 
     private final SensitiveBodyFilter filter = new SensitiveBodyFilter();
