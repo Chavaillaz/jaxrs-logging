@@ -232,6 +232,21 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check body filtering decodes bytes as UTF-8 regardless of the platform default charset")
+    void checkBodyFilteredUsesUtf8() {
+        // Given
+        String text = "Café ☕ résumé";
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        outputStream.writeBytes(text.getBytes(UTF_8));
+
+        // When
+        String result = loggingFilter.getBodyFiltered(outputStream, Set.of());
+
+        // Then
+        assertEquals(text, result);
+    }
+
+    @Test
     @DisplayName("Check MDC is cleaned up even if writing the response body fails")
     void checkMdcCleanupOnWriteFailure() throws Exception {
         setupTest(AnnotatedResource.class, "bodyAsLog");

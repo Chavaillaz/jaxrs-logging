@@ -19,6 +19,7 @@ import static jakarta.ws.rs.RuntimeType.SERVER;
 import static java.lang.String.join;
 import static java.lang.String.valueOf;
 import static java.lang.System.nanoTime;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Comparator.comparing;
 import static java.util.Map.Entry.comparingByKey;
 import static java.util.Objects.requireNonNullElse;
@@ -344,11 +345,12 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @return The payload filtered
      */
     protected String getBodyFiltered(ByteArrayOutputStream outputStream, Set<LoggedBodyFilter> filters) {
+        String body = outputStream.toString(UTF_8);
         if (filters.isEmpty()) {
-            return outputStream.toString();
+            return body;
         }
 
-        StringBuilder bodyBuilder = new StringBuilder(outputStream.toString());
+        StringBuilder bodyBuilder = new StringBuilder(body);
         filters.forEach(filter -> filter.filter(bodyBuilder));
         return bodyBuilder.toString();
     }
