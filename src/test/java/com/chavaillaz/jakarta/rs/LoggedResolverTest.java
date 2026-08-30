@@ -34,11 +34,10 @@ class LoggedResolverTest {
 
     private final LoggedResolver resolver = new LoggedResolver();
 
-    // Used directly as the resource class/method (like LoggedFilterTest's AnnotatedResource), rather
-    // than through a separate implementing class, so each method's own annotations apply on their own
-    // instead of being merged with the interface's class-level ones (a resource class overriding an
-    // interface method does not inherit that method's annotations, forcing such a merge - see
-    // LoggedUtils.getAnnotationsInterfaces)
+    // Used directly as the resource class/method (like LoggedFilterTest's AnnotatedResource), so each
+    // method's own annotations are found straight away without going through the interface-fallback
+    // path in LoggedUtils.getAnnotationsInterfaces (covered on its own, together with the priority it
+    // gives a method-level annotation over an interface's class-level one, by LoggedUtilsTest)
     interface Resource {
 
         @LoggedBody(MDC)

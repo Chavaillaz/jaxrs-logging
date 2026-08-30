@@ -131,6 +131,16 @@ public class LoggedUtils {
 
     /**
      * Gets the annotations from the interfaces implemented by the given type and method.
+     * <p>
+     * A resource class overriding an interface method does not inherit that method's annotations (method
+     * annotations are never inherited by an override, regardless of {@link java.lang.annotation.Inherited}),
+     * so this is what lets such a method still pick up the annotation declared on the interface method it
+     * overrides. When a matching interface method annotation is found for at least one implemented
+     * interface, it takes priority over any class-level annotation declared on an implemented interface,
+     * consistent with the "method &gt; interfaces &gt; class" priority documented on {@link #getAnnotation}:
+     * without this, an interface's class-level annotation was returned merged together with (instead of
+     * overridden by) that same interface's method-level one for the overridden method, whenever a resource
+     * class implementing that interface did not redeclare the annotation on its own override.
      *
      * @param type   The type to get the annotations from
      * @param method The method to get the annotations from
@@ -140,16 +150,17 @@ public class LoggedUtils {
         Annotation[] baseAnnotations = Optional.ofNullable(method)
                 .map(AccessibleObject::getAnnotations)
                 .orElse(type.getAnnotations());
-        Set<Annotation> annotations = new HashSet<>(asList(baseAnnotations));
+        Set<Annotation> methodAnnotations = new HashSet<>(asList(baseAnnotations));
+        Set<Annotation> classAnnotations = new HashSet<>();
         for (Class<?> interfaceClass : getAllInterfaces(type)) {
             for (Method interfaceMethod : interfaceClass.getMethods()) {
                 if (areMethodsEqual(interfaceMethod, method)) {
-                    annotations.addAll(asList(interfaceMethod.getAnnotations()));
+                    methodAnnotations.addAll(asList(interfaceMethod.getAnnotations()));
                 }
             }
-            annotations.addAll(asList(interfaceClass.getAnnotations()));
+            classAnnotations.addAll(asList(interfaceClass.getAnnotations()));
         }
-        return annotations;
+        return methodAnnotations.isEmpty() ? classAnnotations : methodAnnotations;
     }
 
     /**

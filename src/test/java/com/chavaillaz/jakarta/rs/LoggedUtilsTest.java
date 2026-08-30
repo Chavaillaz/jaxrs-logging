@@ -1,12 +1,17 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.REQUEST;
+import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.LOG;
+import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.MDC;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
+import static com.chavaillaz.jakarta.rs.LoggedUtils.getAnnotation;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.getMergedMappings;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doReturn;
 
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -60,6 +65,44 @@ class LoggedUtilsTest {
         assertTrue(mdcKeys.contains("interface-a"));
         assertTrue(mdcKeys.contains("interface-b"));
         assertTrue(mdcKeys.contains("class-level"));
+    }
+
+    // Class-level configuration applying (by default) to both request and response
+    @Logged(@LoggedBody(MDC))
+    interface ConflictingAnnotationsInterface {
+
+        // Method-level configuration for the same method, applying to the request only
+        @LoggedBody(value = LOG, targets = REQUEST)
+        void method();
+
+    }
+
+    // Does not redeclare the annotation on its own override, so it can only be found by walking
+    // up to the interface - where it exists at both the method and the class level
+    static class ConflictingAnnotationsResource implements ConflictingAnnotationsInterface {
+
+        @Override
+        public void method() {
+            // No-op
+        }
+
+    }
+
+    @Test
+    @DisplayName("Check a method-level annotation on an implemented interface takes priority over that interface's class-level annotation")
+    void checkMethodLevelAnnotationTakesPriorityOverInterfaceClassLevel() throws Exception {
+        // Given
+        doReturn(ConflictingAnnotationsResource.class).when(resourceInfo).getResourceClass();
+        doReturn(ConflictingAnnotationsResource.class.getMethod("method")).when(resourceInfo).getResourceMethod();
+
+        // When
+        List<LoggedBody> result = getAnnotation(resourceInfo, LoggedBody.class, Logged.class, Logged::value);
+
+        // Then: only the method-level LoggedBody(LOG, REQUEST) is found, not merged with the
+        // interface's class-level LoggedBody(MDC, both)
+        assertEquals(1, result.size());
+        assertEquals(Set.of(LOG), Set.of(result.getFirst().value()));
+        assertEquals(Set.of(REQUEST), Set.of(result.getFirst().targets()));
     }
 
 }
