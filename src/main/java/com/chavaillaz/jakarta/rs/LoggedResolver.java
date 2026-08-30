@@ -61,7 +61,14 @@ public class LoggedResolver {
      * @return The set of merged mappings applicable to the resource method
      */
     public Set<LoggedMapping> getMergedMappings(ResourceInfo resourceInfo) {
-        return mappingsCache.computeIfAbsent(resourceInfo.getResourceMethod(),
+        Method resourceMethod = resourceInfo.getResourceMethod();
+        if (resourceMethod == null) {
+            // ConcurrentHashMap forbids a null key, and a null resource method (which some containers
+            // can still hand out at this stage, see LoggedFilter#filter's own null-safe handling of it)
+            // has no annotations to resolve anyway, so there is nothing worth caching here
+            return LoggedUtils.getMergedMappings(resourceInfo);
+        }
+        return mappingsCache.computeIfAbsent(resourceMethod,
                 method -> LoggedUtils.getMergedMappings(resourceInfo));
     }
 
@@ -79,6 +86,10 @@ public class LoggedResolver {
      * @return The most specific body logging configuration if present
      */
     public Optional<LoggedBody> getBodyConfiguration(ResourceInfo resourceInfo, Direction target) {
+        if (resourceInfo.getResourceMethod() == null) {
+            // Same reasoning as getMergedMappings: no key to cache under, and nothing to resolve
+            return Optional.empty();
+        }
         BodyConfiguration configuration = bodyConfigurationCache.computeIfAbsent(resourceInfo.getResourceMethod(),
                 method -> new BodyConfiguration(
                         resolveBodyConfiguration(resourceInfo, REQUEST),

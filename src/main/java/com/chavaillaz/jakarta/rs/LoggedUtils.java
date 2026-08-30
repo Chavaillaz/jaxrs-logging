@@ -42,7 +42,12 @@ public class LoggedUtils {
         // @LoggedMapping regardless of whether it is declared once or repeated (java.lang.annotation.Repeatable
         // only synthesizes the @LoggedMappings container when 2+ instances are present, so a single
         // annotation would be missed by a plain getAnnotation(LoggedMappings.class) lookup).
-        mergeMappings(mergedMappings, resourceMethod.getAnnotationsByType(LoggedMapping.class));
+        // resourceMethod can be null for a container that does not resolve it at this stage (see
+        // LoggedFilter#filter's own null-safe handling of it); areMethodsEqual below already tolerates
+        // it, so only the direct annotation lookup on the method itself needs its own guard.
+        if (resourceMethod != null) {
+            mergeMappings(mergedMappings, resourceMethod.getAnnotationsByType(LoggedMapping.class));
+        }
         for (Class<?> interfaceClass : getAllInterfaces(resourceClass)) {
             for (Method interfaceMethod : interfaceClass.getMethods()) {
                 if (areMethodsEqual(interfaceMethod, resourceMethod)) {
@@ -99,12 +104,15 @@ public class LoggedUtils {
      * @return The annotation found or {@link Optional#empty} otherwise
      */
     public static <A extends Annotation, W extends Annotation> List<A> getAnnotation(ResourceInfo resourceInfo, Class<A> annotationType, Class<W> wrapperType, Function<W, A[]> mapper) {
-        Set<Annotation> parentAnnotations = getAnnotationsInterfaces(resourceInfo.getResourceClass(), resourceInfo.getResourceMethod());
+        Method resourceMethod = resourceInfo.getResourceMethod();
+        Set<Annotation> parentAnnotations = getAnnotationsInterfaces(resourceInfo.getResourceClass(), resourceMethod);
         // Priority: Method annotations > Interfaces annotations > Class annotation
-        if (resourceInfo.getResourceMethod().isAnnotationPresent(annotationType)) {
-            return Arrays.asList(resourceInfo.getResourceMethod().getAnnotationsByType(annotationType));
-        } else if (wrapperType != null && resourceInfo.getResourceMethod().isAnnotationPresent(wrapperType)) {
-            return Arrays.stream(resourceInfo.getResourceMethod().getAnnotationsByType(wrapperType))
+        // resourceMethod can be null for a container that does not resolve it at this stage (see
+        // LoggedFilter#filter's own null-safe handling of it), hence the guards below.
+        if (resourceMethod != null && resourceMethod.isAnnotationPresent(annotationType)) {
+            return Arrays.asList(resourceMethod.getAnnotationsByType(annotationType));
+        } else if (resourceMethod != null && wrapperType != null && resourceMethod.isAnnotationPresent(wrapperType)) {
+            return Arrays.stream(resourceMethod.getAnnotationsByType(wrapperType))
                     .map(mapper)
                     .flatMap(Arrays::stream)
                     .toList();

@@ -132,4 +132,29 @@ class LoggedResolverTest {
         assertEquals(1, resolver.mappingsCache.size());
     }
 
+    @Test
+    @DisplayName("Check a null resource method (some containers can still hand one out) does not throw")
+    void checkNullResourceMethodBodyConfiguration() {
+        doReturn(null).when(resourceInfo).getResourceMethod();
+
+        Optional<LoggedBody> request = resolver.getBodyConfiguration(resourceInfo, REQUEST);
+        Optional<LoggedBody> response = resolver.getBodyConfiguration(resourceInfo, RESPONSE);
+
+        assertFalse(request.isPresent());
+        assertFalse(response.isPresent());
+        assertEquals(0, resolver.bodyConfigurationCache.size());
+    }
+
+    @Test
+    @DisplayName("Check a null resource method (some containers can still hand one out) does not throw")
+    void checkNullResourceMethodMergedMappings() {
+        doReturn(Resource.class).when(resourceInfo).getResourceClass();
+        doReturn(null).when(resourceInfo).getResourceMethod();
+
+        Set<LoggedMapping> mappings = resolver.getMergedMappings(resourceInfo);
+
+        assertTrue(mappings.isEmpty());
+        assertEquals(0, resolver.mappingsCache.size());
+    }
+
 }
