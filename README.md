@@ -73,6 +73,10 @@ By default, `@LoggedBody` applies to both the request and the response. Repeat t
 Be careful when activating any body logging, as it may produce performance or memory issues if the body size
 is not limited.
 
+A body whose content type is not text-based (for example `application/octet-stream`, `application/pdf` or
+an `image/*`/`multipart/*` type) is logged as a lowercase hexadecimal string instead of being decoded as
+UTF-8 text, to avoid filling logs with replacement characters for binary payloads such as file uploads.
+
 ## Example
 
 Given an endpoint on which users can create new articles, annotated with `@Logged`

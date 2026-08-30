@@ -264,7 +264,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         } finally {
             // Logs whatever was captured even if writing the entity failed (e.g. connection reset before
             // the body was fully sent), mirroring aroundReadFrom's handling of the response body below
-            String body = capture.content(getBodyFilters());
+            String body = capture.content(getBodyFilters(), context.getMediaType());
             if (isNotBlank(body)) {
                 log.info("Request body {} {}{}{}",
                         context.getProperty(REQUEST_METHOD_PROPERTY),
@@ -319,7 +319,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         try {
             return context.proceed();
         } finally {
-            String body = capture.content(getBodyFilters());
+            String body = capture.content(getBodyFilters(), context.getMediaType());
             if (isNotBlank(body)) {
                 log.info("Response body {} {}{}{}",
                         context.getProperty(REQUEST_METHOD_PROPERTY),

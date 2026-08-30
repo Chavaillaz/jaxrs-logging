@@ -1,12 +1,18 @@
 package com.chavaillaz.jakarta.rs;
 
+import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON_TYPE;
+import static jakarta.ws.rs.core.MediaType.APPLICATION_OCTET_STREAM_TYPE;
+import static jakarta.ws.rs.core.MediaType.APPLICATION_XML_TYPE;
+import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN_TYPE;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.util.Set;
 
+import jakarta.ws.rs.core.MediaType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
@@ -70,6 +76,88 @@ class BoundedLoggedBodyCaptureTest {
         // Then
         assertEquals("Café", result);
         assertFalse(((BoundedOutputStream) capture.sink()).isTruncated());
+    }
+
+    @Test
+    @DisplayName("Check content without a media type still decodes as UTF-8 text")
+    void checkContentWithoutMediaTypeDefaultsToText() throws IOException {
+        // Given
+        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
+        capture.sink().write("Café".getBytes(UTF_8));
+
+        // When
+        String result = capture.content(Set.of(), null);
+
+        // Then
+        assertEquals("Café", result);
+    }
+
+    @Test
+    @DisplayName("Check content renders a binary media type as hexadecimal instead of decoding it")
+    void checkContentRendersBinaryAsHex() throws IOException {
+        // Given
+        byte[] bytes = {0x00, 0x01, (byte) 0xFF, (byte) 0xCA, (byte) 0xFE};
+        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
+        capture.sink().write(bytes);
+
+        // When
+        String result = capture.content(Set.of(), APPLICATION_OCTET_STREAM_TYPE);
+
+        // Then
+        assertEquals("0001ffcafe", result);
+    }
+
+    @Test
+    @DisplayName("Check content applies filters to the hexadecimal rendering of a binary body")
+    void checkContentAppliesFiltersToHexRendering() throws IOException {
+        // Given
+        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
+        capture.sink().write(new byte[]{(byte) 0xAB, (byte) 0xCD});
+        LoggedBodyFilter upperCaseFilter = body -> {
+            String upper = body.toString().toUpperCase();
+            body.setLength(0);
+            body.append(upper);
+        };
+
+        // When
+        String result = capture.content(Set.of(upperCaseFilter), APPLICATION_OCTET_STREAM_TYPE);
+
+        // Then
+        assertEquals("ABCD", result);
+    }
+
+    @Test
+    @DisplayName("Check text-based media types (text/*, JSON, XML) are not treated as binary")
+    void checkTextMediaTypesAreNotBinary() {
+        assertFalse(BoundedLoggedBodyCapture.isBinary(TEXT_PLAIN_TYPE));
+        assertFalse(BoundedLoggedBodyCapture.isBinary(APPLICATION_JSON_TYPE));
+        assertFalse(BoundedLoggedBodyCapture.isBinary(APPLICATION_XML_TYPE));
+        assertFalse(BoundedLoggedBodyCapture.isBinary(new MediaType("application", "hal+json")));
+        assertFalse(BoundedLoggedBodyCapture.isBinary(new MediaType("application", "x-www-form-urlencoded")));
+        assertFalse(BoundedLoggedBodyCapture.isBinary(null));
+    }
+
+    @Test
+    @DisplayName("Check non-text media types (octet-stream, images, multipart) are treated as binary")
+    void checkNonTextMediaTypesAreBinary() {
+        assertTrue(BoundedLoggedBodyCapture.isBinary(APPLICATION_OCTET_STREAM_TYPE));
+        assertTrue(BoundedLoggedBodyCapture.isBinary(new MediaType("application", "pdf")));
+        assertTrue(BoundedLoggedBodyCapture.isBinary(new MediaType("image", "png")));
+        assertTrue(BoundedLoggedBodyCapture.isBinary(new MediaType("multipart", "form-data")));
+    }
+
+    @Test
+    @DisplayName("Check content(Set) without a media type keeps the historical always-UTF-8 behavior")
+    void checkSingleArgContentIgnoresMediaType() throws IOException {
+        // Given
+        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
+        capture.sink().write("Café".getBytes(UTF_8));
+
+        // When
+        String result = capture.content(Set.of());
+
+        // Then
+        assertEquals("Café", result);
     }
 
 }

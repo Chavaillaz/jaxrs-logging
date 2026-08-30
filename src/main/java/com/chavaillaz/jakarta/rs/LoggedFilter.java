@@ -401,7 +401,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             } finally {
                 // Logs whatever was captured even if reading the entity failed (e.g. malformed payload),
                 // so a deserialization error does not leave the request entirely unlogged
-                String body = capture.content(getBodyFiltersRequest());
+                String body = capture.content(getBodyFiltersRequest(), context.getMediaType());
                 if (getBodyLoggingRequest().contains(LogType.LOG) && isNotBlank(body)) {
                     logRequest(body);
                 }
@@ -479,7 +479,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                     // Logs/stores whatever was captured even if writing the entity failed (e.g. client
                     // disconnection, serialization error), so such a failure does not leave the response
                     // entirely unlogged, mirroring aroundReadFrom's handling of the request body
-                    String body = capture.content(getBodyFiltersResponse());
+                    String body = capture.content(getBodyFiltersResponse(), context.getMediaType());
                     if (getBodyLoggingResponse().contains(LogType.MDC)) {
                         putMdc(RESPONSE_BODY, body);
                     }

@@ -3,6 +3,8 @@ package com.chavaillaz.jakarta.rs;
 import java.io.OutputStream;
 import java.util.Set;
 
+import jakarta.ws.rs.core.MediaType;
+
 /**
  * Captures a request or response body as it flows through a stream, to later expose it (optionally
  * filtered) as text.
@@ -35,5 +37,22 @@ public interface LoggedBodyCapture {
      * @return The captured (and filtered) content
      */
     String content(Set<LoggedBodyFilter> filters);
+
+    /**
+     * Gets the captured content, filtered by the given filters, using the given media type to decide how
+     * to render it as text (see {@link BoundedLoggedBodyCapture} for the default rule).
+     * Must be called only once the stream wrapping {@link #sink()} has been fully read or written.
+     * <p>
+     * Defaults to ignoring the media type and delegating to {@link #content(Set)}, so an existing
+     * implementation of this interface only needs to override this method to react to it; it does not
+     * need any change to keep compiling and behaving exactly as before.
+     *
+     * @param filters   The filters to apply to the captured content
+     * @param mediaType The media type of the captured request or response body, or {@code null} if unknown
+     * @return The captured (and filtered) content
+     */
+    default String content(Set<LoggedBodyFilter> filters, MediaType mediaType) {
+        return content(filters);
+    }
 
 }
