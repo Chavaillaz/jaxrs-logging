@@ -84,6 +84,11 @@ public class LoggedUtils {
 
     /**
      * Gets the given annotation from the resource method, its interfaces or its class matched by the current request.
+     * <p>
+     * Note that if the resource class implements <em>multiple</em> interfaces which each declare a conflicting
+     * annotation of this type for the same method, which one is returned is unspecified (it depends on the
+     * iteration order of an internal {@link Set}, not on interface declaration order). This only matters when
+     * such a conflict actually exists; a single annotated interface is resolved deterministically.
      *
      * @param resourceInfo   The instance to access resource class and method
      * @param annotationType The annotation type to get
