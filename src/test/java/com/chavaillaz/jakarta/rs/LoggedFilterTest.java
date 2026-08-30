@@ -249,6 +249,20 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check merged mappings are resolved once per resource method and cached")
+    void checkMergedMappingsCaching() throws Exception {
+        setupTest(AnnotatedResource.class, "autoMappedQueryParameters");
+
+        // When
+        Set<LoggedMapping> first = loggingFilter.getCachedMergedMappings();
+        Set<LoggedMapping> second = loggingFilter.getCachedMergedMappings();
+
+        // Then
+        assertEquals(first, second);
+        assertEquals(1, loggingFilter.mappingsCache.size());
+    }
+
+    @Test
     @DisplayName("Check body filtering decodes bytes as UTF-8 regardless of the platform default charset")
     void checkBodyFilteredUsesUtf8() {
         // Given

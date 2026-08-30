@@ -203,6 +203,24 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
+     * Cache of the merged {@link LoggedMapping} definitions resolved for each resource method, as it
+     * only depends on the (immutable) annotations present on the matched class/method/interfaces and
+     * not on request data, avoiding a reflection-based annotation lookup on every single request to
+     * the same resource method.
+     */
+    protected final Map<Method, Set<LoggedMapping>> mappingsCache = new ConcurrentHashMap<>();
+
+    /**
+     * Gets the merged {@link LoggedMapping} definitions applicable to the resource method matched by
+     * the current request, resolving and caching them once per resource method.
+     *
+     * @return The set of merged mappings applicable to the current request
+     */
+    protected Set<LoggedMapping> getCachedMergedMappings() {
+        return mappingsCache.computeIfAbsent(resourceInfo.getResourceMethod(), method -> getMergedMappings(resourceInfo));
+    }
+
+    /**
      * Gets a diagnostic context value identified by the given field from the current thread's context map.
      *
      * @param field The field for which get the value
@@ -247,7 +265,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 .ifPresent(value -> putMdc(RESOURCE_METHOD, value));
 
         Map<MappingType, Set<String>> exclusion = new EnumMap<>(MappingType.class);
-        getMergedMappings(resourceInfo).stream()
+        getCachedMergedMappings().stream()
                 .sorted(comparing(LoggedMapping::auto) // Order to have auto mappings at the end to avoid overriding manual mappings
                         .thenComparing(LoggedMapping::mdcKey)) // Order to have empty MDC key at the beginning for exclusions
                 .forEach(mapping ->
