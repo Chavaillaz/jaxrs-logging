@@ -321,8 +321,18 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
+     * Maximum length kept from a client-supplied {@code X-Request-ID} header before it is stored in MDC.
+     * <p>
+     * A container's overall header size limit is shared across every header of the request, not applied
+     * individually, so without a limit of its own a client can inflate every single log line written
+     * during the request by supplying an excessively long identifier.
+     */
+    protected static final int REQUEST_ID_MAX_LENGTH = 128;
+
+    /**
      * Gets the request identifier that will be stored in MDC for the complete request processing.
-     * Returns the header value of {@code X-Request-ID} or a random UUID when not present.
+     * Returns the header value of {@code X-Request-ID} (truncated to {@link #REQUEST_ID_MAX_LENGTH}
+     * characters) or a random UUID when not present.
      *
      * @param requestContext The context of the request received
      * @return The request identifier
@@ -331,6 +341,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         return of(requestContext)
                 .map(ContainerRequestContext::getHeaders)
                 .map(headers -> headers.getFirst("X-Request-ID"))
+                .map(value -> value.length() > REQUEST_ID_MAX_LENGTH ? value.substring(0, REQUEST_ID_MAX_LENGTH) : value)
                 // orElseGet (not orElse) so a UUID, which is comparatively expensive to generate
                 // (backed by SecureRandom), is only computed when the header is actually absent
                 .orElseGet(() -> randomUUID().toString());

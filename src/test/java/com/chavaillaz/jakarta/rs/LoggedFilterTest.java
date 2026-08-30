@@ -371,6 +371,27 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check an oversized request identifier is truncated to prevent inflating every log line")
+    void checkOversizedRequestIdIsTruncated() throws Exception {
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given
+        String oversized = "a".repeat(LoggedFilter.REQUEST_ID_MAX_LENGTH + 50);
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
+                MockHttpRequest.create("GET", "example.company.com/service")
+                        .header("X-Request-ID", oversized));
+
+        // When
+        loggingFilter.filter(requestContext);
+
+        // Then
+        String requestId = getMdc(REQUEST_ID);
+        assertNotNull(requestId);
+        assertEquals(LoggedFilter.REQUEST_ID_MAX_LENGTH, requestId.length());
+        assertEquals(oversized.substring(0, LoggedFilter.REQUEST_ID_MAX_LENGTH), requestId);
+    }
+
+    @Test
     @DisplayName("Check control characters are stripped from auto-mapped parameter values to prevent log injection")
     void checkLogInjectionSanitizationOnMappedParameter() throws Exception {
         setupTest(AnnotatedResource.class, "autoMappedQueryParameters");
