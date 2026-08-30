@@ -173,6 +173,21 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected static final String COMPLETED_PROPERTY = LoggedFilter.class.getName() + ".completed";
 
     /**
+     * Name of the property stored in container context to record that {@link #logRequest(String)} has
+     * already emitted the "Received ..." line for the current request, so
+     * {@link #filter(ContainerRequestContext, ContainerResponseContext)} knows whether it must still do so.
+     * <p>
+     * Most of the time, that line is emitted either directly from {@link #filter(ContainerRequestContext)}
+     * (no entity expected) or from {@link #aroundReadFrom(ReaderInterceptorContext)} (entity read). However,
+     * {@link #aroundReadFrom(ReaderInterceptorContext)} is only invoked by most JAX-RS implementations when
+     * the resource method actually reads the request entity (see its Javadoc): a request that has a body
+     * but whose resource method declares no parameter consuming it hits neither path, and without this
+     * fallback the "Received ..." line - not just its body - would silently never be logged for such a
+     * request, even though {@link com.chavaillaz.jakarta.rs.LoggedBody.LogType#LOG} is configured.
+     */
+    protected static final String REQUEST_LOGGED_PROPERTY = LoggedFilter.class.getName() + ".requestLogged";
+
+    /**
      * Names of MDC fields to be used for all logged fields.
      * Allows changes from children classes.
      */
@@ -386,8 +401,10 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * <p>
      * Note that most JAX-RS implementations only invoke this interceptor when the resource method
      * actually reads the request entity (for example, when it declares an entity parameter). If a
-     * request has a body but no resource method parameter consumes it, this method is never called,
-     * so the request body will not be logged, even if activated in the annotation.
+     * request has a body but no resource method parameter consumes it, this method is never called, so
+     * the request body will not be logged, even if activated in the annotation. The {@code "Received ..."}
+     * line itself is still logged (without a body) by the fallback in
+     * {@link #filter(ContainerRequestContext, ContainerResponseContext)}, see {@link #REQUEST_LOGGED_PROPERTY}.
      */
     @Override
     public Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
@@ -437,6 +454,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param requestBody The request body to be logged
      */
     protected void logRequest(String requestBody) {
+        requestContext.setProperty(REQUEST_LOGGED_PROPERTY, Boolean.TRUE);
         log.info("Received {} {}{}{}",
                 getMdc(REQUEST_METHOD),
                 getMdc(REQUEST_URI),
@@ -446,6 +464,14 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     @Override
     public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext) {
+        // Fallback for a request that has a body but whose resource method never reads it: neither the
+        // immediate path in filter(ContainerRequestContext) nor aroundReadFrom logged the request in that
+        // case (see REQUEST_LOGGED_PROPERTY), so without this the "Received ..." line would silently never
+        // appear even though LogType.LOG is configured
+        if (getBodyLoggingRequest().contains(LogType.LOG) && !Boolean.TRUE.equals(this.requestContext.getProperty(REQUEST_LOGGED_PROPERTY))) {
+            logRequest(EMPTY);
+        }
+
         long requestStartTime = Optional.ofNullable(requestContext.getProperty(REQUEST_TIME_PROPERTY))
                 .map(Number.class::cast)
                 .map(Number::longValue)

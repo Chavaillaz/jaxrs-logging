@@ -297,6 +297,69 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check the request is still logged when the resource method never reads the entity")
+    void checkRequestLoggedWhenEntityNeverRead() throws Exception {
+        // Most JAX-RS implementations only invoke aroundReadFrom when the resource method actually
+        // consumes the request entity (see its Javadoc): a resource method that does not must still get
+        // its "Received ..." line from the fallback in filter(request, response), not silently drop it
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext);
+
+        // When: aroundReadFrom is deliberately never called
+        loggingFilter.filter(requestContext);
+        loggingFilter.filter(requestContext, responseContext);
+
+        // Then
+        LogEvent logReceived = listAppender.findFirstMessage("Received");
+        assertNotNull(logReceived);
+        assertEquals("Received POST /service", logReceived.getMessage().getFormattedMessage());
+        assertEquals(1, listAppender.getMessages().stream()
+                .filter(event -> event.getMessage().getFormattedMessage().startsWith("Received"))
+                .count());
+    }
+
+    @Test
+    @DisplayName("Check the fallback request logging does not duplicate a line already logged by aroundReadFrom")
+    void checkRequestLoggedOnceWhenEntityIsRead() throws Exception {
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ReaderInterceptorContext requestInterceptorContext = mock(ReaderInterceptorContext.class);
+        AtomicReference<InputStream> inputStream = new AtomicReference<>(requestContext.getEntityStream());
+        doAnswer(invocation -> inputStream.get()).when(requestInterceptorContext).getInputStream();
+        doAnswer(invocation -> {
+            inputStream.set(invocation.getArgument(0, InputStream.class));
+            return null;
+        }).when(requestInterceptorContext).setInputStream(any());
+        doAnswer(invocation -> {
+            inputStream.get().readAllBytes();
+            return null;
+        }).when(requestInterceptorContext).proceed();
+        Map<String, Object> properties = new HashMap<>();
+        lenient().doAnswer(invocation -> properties.get(invocation.getArgument(0, String.class)))
+                .when(requestInterceptorContext).getProperty(any());
+        lenient().doAnswer(invocation -> {
+            properties.put(invocation.getArgument(0, String.class), invocation.getArgument(1, Object.class));
+            return null;
+        }).when(requestInterceptorContext).setProperty(any(), any());
+        ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext);
+
+        // When
+        loggingFilter.filter(requestContext);
+        loggingFilter.aroundReadFrom(requestInterceptorContext);
+        loggingFilter.filter(requestContext, responseContext);
+
+        // Then
+        assertEquals(1, listAppender.getMessages().stream()
+                .filter(event -> event.getMessage().getFormattedMessage().startsWith("Received"))
+                .count());
+    }
+
+    @Test
     @DisplayName("Check automatic MDC mapping cannot override reserved fields")
     void checkAutoMappingReservedFieldProtection() throws Exception {
         setupTest(AnnotatedResource.class, "autoMappedQueryParameters");
