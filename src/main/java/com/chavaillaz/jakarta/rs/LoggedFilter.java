@@ -35,13 +35,13 @@ import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.EnumMap;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Stream;
 
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
@@ -110,8 +110,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     /**
      * Cache of instances for request and response body filters.
+     * Uses a concurrent map as this provider is a singleton shared across concurrently processed requests.
      */
-    protected final Map<Class<?>, LoggedBodyFilter> filtersCache = new HashMap<>();
+    protected final Map<Class<?>, LoggedBodyFilter> filtersCache = new ConcurrentHashMap<>();
 
     /**
      * Provides access to the resource class and method matched by the current request.
