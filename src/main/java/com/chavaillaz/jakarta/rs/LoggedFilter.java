@@ -447,9 +447,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     @Override
     public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext) {
         long requestStartTime = Optional.ofNullable(requestContext.getProperty(REQUEST_TIME_PROPERTY))
-                .map(Object::toString)
-                .map(Long::parseLong)
-                .orElse(nanoTime());
+                .map(Number.class::cast)
+                .map(Number::longValue)
+                .orElseGet(() -> nanoTime());
         long duration = (nanoTime() - requestStartTime) / 1_000_000;
         putMdc(DURATION, valueOf(duration));
         putMdc(RESPONSE_STATUS, valueOf(responseContext.getStatus()));
