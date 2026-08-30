@@ -86,6 +86,12 @@ import org.slf4j.MDC;
  *     <li>Request and response body (if activated in annotation)</li>
  * </ul>
  * This provider can be activated using the annotation {@link Logged} on resources.
+ * <p>
+ * Resolved annotation configurations and body filter instances are cached per resource method / filter
+ * class ({@code filtersCache}, {@code bodyConfigurationCache}, {@code mappingsCache}) and never evicted.
+ * This assumes a bounded, stable set of resource methods and {@link LoggedBodyFilter} classes, as is the
+ * case for a typical application with a fixed set of JAX-RS endpoints; it is not suited to applications
+ * that generate new resource classes at runtime (e.g. per-tenant code generation).
  */
 @Logged
 @Provider
