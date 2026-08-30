@@ -8,7 +8,6 @@ import static java.util.UUID.randomUUID;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.ext.Provider;
-import org.slf4j.MDC;
 
 @Provider
 @UserLogged
@@ -40,8 +39,9 @@ public class UserLoggedFilter extends LoggedFilter {
     public void filter(ContainerRequestContext requestContext) {
         super.filter(requestContext);
 
-        // Add the user currently logged in, possibly by querying injected entity
-        MDC.put(USER_ID, "Doe");
+        // Add the user currently logged in, possibly by querying injected entity.
+        // Uses putMdc (rather than MDC.put directly) so cleanupMdc() removes it once the request is done.
+        putMdc(USER_ID, "Doe");
 
         // Log specific field if activated in the new annotation
         logUserAgent(requestContext);
@@ -54,7 +54,7 @@ public class UserLoggedFilter extends LoggedFilter {
                 .map(UserLogged::userAgent)
                 .filter(loggingActivated -> loggingActivated)
                 .map(logging -> requestContext.getHeaderString("User-Agent"))
-                .ifPresent(origin -> MDC.put(USER_AGENT, origin));
+                .ifPresent(origin -> putMdc(USER_AGENT, origin));
     }
 
 }

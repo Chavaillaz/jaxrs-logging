@@ -6,10 +6,16 @@ import static com.chavaillaz.jakarta.rs.UserLoggedFilter.USER_ID;
 import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN_TYPE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.lenient;
 
 import java.lang.reflect.Method;
 import java.net.URISyntaxException;
+import java.util.HashMap;
+import java.util.Map;
 
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
 import jakarta.ws.rs.container.ContainerRequestContext;
@@ -46,6 +52,17 @@ class UserLoggedFilterTest extends AbstractFilterTest {
         doReturn(type).when(resourceInfo).getResourceClass();
         Method resourceMethod = type.getDeclaredMethod("inherit");
         doReturn(resourceMethod).when(resourceInfo).getResourceMethod();
+
+        // Backs the mocked, injected requestContext field with a real map so properties set through
+        // it (e.g. the MDC keys tracked by putMdc for cleanupMdc) can be read back within a test
+        Map<String, Object> contextProperty = new HashMap<>();
+        lenient().doAnswer(invocation ->
+                contextProperty.get(invocation.getArgument(0, String.class))
+        ).when(containerRequestContext).getProperty(any());
+        lenient().doAnswer(invocation -> {
+            contextProperty.put(invocation.getArgument(0, String.class), invocation.getArgument(1, Object.class));
+            return null;
+        }).when(containerRequestContext).setProperty(any(), any());
     }
 
     @Test
@@ -77,6 +94,22 @@ class UserLoggedFilterTest extends AbstractFilterTest {
 
         // Then
         assertNotNull(MDC.get(REQUEST_IDENTIFIER));
+    }
+
+    @Test
+    @DisplayName("Check cleanupMdc removes the fields added by this subclass through putMdc")
+    void checkCleanupRemovesSubclassFields() throws URISyntaxException {
+        // Given
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        requestLoggingFilter.filter(requestContext);
+
+        // When
+        requestLoggingFilter.cleanupMdc();
+
+        // Then
+        assertNull(MDC.get(REQUEST_IDENTIFIER));
+        assertNull(MDC.get(USER_ID));
+        assertNull(MDC.get(USER_AGENT));
     }
 
     private PreMatchContainerRequestContext getRequestContext() throws URISyntaxException {

@@ -462,6 +462,24 @@ class LoggedFilterTest extends AbstractFilterTest {
         assertEquals(1, processedCount);
     }
 
+    @Test
+    @DisplayName("Check putMdc(String, String) tracks the key so cleanupMdc removes it")
+    void checkPutMdcTracksKeyForCleanup() throws Exception {
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        loggingFilter.filter(requestContext);
+
+        // When
+        loggingFilter.putMdc("custom-key", "custom-value");
+
+        // Then
+        assertEquals("custom-value", MDC.get("custom-key"));
+        loggingFilter.cleanupMdc();
+        assertNull(MDC.get("custom-key"));
+    }
+
     void checkRequestLogging(LogType[] expectedRequestLogging, Class<? extends LoggedBodyFilter>[] expectedBodyFilters) {
         LogEvent logReceived = listAppender.findFirstMessage("Received");
 

@@ -122,14 +122,17 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected static final String REQUEST_BODY_PROPERTY = LoggedFilter.class.getName() + ".requestBody";
 
     /**
-     * Name of the property stored in container context to keep track of the MDC keys dynamically
-     * created from {@link LoggedMapping} definitions, so they can be removed by {@link #cleanupMdc()}.
+     * Name of the property stored in container context to keep track of every MDC key put through
+     * {@link #putMdc(String, String)} for the current request, so {@link #cleanupMdc()} can remove
+     * exactly what was added.
      * <p>
-     * Unlike the fixed set of fields in {@link #mdcFields}, mapping-derived MDC keys are computed per
-     * request (their name can depend on client-controlled input via {@link LoggedMapping#auto()}), so
-     * they cannot be pre-registered and must instead be tracked as they are added.
+     * This is what gives MDC entries set by this provider a single, structurally-enforced lifecycle:
+     * any code, including a subclass, that wants an MDC entry removed at the end of the request must
+     * go through {@link #putMdc(String, String)} (or one of its overloads) instead of calling
+     * {@link MDC#put(String, String)} directly, or it will not be tracked here and will leak onto the
+     * thread (normally pooled and reused) handling the next, unrelated request.
      */
-    protected static final String MAPPING_KEYS_PROPERTY = LoggedFilter.class.getName() + ".mappingKeys";
+    protected static final String MDC_KEYS_PROPERTY = LoggedFilter.class.getName() + ".mdcKeys";
 
     /**
      * Name of the property stored in container context to guard {@link #logResponse(String)} against
@@ -170,15 +173,48 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected ContainerRequestContext requestContext;
 
     /**
+     * Gets the mutable, request-scoped set of MDC keys put so far for the current request through
+     * {@link #putMdc(String, String)}, creating and registering it as a container property on first use.
+     *
+     * @return The set of MDC keys to be removed by {@link #cleanupMdc()} once the request is done
+     */
+    @SuppressWarnings("unchecked")
+    protected Set<String> getMdcKeys() {
+        Set<String> keys = (Set<String>) requestContext.getProperty(MDC_KEYS_PROPERTY);
+        if (keys == null) {
+            keys = new HashSet<>();
+            requestContext.setProperty(MDC_KEYS_PROPERTY, keys);
+        }
+        return keys;
+    }
+
+    /**
+     * Puts a diagnostic context value identified by the given key into the current thread's context map,
+     * tracking it (see {@link #MDC_KEYS_PROPERTY}) so {@link #cleanupMdc()} removes it once the request
+     * has been fully processed.
+     * <p>
+     * Every MDC entry set by this provider, or a subclass extending it, should go through this method
+     * (or the {@link #putMdc(LoggedField, String)} overload) rather than {@link MDC#put(String, String)}
+     * directly, to guarantee it does not outlive the request.
+     *
+     * @param key   The MDC key
+     * @param value The value to be associated with the given key, ignored if {@code null}
+     */
+    protected void putMdc(String key, String value) {
+        if (value != null) {
+            MDC.put(key, value);
+            getMdcKeys().add(key);
+        }
+    }
+
+    /**
      * Puts a diagnostic context value identified by the given field into the current thread's context map.
      *
      * @param field The field for which put the given value
      * @param value The value to be associated with the given field
      */
     protected void putMdc(LoggedField field, String value) {
-        if (value != null) {
-            MDC.put(mdcFields.get(field.name()), value);
-        }
+        putMdc(mdcFields.get(field.name()), value);
     }
 
     /**
@@ -199,13 +235,11 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     /**
      * Maps the given parameters (path, query or headers) to MDC entries using the given mapping.
      *
-     * @param parameters  The parameters to be mapped
-     * @param mapping     The mapping to be applied
-     * @param exclusion   The parameters name to be excluded from mapping (already mapped or explicitly excluded)
-     * @param mappingKeys The set collecting every MDC key put by this method, so that {@link #cleanupMdc()}
-     *                    can remove them once the request has been processed
+     * @param parameters The parameters to be mapped
+     * @param mapping    The mapping to be applied
+     * @param exclusion  The parameters name to be excluded from mapping (already mapped or explicitly excluded)
      */
-    protected void putMdcFromParameters(Map<String, List<String>> parameters, LoggedMapping mapping, Set<String> exclusion, Set<String> mappingKeys) {
+    protected void putMdcFromParameters(Map<String, List<String>> parameters, LoggedMapping mapping, Set<String> exclusion) {
         Set<String> paramNames = Set.of(mapping.paramNames());
         if (mapping.auto()) {
             parameters.entrySet().stream()
@@ -215,8 +249,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                         // Client-controlled parameter/header names must not be allowed to overwrite reserved MDC fields
                         String mdcKey = mapping.mdcPrefix() + sanitize(entry.getKey());
                         if (!mdcFields.values().contains(mdcKey)) {
-                            MDC.put(mdcKey, sanitize(entry.getValue().getFirst()));
-                            mappingKeys.add(mdcKey);
+                            putMdc(mdcKey, sanitize(entry.getValue().getFirst()));
                         }
                     });
         } else if (paramNames.stream().noneMatch(exclusion::contains)) {
@@ -230,11 +263,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                         .filter(list -> !list.isEmpty())
                         .map(List::getFirst)
                         .findFirst()
-                        .ifPresent(value -> {
-                            String mdcKey = mapping.mdcPrefix() + mapping.mdcKey();
-                            MDC.put(mdcKey, sanitize(value));
-                            mappingKeys.add(mdcKey);
-                        });
+                        .ifPresent(value -> putMdc(mapping.mdcPrefix() + mapping.mdcKey(), sanitize(value)));
             }
         }
     }
@@ -303,15 +332,6 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 .map(Method::getName)
                 .ifPresent(value -> putMdc(RESOURCE_METHOD, value));
 
-        // Tracked in a request-scoped property (this filter is a singleton shared across concurrent
-        // requests) so cleanupMdc() can later remove exactly the keys this request added, whatever
-        // their name turned out to be (mapping keys can depend on client-controlled input via
-        // LoggedMapping#auto(), so they cannot be known ahead of time and pre-registered in mdcFields).
-        // Stored through the injected field (rather than the requestContext parameter it shadows) since
-        // cleanupMdc() has no request parameter of its own and can only reach this property that way.
-        Set<String> mappingKeys = new HashSet<>();
-        this.requestContext.setProperty(MAPPING_KEYS_PROPERTY, mappingKeys);
-
         Map<MappingType, Set<String>> exclusion = new EnumMap<>(MappingType.class);
         getCachedMergedMappings().stream()
                 .sorted(comparing(LoggedMapping::auto) // Order to have auto mappings at the end to avoid overriding manual mappings
@@ -321,7 +341,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                             case PATH -> requestContext.getUriInfo().getPathParameters();
                             case QUERY -> requestContext.getUriInfo().getQueryParameters();
                             case HEADER -> requestContext.getHeaders();
-                        }, mapping, exclusion.computeIfAbsent(mapping.type(), type -> new HashSet<>()), mappingKeys));
+                        }, mapping, exclusion.computeIfAbsent(mapping.type(), type -> new HashSet<>())));
 
         // Logs directly from filter in case no request body is expected as aroundReadFrom will not be called
         if (getBodyLoggingRequest().contains(LogType.LOG) && !(requestContext.hasEntity() && requestContext.getLength() != 0)) {
@@ -642,23 +662,17 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Removes all MDC fields defined in
-     * <ul>
-     *     <li>{@link #filter(ContainerRequestContext)}</li>
-     *     <li>{@link #aroundReadFrom(ReaderInterceptorContext)}</li>
-     *     <li>{@link #filter(ContainerRequestContext, ContainerResponseContext)}</li>
-     *     <li>{@link #aroundWriteTo(WriterInterceptorContext)}</li>
-     * </ul>
-     * as well as any MDC key dynamically created from a {@link LoggedMapping} definition (see
-     * {@link #putMdcFromParameters(Map, LoggedMapping, Set, Set)}), since those are not part of
-     * {@link #mdcFields}.
+     * Removes every MDC key put through {@link #putMdc(String, String)} for the current request (see
+     * {@link #MDC_KEYS_PROPERTY}), which covers every entry put by this provider itself as well as any
+     * subclass following the same convention.
+     * <p>
+     * Also sweeps the fixed set of fields in {@link #mdcFields} as a safety net, in case a subclass
+     * still puts one of those directly through {@link MDC#put(String, String)} (as opposed to
+     * {@link #putMdc(LoggedField, String)}) after registering it there.
      */
-    @SuppressWarnings("unchecked")
     protected void cleanupMdc() {
         mdcFields.values().forEach(MDC::remove);
-        Optional.ofNullable(requestContext.getProperty(MAPPING_KEYS_PROPERTY))
-                .map(keys -> (Set<String>) keys)
-                .ifPresent(keys -> keys.forEach(MDC::remove));
+        getMdcKeys().forEach(MDC::remove);
     }
 
 }
