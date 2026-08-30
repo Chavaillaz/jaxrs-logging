@@ -107,6 +107,13 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected static final Logger log = LoggerFactory.getLogger(LoggedFilter.class);
 
     /**
+     * Name of the header carrying the request identifier, read here from an incoming request and
+     * written by {@link LoggedClientFilter} on an outgoing one, so a client using both ends up with the
+     * same identifier in MDC on both sides of the call.
+     */
+    public static final String REQUEST_ID_HEADER = "X-Request-ID";
+
+    /**
      * Pattern matching control characters (e.g. CR, LF) that must be removed from client-controlled
      * input (headers, query or path parameters) before it is stored in MDC, to prevent an attacker
      * from forging fake log entries or corrupting the log line (log injection).
@@ -330,7 +337,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected String getRequestId(ContainerRequestContext requestContext) {
         return of(requestContext)
                 .map(ContainerRequestContext::getHeaders)
-                .map(headers -> headers.getFirst("X-Request-ID"))
+                .map(headers -> headers.getFirst(REQUEST_ID_HEADER))
                 .map(value -> value.length() > REQUEST_ID_MAX_LENGTH ? value.substring(0, REQUEST_ID_MAX_LENGTH) : value)
                 // orElseGet (not orElse) so a UUID, which is comparatively expensive to generate
                 // (backed by SecureRandom), is only computed when the header is actually absent

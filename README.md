@@ -171,6 +171,32 @@ Specific mappings can also be excluded (without giving `mdcKey` value):
 Note that a field can only be mapped once, and its exclusion will have priority.
 If you try to map a field that is already mapped, it will be ignored.
 
+## Client calls
+
+The client-side counterpart [LoggedClientFilter](src/main/java/com/chavaillaz/jakarta/rs/LoggedClientFilter.java)
+logs outgoing JAX-RS Client calls and propagates the current request identifier (from MDC) to the downstream
+service as `X-Request-ID`, so a service calling another service exposing its own `@Logged` resource produces a
+single, correlated identifier across both sides of the call.
+
+Unlike `@Logged`, which is resolved per resource method from annotations, `LoggedClientFilter` has no resource
+method to attach annotations to: an instance is configured once through its builder and applies to every call
+made through the `Client`/`WebTarget` it is registered on.
+
+```java
+client.register(LoggedClientFilter.builder()
+        .logRequestBody()
+        .logResponseBody()
+        .bodyLimit(10_000)
+        .bodyFilters(YourBodyFilter.class)
+        .build());
+```
+
+It logs `Calling [method] [uri]` before sending the request and `Called [method] [uri] with status [status]
+in [duration]ms` once the response is received. If body logging is activated, the body is logged as a further,
+separate line rather than merged into those two: the response body is only available if/when the calling code
+actually reads the response entity, which may happen after (or not at all after) the `Called ...` line, so
+there is no single point to merge them into, unlike the server-side filter.
+
 ## Extension
 
 An example of extension of the filter is available
