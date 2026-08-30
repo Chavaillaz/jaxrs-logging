@@ -152,7 +152,13 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             parameters.entrySet().stream()
                     .filter(entry -> !exclusion.contains(entry.getKey()))
                     .filter(entry -> entry.getValue() != null && !entry.getValue().isEmpty())
-                    .forEach(entry -> MDC.put(mapping.mdcPrefix() + entry.getKey(), entry.getValue().getFirst()));
+                    .forEach(entry -> {
+                        // Client-controlled parameter/header names must not be allowed to overwrite reserved MDC fields
+                        String mdcKey = mapping.mdcPrefix() + entry.getKey();
+                        if (!mdcFields.values().contains(mdcKey)) {
+                            MDC.put(mdcKey, entry.getValue().getFirst());
+                        }
+                    });
         } else if (paramNames.stream().noneMatch(exclusion::contains)) {
             // Avoid a field to be mapped multiple times
             exclusion.addAll(paramNames);

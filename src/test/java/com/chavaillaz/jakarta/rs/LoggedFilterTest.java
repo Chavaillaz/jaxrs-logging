@@ -12,12 +12,14 @@ import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_CLASS;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
+import static com.chavaillaz.jakarta.rs.LoggedMapping.LogMappingType.QUERY;
 import static jakarta.ws.rs.core.HttpHeaders.CONTENT_TYPE;
 import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN_TYPE;
 import static java.lang.Integer.parseInt;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -247,6 +249,25 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check automatic MDC mapping cannot override reserved fields")
+    void checkAutoMappingReservedFieldProtection() throws Exception {
+        setupTest(AnnotatedResource.class, "autoMappedQueryParameters");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
+                MockHttpRequest.create("GET", "example.company.com/service?request-id=malicious&topic=news"));
+
+        // When
+        loggingFilter.filter(requestContext);
+
+        // Then
+        String requestId = getMdc(REQUEST_ID);
+        assertNotNull(requestId);
+        assertNotEquals("malicious", requestId);
+        assertEquals("news", MDC.get("topic"));
+    }
+
+    @Test
     @DisplayName("Check MDC is cleaned up even if writing the response body fails")
     void checkMdcCleanupOnWriteFailure() throws Exception {
         setupTest(AnnotatedResource.class, "bodyAsLog");
@@ -389,6 +410,10 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         @Logged
         void noBodyLogging();
+
+        @Logged
+        @LoggedMapping(type = QUERY, auto = true)
+        void autoMappedQueryParameters();
 
     }
 
