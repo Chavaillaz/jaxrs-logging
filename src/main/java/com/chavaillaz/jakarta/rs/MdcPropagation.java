@@ -7,6 +7,8 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
@@ -87,6 +89,28 @@ public final class MdcPropagation {
         return new MdcPropagatingExecutorService(executor);
     }
 
+    /**
+     * Wraps the given executor so every task submitted to it (through any of {@link ExecutorService}'s or
+     * {@link ScheduledExecutorService}'s task-accepting methods) runs with a copy of the submitting
+     * thread's MDC context map, captured at submission time.
+     * <p>
+     * For a periodic task ({@link ScheduledExecutorService#scheduleAtFixedRate} or
+     * {@link ScheduledExecutorService#scheduleWithFixedDelay}), the context map is captured once, when the
+     * task is scheduled, and that same snapshot is applied to every execution of it - consistent with how
+     * every other method here captures context at wrap/submission time rather than at run time (see
+     * {@link #wrap(Runnable)}). A later change to the scheduling thread's MDC context is not picked up by
+     * executions that already started running before that change.
+     * <p>
+     * Lifecycle methods ({@link ExecutorService#shutdown()}, {@link ExecutorService#awaitTermination}, ...)
+     * are delegated as-is to the given executor.
+     *
+     * @param executor The executor to wrap
+     * @return An executor propagating MDC context to every task it runs
+     */
+    public static ScheduledExecutorService wrap(ScheduledExecutorService executor) {
+        return new MdcPropagatingScheduledExecutorService(executor);
+    }
+
     private static void setContext(Map<String, String> context) {
         if (context == null) {
             MDC.clear();
@@ -99,12 +123,15 @@ public final class MdcPropagation {
      * {@link ExecutorService} decorator delegating everything to an underlying executor, except that
      * every task-accepting method wraps its task(s) with {@link MdcPropagation#wrap(Runnable)} or
      * {@link MdcPropagation#wrap(Callable)} first.
+     * <p>
+     * Package-private (rather than {@code private}) so {@link MdcPropagatingScheduledExecutorService} can
+     * extend it and reuse this behavior for the {@link ExecutorService} methods it does not itself override.
      */
-    private static class MdcPropagatingExecutorService implements ExecutorService {
+    static class MdcPropagatingExecutorService implements ExecutorService {
 
-        private final ExecutorService delegate;
+        protected final ExecutorService delegate;
 
-        private MdcPropagatingExecutorService(ExecutorService delegate) {
+        MdcPropagatingExecutorService(ExecutorService delegate) {
             this.delegate = delegate;
         }
 
@@ -177,6 +204,41 @@ public final class MdcPropagation {
         @Override
         public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
             return delegate.awaitTermination(timeout, unit);
+        }
+
+    }
+
+    /**
+     * {@link ScheduledExecutorService} decorator extending {@link MdcPropagatingExecutorService} with the
+     * scheduling methods {@link ExecutorService} does not have, wrapping their task(s) the same way.
+     */
+    private static final class MdcPropagatingScheduledExecutorService extends MdcPropagatingExecutorService implements ScheduledExecutorService {
+
+        private final ScheduledExecutorService scheduledDelegate;
+
+        private MdcPropagatingScheduledExecutorService(ScheduledExecutorService delegate) {
+            super(delegate);
+            this.scheduledDelegate = delegate;
+        }
+
+        @Override
+        public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
+            return scheduledDelegate.schedule(wrap(command), delay, unit);
+        }
+
+        @Override
+        public <V> ScheduledFuture<V> schedule(Callable<V> callable, long delay, TimeUnit unit) {
+            return scheduledDelegate.schedule(wrap(callable), delay, unit);
+        }
+
+        @Override
+        public ScheduledFuture<?> scheduleAtFixedRate(Runnable command, long initialDelay, long period, TimeUnit unit) {
+            return scheduledDelegate.scheduleAtFixedRate(wrap(command), initialDelay, period, unit);
+        }
+
+        @Override
+        public ScheduledFuture<?> scheduleWithFixedDelay(Runnable command, long initialDelay, long delay, TimeUnit unit) {
+            return scheduledDelegate.scheduleWithFixedDelay(wrap(command), initialDelay, delay, unit);
         }
 
     }

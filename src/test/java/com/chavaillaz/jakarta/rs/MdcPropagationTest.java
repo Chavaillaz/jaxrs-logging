@@ -7,10 +7,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -171,6 +173,74 @@ class MdcPropagationTest {
     void checkWrappedExecutorServiceDelegatesLifecycle() throws Exception {
         ExecutorService rawExecutor = Executors.newSingleThreadExecutor();
         ExecutorService executor = MdcPropagation.wrap(rawExecutor);
+
+        assertFalse(executor.isShutdown());
+        executor.shutdown();
+        assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+        assertTrue(executor.isShutdown());
+        assertTrue(executor.isTerminated());
+        assertTrue(rawExecutor.isShutdown());
+    }
+
+    @Test
+    @DisplayName("Check a wrapped ScheduledExecutorService propagates context through schedule")
+    void checkWrappedScheduledExecutorServicePropagatesContextThroughSchedule() throws Exception {
+        ScheduledExecutorService rawExecutor = Executors.newSingleThreadScheduledExecutor();
+        ScheduledExecutorService executor = MdcPropagation.wrap(rawExecutor);
+        try {
+            // schedule(Runnable, ...)
+            MDC.put("request-id", "for-schedule-runnable");
+            CountDownLatch latch = new CountDownLatch(1);
+            AtomicReference<String> runnableResult = new AtomicReference<>();
+            executor.schedule(() -> {
+                runnableResult.set(MDC.get("request-id"));
+                latch.countDown();
+            }, 1, TimeUnit.MILLISECONDS);
+            assertTrue(latch.await(5, TimeUnit.SECONDS));
+            assertEquals("for-schedule-runnable", runnableResult.get());
+
+            // schedule(Callable, ...)
+            MDC.put("request-id", "for-schedule-callable");
+            Future<String> future = executor.schedule(() -> MDC.get("request-id"), 1, TimeUnit.MILLISECONDS);
+            assertEquals("for-schedule-callable", future.get(5, TimeUnit.SECONDS));
+        } finally {
+            executor.shutdown();
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    @DisplayName("Check a periodic task captures MDC context once at scheduling time, reused for every execution")
+    void checkWrappedScheduledExecutorServiceReusesSnapshotAcrossPeriodicExecutions() throws Exception {
+        ScheduledExecutorService rawExecutor = Executors.newSingleThreadScheduledExecutor();
+        ScheduledExecutorService executor = MdcPropagation.wrap(rawExecutor);
+        try {
+            // Given
+            MDC.put("request-id", "captured-at-schedule-time");
+            List<String> seen = new CopyOnWriteArrayList<>();
+            CountDownLatch latch = new CountDownLatch(3);
+
+            // When: the scheduling thread's MDC is mutated after scheduling, before most executions run
+            executor.scheduleAtFixedRate(() -> {
+                seen.add(MDC.get("request-id"));
+                latch.countDown();
+            }, 0, 5, TimeUnit.MILLISECONDS);
+            MDC.put("request-id", "mutated-after-scheduling");
+
+            // Then
+            assertTrue(latch.await(5, TimeUnit.SECONDS));
+            assertTrue(seen.stream().allMatch("captured-at-schedule-time"::equals));
+        } finally {
+            executor.shutdown();
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    @DisplayName("Check lifecycle methods of a wrapped ScheduledExecutorService delegate to the underlying executor")
+    void checkWrappedScheduledExecutorServiceDelegatesLifecycle() throws Exception {
+        ScheduledExecutorService rawExecutor = Executors.newSingleThreadScheduledExecutor();
+        ScheduledExecutorService executor = MdcPropagation.wrap(rawExecutor);
 
         assertFalse(executor.isShutdown());
         executor.shutdown();
