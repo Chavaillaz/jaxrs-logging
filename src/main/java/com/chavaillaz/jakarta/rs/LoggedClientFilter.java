@@ -12,6 +12,7 @@ import static org.apache.commons.lang3.StringUtils.isNotBlank;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Optional;
 import java.util.Set;
 
 import jakarta.annotation.Priority;
@@ -270,9 +271,21 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         }
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Falls back to a zero duration when {@value #REQUEST_TIME_PROPERTY} was never set, which happens
+     * when a client request filter running before this one (lower {@link Priority} value) aborts the
+     * request with {@link ClientRequestContext#abortWith(jakarta.ws.rs.core.Response)}: response filters
+     * still run for an aborted request, but {@link #filter(ClientRequestContext)} above, where this
+     * provider would otherwise have recorded the start time, never does.
+     */
     @Override
     public void filter(ClientRequestContext requestContext, ClientResponseContext responseContext) {
-        long requestStartTime = ((Number) requestContext.getProperty(REQUEST_TIME_PROPERTY)).longValue();
+        long requestStartTime = Optional.ofNullable(requestContext.getProperty(REQUEST_TIME_PROPERTY))
+                .map(Number.class::cast)
+                .map(Number::longValue)
+                .orElseGet(System::nanoTime);
         long duration = (nanoTime() - requestStartTime) / 1_000_000;
 
         log.info("Called {} {} with status {} in {}ms",

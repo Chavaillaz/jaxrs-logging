@@ -137,6 +137,24 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check the response is still logged, with a fallback duration, when a prior filter aborted the request")
+    void checkResponseLoggedWhenRequestWasAborted() {
+        // Given: filter(ClientRequestContext) below (where REQUEST_TIME_PROPERTY is normally recorded)
+        // was skipped, as happens when a higher-priority filter calls requestContext.abortWith(...)
+        // before this one runs; response filters still run for an aborted request
+        ClientResponseContext responseContext = mock(ClientResponseContext.class);
+        doReturn(503).when(responseContext).getStatus();
+
+        // When
+        filter.filter(requestContext, responseContext);
+
+        // Then
+        LogEvent event = listAppender.findFirstMessage("Called");
+        assertNotNull(event);
+        assertTrue(event.getMessage().getFormattedMessage().contains("status 503"));
+    }
+
+    @Test
     @DisplayName("Check the request body is not captured when request body logging is not activated")
     void checkRequestBodyNotCapturedByDefault() throws Exception {
         // Given
