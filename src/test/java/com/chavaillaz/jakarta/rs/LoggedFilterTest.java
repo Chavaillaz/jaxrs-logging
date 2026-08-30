@@ -234,6 +234,21 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check body logging configuration is resolved once per resource method and cached")
+    void checkBodyConfigurationCaching() throws Exception {
+        setupTest(AnnotatedResource.class, "bodyAsMdc");
+
+        // When
+        Optional<LoggedBody> request = loggingFilter.getBodyConfiguration(REQUEST);
+        Optional<LoggedBody> response = loggingFilter.getBodyConfiguration(RESPONSE);
+
+        // Then
+        assertTrue(request.isPresent());
+        assertEquals(request.get(), response.get());
+        assertEquals(1, loggingFilter.bodyConfigurationCache.size());
+    }
+
+    @Test
     @DisplayName("Check body filtering decodes bytes as UTF-8 regardless of the platform default charset")
     void checkBodyFilteredUsesUtf8() {
         // Given

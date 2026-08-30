@@ -402,14 +402,47 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Finds the most specific body logging configuration for the given target (request or response).
+     * Body logging configuration resolved for both directions of a given resource method.
+     *
+     * @param request  The body logging configuration applicable to the request, if any
+     * @param response The body logging configuration applicable to the response, if any
+     */
+    private record BodyConfiguration(Optional<LoggedBody> request, Optional<LoggedBody> response) {
+
+    }
+
+    /**
+     * Cache of the body logging configuration resolved for each resource method, as it only depends on
+     * the (immutable) annotations present on the matched class/method and not on request data, avoiding
+     * a reflection-based annotation lookup on every single request to the same resource method.
+     */
+    protected final Map<Method, BodyConfiguration> bodyConfigurationCache = new ConcurrentHashMap<>();
+
+    /**
+     * Gets the most specific body logging configuration for the given target (request or response).
      * If multiple configurations are defined, the one specifically targeting the given target is returned.
      * Otherwise, the configuration targeting both request and response is returned if present.
+     * <p>
+     * The result is resolved once per resource method and cached, as reflection-based annotation
+     * lookups are expensive to repeat on every request.
      *
      * @param target The target for which to find the body logging configuration
      * @return The most specific body logging configuration if present
      */
     protected Optional<LoggedBody> getBodyConfiguration(Direction target) {
+        BodyConfiguration configuration = bodyConfigurationCache.computeIfAbsent(resourceInfo.getResourceMethod(),
+                method -> new BodyConfiguration(resolveBodyConfiguration(REQUEST), resolveBodyConfiguration(RESPONSE)));
+        return target == REQUEST ? configuration.request() : configuration.response();
+    }
+
+    /**
+     * Finds the most specific body logging configuration for the given target (request or response)
+     * by walking the annotations present on the resource class/method matched by the current request.
+     *
+     * @param target The target for which to find the body logging configuration
+     * @return The most specific body logging configuration if present
+     */
+    protected Optional<LoggedBody> resolveBodyConfiguration(Direction target) {
         LoggedBody both = null;
         for (LoggedBody logging : getAnnotation(resourceInfo, LoggedBody.class, Logged.class, Logged::value)) {
             List<Direction> targets = Arrays.asList(logging.targets());
