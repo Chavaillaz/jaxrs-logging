@@ -34,6 +34,7 @@ import static org.apache.commons.lang3.StringUtils.isNotBlank;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.HashSet;
@@ -122,17 +123,28 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected static final String REQUEST_BODY_PROPERTY = LoggedFilter.class.getName() + ".requestBody";
 
     /**
-     * Name of the property stored in container context to keep track of every MDC key put through
-     * {@link #putMdc(String, String)} for the current request, so {@link #cleanupMdc()} can remove
-     * exactly what was added.
+     * Name of the property stored in container context to keep track of every {@link MDC.MDCCloseable}
+     * obtained through {@link #putMdc(String, String)} for the current request, so {@link #cleanupMdc()}
+     * can close exactly what was added.
      * <p>
      * This is what gives MDC entries set by this provider a single, structurally-enforced lifecycle:
      * any code, including a subclass, that wants an MDC entry removed at the end of the request must
      * go through {@link #putMdc(String, String)} (or one of its overloads) instead of calling
      * {@link MDC#put(String, String)} directly, or it will not be tracked here and will leak onto the
      * thread (normally pooled and reused) handling the next, unrelated request.
+     * <p>
+     * Using {@link MDC#putCloseable(String, String)} rather than hand-rolled key tracking removes an
+     * entire class of bugs where an entry is put without being recorded for cleanup (or recorded under
+     * the wrong key): the only way to obtain a value to put in this list is the very call that already
+     * knows how to remove it, so there is nothing left to keep in sync by convention. This does not by
+     * itself solve MDC being thread-local: if a request is completed (see {@link #COMPLETED_PROPERTY})
+     * on a different thread than the one that called {@link #putMdc(String, String)} (for example, a
+     * JAX-RS implementation that resumes a {@code @Suspended} response, or a reactive resource method,
+     * on a different worker thread), closing these closeables removes the entries from the completing
+     * thread's MDC, not from the thread that actually set them - which then still leaks until that
+     * thread happens to process another request overwriting the same keys.
      */
-    protected static final String MDC_KEYS_PROPERTY = LoggedFilter.class.getName() + ".mdcKeys";
+    protected static final String MDC_CLOSEABLES_PROPERTY = LoggedFilter.class.getName() + ".mdcCloseables";
 
     /**
      * Name of the property stored in container context to guard {@link #logResponse(String)} against
@@ -173,25 +185,26 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected ContainerRequestContext requestContext;
 
     /**
-     * Gets the mutable, request-scoped set of MDC keys put so far for the current request through
-     * {@link #putMdc(String, String)}, creating and registering it as a container property on first use.
+     * Gets the mutable, request-scoped list of {@link MDC.MDCCloseable} obtained so far for the current
+     * request through {@link #putMdc(String, String)}, creating and registering it as a container
+     * property on first use.
      *
-     * @return The set of MDC keys to be removed by {@link #cleanupMdc()} once the request is done
+     * @return The closeables to be closed by {@link #cleanupMdc()} once the request is done
      */
     @SuppressWarnings("unchecked")
-    protected Set<String> getMdcKeys() {
-        Set<String> keys = (Set<String>) requestContext.getProperty(MDC_KEYS_PROPERTY);
-        if (keys == null) {
-            keys = new HashSet<>();
-            requestContext.setProperty(MDC_KEYS_PROPERTY, keys);
+    protected List<MDC.MDCCloseable> getMdcCloseables() {
+        List<MDC.MDCCloseable> closeables = (List<MDC.MDCCloseable>) requestContext.getProperty(MDC_CLOSEABLES_PROPERTY);
+        if (closeables == null) {
+            closeables = new ArrayList<>();
+            requestContext.setProperty(MDC_CLOSEABLES_PROPERTY, closeables);
         }
-        return keys;
+        return closeables;
     }
 
     /**
      * Puts a diagnostic context value identified by the given key into the current thread's context map,
-     * tracking it (see {@link #MDC_KEYS_PROPERTY}) so {@link #cleanupMdc()} removes it once the request
-     * has been fully processed.
+     * tracking the resulting {@link MDC.MDCCloseable} (see {@link #MDC_CLOSEABLES_PROPERTY}) so
+     * {@link #cleanupMdc()} removes it once the request has been fully processed.
      * <p>
      * Every MDC entry set by this provider, or a subclass extending it, should go through this method
      * (or the {@link #putMdc(LoggedField, String)} overload) rather than {@link MDC#put(String, String)}
@@ -202,8 +215,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      */
     protected void putMdc(String key, String value) {
         if (value != null) {
-            MDC.put(key, value);
-            getMdcKeys().add(key);
+            getMdcCloseables().add(MDC.putCloseable(key, value));
         }
     }
 
@@ -675,9 +687,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Removes every MDC key put through {@link #putMdc(String, String)} for the current request (see
-     * {@link #MDC_KEYS_PROPERTY}), which covers every entry put by this provider itself as well as any
-     * subclass following the same convention.
+     * Closes every {@link MDC.MDCCloseable} obtained through {@link #putMdc(String, String)} for the
+     * current request (see {@link #MDC_CLOSEABLES_PROPERTY}), which covers every entry put by this
+     * provider itself as well as any subclass following the same convention.
      * <p>
      * Also sweeps the fixed set of fields in {@link #mdcFields} as a safety net, in case a subclass
      * still puts one of those directly through {@link MDC#put(String, String)} (as opposed to
@@ -685,7 +697,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      */
     protected void cleanupMdc() {
         mdcFields.values().forEach(MDC::remove);
-        getMdcKeys().forEach(MDC::remove);
+        getMdcCloseables().forEach(MDC.MDCCloseable::close);
     }
 
 }
