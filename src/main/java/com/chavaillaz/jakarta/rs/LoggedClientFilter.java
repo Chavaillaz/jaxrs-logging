@@ -259,15 +259,19 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         LoggedBodyCapture capture = createBodyCapture(requestBodyLimit);
         TeeOutputStream teeOutputStream = new TeeOutputStream(context.getOutputStream(), capture.sink());
         context.setOutputStream(teeOutputStream);
-        context.proceed();
-
-        String body = capture.content(getBodyFilters());
-        if (isNotBlank(body)) {
-            log.info("Request body {} {}{}{}",
-                    context.getProperty(REQUEST_METHOD_PROPERTY),
-                    context.getProperty(REQUEST_URI_PROPERTY),
-                    LF,
-                    body);
+        try {
+            context.proceed();
+        } finally {
+            // Logs whatever was captured even if writing the entity failed (e.g. connection reset before
+            // the body was fully sent), mirroring aroundReadFrom's handling of the response body below
+            String body = capture.content(getBodyFilters());
+            if (isNotBlank(body)) {
+                log.info("Request body {} {}{}{}",
+                        context.getProperty(REQUEST_METHOD_PROPERTY),
+                        context.getProperty(REQUEST_URI_PROPERTY),
+                        LF,
+                        body);
+            }
         }
     }
 

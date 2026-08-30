@@ -473,13 +473,19 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 LoggedBodyCapture capture = createBodyCapture(getBodyLimitResponse());
                 TeeOutputStream teeOutputStream = new TeeOutputStream(context.getOutputStream(), capture.sink());
                 context.setOutputStream(teeOutputStream);
-                context.proceed();
-                String body = capture.content(getBodyFiltersResponse());
-                if (getBodyLoggingResponse().contains(LogType.MDC)) {
-                    putMdc(RESPONSE_BODY, body);
-                }
-                if (getBodyLoggingResponse().contains(LogType.LOG)) {
-                    responseBody = body;
+                try {
+                    context.proceed();
+                } finally {
+                    // Logs/stores whatever was captured even if writing the entity failed (e.g. client
+                    // disconnection, serialization error), so such a failure does not leave the response
+                    // entirely unlogged, mirroring aroundReadFrom's handling of the request body
+                    String body = capture.content(getBodyFiltersResponse());
+                    if (getBodyLoggingResponse().contains(LogType.MDC)) {
+                        putMdc(RESPONSE_BODY, body);
+                    }
+                    if (getBodyLoggingResponse().contains(LogType.LOG)) {
+                        responseBody = body;
+                    }
                 }
             } else {
                 context.proceed();

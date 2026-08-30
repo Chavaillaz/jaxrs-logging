@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
@@ -203,6 +204,35 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         assertNotNull(event);
         assertTrue(event.getMessage().getFormattedMessage().contains("masked"));
         assertFalse(event.getMessage().getFormattedMessage().contains("1234-ABCD"));
+    }
+
+    @Test
+    @DisplayName("Check whatever was written to the request body is still logged when writing it then fails")
+    void checkPartialRequestBodyLoggedOnWriteFailure() throws Exception {
+        // Given
+        filter.filter(requestContext);
+        LoggedClientFilter bodyLoggingFilter = LoggedClientFilter.builder().logRequestBody().build();
+        WriterInterceptorContext context = mock(WriterInterceptorContext.class);
+        AtomicReference<OutputStream> output = new AtomicReference<>(new ByteArrayOutputStream());
+        doAnswer(invocation -> output.get()).when(context).getOutputStream();
+        doAnswer(invocation -> {
+            output.set(invocation.getArgument(0, OutputStream.class));
+            return null;
+        }).when(context).setOutputStream(any());
+        doAnswer(invocation -> {
+            output.get().write("partial content".getBytes(UTF_8));
+            throw new IOException("Connection reset");
+        }).when(context).proceed();
+        lenient().doAnswer(invocation -> properties.get(invocation.getArgument(0, String.class)))
+                .when(context).getProperty(any());
+
+        // When
+        assertThrows(IOException.class, () -> bodyLoggingFilter.aroundWriteTo(context));
+
+        // Then
+        LogEvent event = listAppender.findFirstMessage("Request body");
+        assertNotNull(event);
+        assertTrue(event.getMessage().getFormattedMessage().contains("partial content"));
     }
 
     @Test

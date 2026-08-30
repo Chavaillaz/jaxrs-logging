@@ -422,6 +422,41 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check whatever was written to the response body is still logged when writing it then fails")
+    void checkPartialResponseBodyLoggedOnWriteFailure() throws Exception {
+        // A serialization error partway through, or a client disconnecting mid-write, must not discard
+        // the bytes already produced: aroundReadFrom already guarantees this for the request body (see
+        // its Javadoc), and aroundWriteTo must mirror it for the response body
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ContainerResponseContextImpl responseContext = getResponseContext(requestContext);
+        WriterInterceptorContext responseInterceptorContext = mock(WriterInterceptorContext.class);
+        AtomicReference<OutputStream> output = new AtomicReference<>(new ByteArrayOutputStream());
+        doAnswer(invocation -> output.get()).when(responseInterceptorContext).getOutputStream();
+        doAnswer(invocation -> {
+            output.set(invocation.getArgument(0, OutputStream.class));
+            return null;
+        }).when(responseInterceptorContext).setOutputStream(any());
+        doAnswer(invocation -> {
+            output.get().write("partial content".getBytes(UTF_8));
+            throw new IOException("Client disconnected");
+        }).when(responseInterceptorContext).proceed();
+
+        loggingFilter.filter(requestContext);
+        loggingFilter.filter(requestContext, responseContext);
+
+        // When
+        assertThrows(IOException.class, () -> loggingFilter.aroundWriteTo(responseInterceptorContext));
+
+        // Then
+        LogEvent event = listAppender.findFirstMessage("Processed");
+        assertNotNull(event);
+        assertTrue(event.getMessage().getFormattedMessage().contains("partial content"));
+    }
+
+    @Test
     @DisplayName("Check response is logged and MDC cleaned up on an empty response even without body logging configured")
     void checkResponseLoggedAndMdcCleanedUpWithoutBodyLoggingOnEmptyResponse() throws Exception {
         // As with no response entity (e.g. 204 No Content, HEAD) the container never calls
