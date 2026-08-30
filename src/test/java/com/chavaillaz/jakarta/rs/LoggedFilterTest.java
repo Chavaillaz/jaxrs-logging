@@ -275,7 +275,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         outputStream.writeBytes(text.getBytes(UTF_8));
 
         // When
-        String result = loggingFilter.getBodyFiltered(outputStream, Set.of());
+        String result = loggingFilter.getBodyFiltered(outputStream, false, Set.of());
 
         // Then
         assertEquals(text, result);

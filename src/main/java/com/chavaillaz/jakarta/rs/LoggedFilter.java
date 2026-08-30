@@ -1,5 +1,6 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.BoundedOutputStream.trimIncompleteTrailingCharacter;
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.REQUEST;
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.RESPONSE;
 import static com.chavaillaz.jakarta.rs.LoggedField.DURATION;
@@ -374,16 +375,15 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         Object entity;
         if (!getBodyLoggingRequest().isEmpty()) {
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            TeeInputStream teeInputStream = new TeeInputStream(
-                    context.getInputStream(),
-                    new BoundedOutputStream(outputStream, getBodyLimitRequest()));
+            BoundedOutputStream boundedOutputStream = new BoundedOutputStream(outputStream, getBodyLimitRequest());
+            TeeInputStream teeInputStream = new TeeInputStream(context.getInputStream(), boundedOutputStream);
             context.setInputStream(teeInputStream);
             try {
                 entity = context.proceed();
             } finally {
                 // Logs whatever was captured even if reading the entity failed (e.g. malformed payload),
                 // so a deserialization error does not leave the request entirely unlogged
-                String body = getBodyFiltered(outputStream, getBodyFiltersRequest());
+                String body = getBodyFiltered(outputStream, boundedOutputStream.isTruncated(), getBodyFiltersRequest());
                 if (getBodyLoggingRequest().contains(LogType.LOG) && isNotBlank(body)) {
                     logRequest(body);
                 }
@@ -439,12 +439,11 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             String responseBody = null;
             try {
                 if (!getBodyLoggingResponse().isEmpty()) {
-                    TeeOutputStream teeOutputStream = new TeeOutputStream(
-                            context.getOutputStream(),
-                            new BoundedOutputStream(outputStream, getBodyLimitResponse()));
+                    BoundedOutputStream boundedOutputStream = new BoundedOutputStream(outputStream, getBodyLimitResponse());
+                    TeeOutputStream teeOutputStream = new TeeOutputStream(context.getOutputStream(), boundedOutputStream);
                     context.setOutputStream(teeOutputStream);
                     context.proceed();
-                    String body = getBodyFiltered(outputStream, getBodyFiltersResponse());
+                    String body = getBodyFiltered(outputStream, boundedOutputStream.isTruncated(), getBodyFiltersResponse());
                     if (getBodyLoggingResponse().contains(LogType.MDC)) {
                         putMdc(RESPONSE_BODY, body);
                     }
@@ -502,10 +501,18 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * Applies the defined body filters to the given payload.
      *
      * @param outputStream The payload to be filtered
+     * @param truncated    Whether the payload was cut off by a size limit (see {@link BoundedOutputStream#isTruncated()}),
+     *                      in which case a dangling incomplete trailing UTF-8 character is trimmed before decoding
+     * @param filters      The filters to apply to the payload
      * @return The payload filtered
      */
-    protected String getBodyFiltered(ByteArrayOutputStream outputStream, Set<LoggedBodyFilter> filters) {
-        String body = outputStream.toString(UTF_8);
+    protected String getBodyFiltered(ByteArrayOutputStream outputStream, boolean truncated, Set<LoggedBodyFilter> filters) {
+        byte[] bytes = outputStream.toByteArray();
+        if (truncated) {
+            bytes = trimIncompleteTrailingCharacter(bytes);
+        }
+
+        String body = new String(bytes, UTF_8);
         if (filters.isEmpty()) {
             return body;
         }
