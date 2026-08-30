@@ -286,24 +286,28 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     public void aroundWriteTo(WriterInterceptorContext context) throws IOException, WebApplicationException {
         try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
             String responseBody = null;
-            if (!getBodyLoggingResponse().isEmpty()) {
-                TeeOutputStream teeOutputStream = new TeeOutputStream(
-                        context.getOutputStream(),
-                        new BoundedOutputStream(outputStream, getBodyLimitResponse()));
-                context.setOutputStream(teeOutputStream);
-                context.proceed();
-                String body = getBodyFiltered(outputStream, getBodyFiltersResponse());
-                if (getBodyLoggingResponse().contains(LogType.MDC)) {
-                    putMdc(RESPONSE_BODY, body);
+            try {
+                if (!getBodyLoggingResponse().isEmpty()) {
+                    TeeOutputStream teeOutputStream = new TeeOutputStream(
+                            context.getOutputStream(),
+                            new BoundedOutputStream(outputStream, getBodyLimitResponse()));
+                    context.setOutputStream(teeOutputStream);
+                    context.proceed();
+                    String body = getBodyFiltered(outputStream, getBodyFiltersResponse());
+                    if (getBodyLoggingResponse().contains(LogType.MDC)) {
+                        putMdc(RESPONSE_BODY, body);
+                    }
+                    if (getBodyLoggingResponse().contains(LogType.LOG)) {
+                        responseBody = body;
+                    }
+                } else {
+                    context.proceed();
                 }
-                if (getBodyLoggingResponse().contains(LogType.LOG)) {
-                    responseBody = body;
-                }
-            } else {
-                context.proceed();
+            } finally {
+                // Always log and clean up MDC, even if writing the response body fails
+                // (e.g. client disconnection), to avoid leaking context fields onto a pooled thread
+                logResponse(requireNonNullElse(responseBody, EMPTY));
             }
-
-            logResponse(requireNonNullElse(responseBody, EMPTY));
         }
     }
 

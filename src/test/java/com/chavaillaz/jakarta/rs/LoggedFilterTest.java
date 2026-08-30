@@ -20,14 +20,17 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.reflect.Method;
@@ -53,6 +56,7 @@ import org.jboss.resteasy.mock.MockHttpRequest;
 import org.jboss.resteasy.mock.MockHttpResponse;
 import org.jboss.resteasy.specimpl.BuiltResponse;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -225,6 +229,32 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         checkRequestLogging(expectedRequestLogging, expectedBodyFilters);
         checkResponseLogging(expectedResponseLogging, expectedBodyFilters);
+    }
+
+    @Test
+    @DisplayName("Check MDC is cleaned up even if writing the response body fails")
+    void checkMdcCleanupOnWriteFailure() throws Exception {
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ContainerResponseContextImpl responseContext = getResponseContext(requestContext);
+        WriterInterceptorContext responseInterceptorContext = mock(WriterInterceptorContext.class);
+        doReturn(new ByteArrayOutputStream()).when(responseInterceptorContext).getOutputStream();
+        doThrow(new IOException("Client disconnected")).when(responseInterceptorContext).proceed();
+
+        loggingFilter.filter(requestContext);
+        loggingFilter.filter(requestContext, responseContext);
+
+        // When
+        assertThrows(IOException.class, () -> loggingFilter.aroundWriteTo(responseInterceptorContext));
+
+        // Then
+        assertNull(MDC.get(getMdcField(REQUEST_ID)));
+        assertNull(MDC.get(getMdcField(REQUEST_URI)));
+        assertNull(MDC.get(getMdcField(DURATION)));
+        assertNull(MDC.get(getMdcField(RESPONSE_STATUS)));
+        assertNotNull(listAppender.findFirstMessage("Processed"));
     }
 
     void checkRequestLogging(LogType[] expectedRequestLogging, Class<? extends LoggedBodyFilter>[] expectedBodyFilters) {
