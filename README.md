@@ -46,24 +46,32 @@ with the following MDC fields set:
 * Response HTTP status
 * Response duration in milliseconds
 
-Additional logging features can be activated using properties of the annotation:
+Additional logging features can be activated by adding `@LoggedBody` (repeatable) to `@Logged`:
 
 ```java
-@Logged(requestBody = {LOG, MDC}, responseBody = {LOG, MDC}, filtersBody = {YourBodyFilter.class})
+@Logged(@LoggedBody(value = {LOG, MDC}, filters = YourBodyFilter.class, limit = 10_000))
 ```
 
-* **requestBody**
-    * `LOG`: Logging the request body in a new log line `Received [method] [URI] [body]`
-    * `MDC`: Logging the request body as MDC only in the `Processed ...` log line
-* **responseBody**
-    * `LOG`: Logging the response body at the end of the `Processed ...` log line
-    * `MDC`: Logging the response body as MDC only in the `Processed ...` log line
-* **filtersBody**: Classes implementing the functional interface
+* **value**: Types of body logging to activate
+    * `LOG`: Logging the body in a new log line (`Received [method] [URI] [body]` for the request,
+      appended to `Processed ...` for the response)
+    * `MDC`: Logging the body as MDC only, included in the `Processed ...` log line
+* **filters**: Classes implementing the functional interface
   [LoggedBodyFilter](src/main/java/com/chavaillaz/jakarta/rs/LoggedBodyFilter.java) to filter any body
   before writing it in logs, for example to remove sensitive data that could be present.
-* **limitBody**: Size limit in bytes of the request / response body logged (not limited by default).
+* **limit**: Size limit in bytes of the body logged (not limited by default).
+* **targets**: Whether the configuration applies to the request, the response, or both (default).
 
-By careful when activating any body logging, it may produce issues if the body size is not limited.
+By default, `@LoggedBody` applies to both the request and the response. Repeat the annotation with different
+`targets` to configure them separately:
+
+```java
+@LoggedBody(value = MDC, targets = REQUEST)
+@LoggedBody(value = LOG, targets = RESPONSE)
+```
+
+Be careful when activating any body logging, as it may produce performance or memory issues if the body size
+is not limited.
 
 ## Example
 
@@ -74,7 +82,7 @@ Given an endpoint on which users can create new articles, annotated with `@Logge
 @Path("/article")
 @Consumes(MediaType.APPLICATION_JSON)
 @Produces(MediaType.APPLICATION_JSON)
-@Logged(requestBody = MDC, responseBody = MDC)
+@Logged(@LoggedBody(MDC))
 public class ArticleResource {
 
     @POST

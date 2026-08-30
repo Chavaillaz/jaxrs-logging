@@ -28,7 +28,7 @@ public @interface LoggedBody {
      * <p>
      * Do not activate it when expecting large payloads to avoid any performance or memory issue.
      * <p>
-     * Note that for {@link LogType#MDC}, the request or response body will be stored in the request context
+     * Note that for {@link LogType#MDC} on the request, the body will be stored in the request context
      * in order to be retrieved and stored as MDC when logging the processing log line.
      *
      * @return The types of logging to be done
