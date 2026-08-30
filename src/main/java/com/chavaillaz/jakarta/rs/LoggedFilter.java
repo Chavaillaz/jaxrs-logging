@@ -1,7 +1,7 @@
 package com.chavaillaz.jakarta.rs;
 
-import static com.chavaillaz.jakarta.rs.LoggedBody.Target.REQUEST;
-import static com.chavaillaz.jakarta.rs.LoggedBody.Target.RESPONSE;
+import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.REQUEST;
+import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.RESPONSE;
 import static com.chavaillaz.jakarta.rs.LoggedField.DURATION;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
@@ -47,7 +47,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
-import com.chavaillaz.jakarta.rs.LoggedBody.Target;
+import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
 import com.chavaillaz.jakarta.rs.LoggedMapping.LogMappingType;
 import jakarta.ws.rs.ConstrainedTo;
 import jakarta.ws.rs.WebApplicationException;
@@ -405,10 +405,10 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param target The target for which to find the body logging configuration
      * @return The most specific body logging configuration if present
      */
-    protected Optional<LoggedBody> getBodyConfiguration(Target target) {
+    protected Optional<LoggedBody> getBodyConfiguration(Direction target) {
         LoggedBody both = null;
         for (LoggedBody logging : getAnnotation(resourceInfo, LoggedBody.class, Logged.class, Logged::value)) {
-            List<Target> targets = Arrays.asList(logging.targets());
+            List<Direction> targets = Arrays.asList(logging.targets());
             if (targets.size() == 1 && targets.getFirst() == target) {
                 return Optional.of(logging);
             }

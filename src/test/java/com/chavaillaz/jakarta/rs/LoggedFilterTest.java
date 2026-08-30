@@ -1,7 +1,7 @@
 package com.chavaillaz.jakarta.rs;
 
-import static com.chavaillaz.jakarta.rs.LoggedBody.Target.REQUEST;
-import static com.chavaillaz.jakarta.rs.LoggedBody.Target.RESPONSE;
+import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.REQUEST;
+import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.RESPONSE;
 import static com.chavaillaz.jakarta.rs.LoggedField.DURATION;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;

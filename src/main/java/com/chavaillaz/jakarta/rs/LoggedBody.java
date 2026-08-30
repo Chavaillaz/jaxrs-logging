@@ -1,7 +1,7 @@
 package com.chavaillaz.jakarta.rs;
 
-import static com.chavaillaz.jakarta.rs.LoggedBody.Target.REQUEST;
-import static com.chavaillaz.jakarta.rs.LoggedBody.Target.RESPONSE;
+import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.REQUEST;
+import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.RESPONSE;
 import static java.lang.annotation.ElementType.METHOD;
 import static java.lang.annotation.ElementType.TYPE;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
@@ -56,7 +56,7 @@ public @interface LoggedBody {
      *
      * @return The targets to which the logging configuration must be applied
      */
-    Target[] targets() default {REQUEST, RESPONSE};
+    Direction[] targets() default {REQUEST, RESPONSE};
 
     /**
      * Type of logging to be applied to the request and response body.
@@ -76,9 +76,9 @@ public @interface LoggedBody {
     }
 
     /**
-     * Target of the logging configuration.
+     * Direction (request or response) targeted by the logging configuration.
      */
-    enum Target {
+    enum Direction {
 
         /**
          * Apply the logging configuration to the request body.
