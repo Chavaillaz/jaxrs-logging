@@ -1,6 +1,5 @@
 package com.chavaillaz.jakarta.rs;
 
-import static com.chavaillaz.jakarta.rs.BoundedOutputStream.trimIncompleteTrailingCharacter;
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.REQUEST;
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.RESPONSE;
 import static com.chavaillaz.jakarta.rs.LoggedField.DURATION;
@@ -14,13 +13,10 @@ import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
 import static com.chavaillaz.jakarta.rs.LoggedField.getDefaultFields;
-import static com.chavaillaz.jakarta.rs.LoggedUtils.getAnnotation;
-import static com.chavaillaz.jakarta.rs.LoggedUtils.getMergedMappings;
 import static jakarta.ws.rs.RuntimeType.SERVER;
 import static java.lang.String.join;
 import static java.lang.String.valueOf;
 import static java.lang.System.nanoTime;
-import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Comparator.comparing;
 import static java.util.Map.Entry.comparingByKey;
 import static java.util.Objects.requireNonNullElse;
@@ -32,11 +28,9 @@ import static org.apache.commons.lang3.StringUtils.EMPTY;
 import static org.apache.commons.lang3.StringUtils.LF;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
@@ -44,7 +38,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
@@ -91,11 +84,11 @@ import org.slf4j.MDC;
  * </ul>
  * This provider can be activated using the annotation {@link Logged} on resources.
  * <p>
- * Resolved annotation configurations and body filter instances are cached per resource method / filter
- * class ({@code filtersCache}, {@code bodyConfigurationCache}, {@code mappingsCache}) and never evicted.
- * This assumes a bounded, stable set of resource methods and {@link LoggedBodyFilter} classes, as is the
- * case for a typical application with a fixed set of JAX-RS endpoints; it is not suited to applications
- * that generate new resource classes at runtime (e.g. per-tenant code generation).
+ * Resolved annotation configurations are delegated to {@link #resolver}, and body filter instances to
+ * {@link #bodyFilterFactory}: both cache their results per resource method / filter class and never
+ * evict them. This assumes a bounded, stable set of resource methods and {@link LoggedBodyFilter}
+ * classes, as is the case for a typical application with a fixed set of JAX-RS endpoints; it is not
+ * suited to applications that generate new resource classes at runtime (e.g. per-tenant code generation).
  * <p>
  * Declares a priority lower than the JAX-RS default ({@link Priorities#USER}) so this provider runs as
  * early as possible among request filters/interceptors and, symmetrically, as late as possible among
@@ -179,10 +172,15 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected final Map<String, String> mdcFields = getDefaultFields();
 
     /**
-     * Cache of instances for request and response body filters.
-     * Uses a concurrent map as this provider is a singleton shared across concurrently processed requests.
+     * Resolves which {@link LoggedMapping} and {@link LoggedBody} configuration applies to the resource
+     * method matched by the current request, caching results per resource method.
      */
-    protected final Map<Class<?>, LoggedBodyFilter> filtersCache = new ConcurrentHashMap<>();
+    protected final LoggedResolver resolver = new LoggedResolver();
+
+    /**
+     * Instantiates and caches {@link LoggedBodyFilter} instances by class.
+     */
+    protected final LoggedBodyFilterFactory bodyFilterFactory = new LoggedBodyFilterFactory();
 
     /**
      * Provides access to the resource class and method matched by the current request.
@@ -293,21 +291,13 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Cache of the merged {@link LoggedMapping} definitions resolved for each resource method, as it
-     * only depends on the (immutable) annotations present on the matched class/method/interfaces and
-     * not on request data, avoiding a reflection-based annotation lookup on every single request to
-     * the same resource method.
-     */
-    protected final Map<Method, Set<LoggedMapping>> mappingsCache = new ConcurrentHashMap<>();
-
-    /**
      * Gets the merged {@link LoggedMapping} definitions applicable to the resource method matched by
-     * the current request, resolving and caching them once per resource method.
+     * the current request, delegating resolution and caching to {@link #resolver}.
      *
      * @return The set of merged mappings applicable to the current request
      */
     protected Set<LoggedMapping> getCachedMergedMappings() {
-        return mappingsCache.computeIfAbsent(resourceInfo.getResourceMethod(), method -> getMergedMappings(resourceInfo));
+        return resolver.getMergedMappings(resourceInfo);
     }
 
     /**
@@ -396,16 +386,15 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     public Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
         Object entity;
         if (!getBodyLoggingRequest().isEmpty()) {
-            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-            BoundedOutputStream boundedOutputStream = new BoundedOutputStream(outputStream, getBodyLimitRequest());
-            TeeInputStream teeInputStream = new TeeInputStream(context.getInputStream(), boundedOutputStream);
+            LoggedBodyCapture capture = createBodyCapture(getBodyLimitRequest());
+            TeeInputStream teeInputStream = new TeeInputStream(context.getInputStream(), capture.sink());
             context.setInputStream(teeInputStream);
             try {
                 entity = context.proceed();
             } finally {
                 // Logs whatever was captured even if reading the entity failed (e.g. malformed payload),
                 // so a deserialization error does not leave the request entirely unlogged
-                String body = getBodyFiltered(outputStream, boundedOutputStream.isTruncated(), getBodyFiltersRequest());
+                String body = capture.content(getBodyFiltersRequest());
                 if (getBodyLoggingRequest().contains(LogType.LOG) && isNotBlank(body)) {
                     logRequest(body);
                 }
@@ -418,6 +407,20 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         }
 
         return entity;
+    }
+
+    /**
+     * Creates the {@link LoggedBodyCapture} used to capture a request or response body.
+     * <p>
+     * This is the extension point for the mechanics of body capture itself (as opposed to
+     * {@link LoggedBodyFilter}, which only transforms content already captured): override to plug in a
+     * different strategy, for example spilling very large bodies to a temporary file instead of memory.
+     *
+     * @param limit The maximum size of the body to capture in bytes, or {@code -1} for no limit
+     * @return The body capture to use
+     */
+    protected LoggedBodyCapture createBodyCapture(int limit) {
+        return new BoundedLoggedBodyCapture(limit);
     }
 
     /**
@@ -457,29 +460,27 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     @Override
     public void aroundWriteTo(WriterInterceptorContext context) throws IOException, WebApplicationException {
-        try (ByteArrayOutputStream outputStream = new ByteArrayOutputStream()) {
-            String responseBody = null;
-            try {
-                if (!getBodyLoggingResponse().isEmpty()) {
-                    BoundedOutputStream boundedOutputStream = new BoundedOutputStream(outputStream, getBodyLimitResponse());
-                    TeeOutputStream teeOutputStream = new TeeOutputStream(context.getOutputStream(), boundedOutputStream);
-                    context.setOutputStream(teeOutputStream);
-                    context.proceed();
-                    String body = getBodyFiltered(outputStream, boundedOutputStream.isTruncated(), getBodyFiltersResponse());
-                    if (getBodyLoggingResponse().contains(LogType.MDC)) {
-                        putMdc(RESPONSE_BODY, body);
-                    }
-                    if (getBodyLoggingResponse().contains(LogType.LOG)) {
-                        responseBody = body;
-                    }
-                } else {
-                    context.proceed();
+        String responseBody = null;
+        try {
+            if (!getBodyLoggingResponse().isEmpty()) {
+                LoggedBodyCapture capture = createBodyCapture(getBodyLimitResponse());
+                TeeOutputStream teeOutputStream = new TeeOutputStream(context.getOutputStream(), capture.sink());
+                context.setOutputStream(teeOutputStream);
+                context.proceed();
+                String body = capture.content(getBodyFiltersResponse());
+                if (getBodyLoggingResponse().contains(LogType.MDC)) {
+                    putMdc(RESPONSE_BODY, body);
                 }
-            } finally {
-                // Always log and clean up MDC, even if writing the response body fails
-                // (e.g. client disconnection), to avoid leaking context fields onto a pooled thread
-                logResponse(requireNonNullElse(responseBody, EMPTY));
+                if (getBodyLoggingResponse().contains(LogType.LOG)) {
+                    responseBody = body;
+                }
+            } else {
+                context.proceed();
             }
+        } finally {
+            // Always log and clean up MDC, even if writing the response body fails
+            // (e.g. client disconnection), to avoid leaking context fields onto a pooled thread
+            logResponse(requireNonNullElse(responseBody, EMPTY));
         }
     }
 
@@ -520,83 +521,15 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Applies the defined body filters to the given payload.
-     *
-     * @param outputStream The payload to be filtered
-     * @param truncated    Whether the payload was cut off by a size limit (see {@link BoundedOutputStream#isTruncated()}),
-     *                      in which case a dangling incomplete trailing UTF-8 character is trimmed before decoding
-     * @param filters      The filters to apply to the payload
-     * @return The payload filtered
-     */
-    protected String getBodyFiltered(ByteArrayOutputStream outputStream, boolean truncated, Set<LoggedBodyFilter> filters) {
-        byte[] bytes = outputStream.toByteArray();
-        if (truncated) {
-            bytes = trimIncompleteTrailingCharacter(bytes);
-        }
-
-        String body = new String(bytes, UTF_8);
-        if (filters.isEmpty()) {
-            return body;
-        }
-
-        StringBuilder bodyBuilder = new StringBuilder(body);
-        filters.forEach(filter -> filter.filter(bodyBuilder));
-        return bodyBuilder.toString();
-    }
-
-    /**
-     * Body logging configuration resolved for both directions of a given resource method.
-     *
-     * @param request  The body logging configuration applicable to the request, if any
-     * @param response The body logging configuration applicable to the response, if any
-     */
-    private record BodyConfiguration(Optional<LoggedBody> request, Optional<LoggedBody> response) {
-
-    }
-
-    /**
-     * Cache of the body logging configuration resolved for each resource method, as it only depends on
-     * the (immutable) annotations present on the matched class/method and not on request data, avoiding
-     * a reflection-based annotation lookup on every single request to the same resource method.
-     */
-    protected final Map<Method, BodyConfiguration> bodyConfigurationCache = new ConcurrentHashMap<>();
-
-    /**
-     * Gets the most specific body logging configuration for the given target (request or response).
-     * If multiple configurations are defined, the one specifically targeting the given target is returned.
-     * Otherwise, the configuration targeting both request and response is returned if present.
-     * <p>
-     * The result is resolved once per resource method and cached, as reflection-based annotation
-     * lookups are expensive to repeat on every request.
+     * Gets the most specific body logging configuration for the given target (request or response) of
+     * the resource method matched by the current request, delegating resolution and caching to
+     * {@link #resolver}.
      *
      * @param target The target for which to find the body logging configuration
      * @return The most specific body logging configuration if present
      */
     protected Optional<LoggedBody> getBodyConfiguration(Direction target) {
-        BodyConfiguration configuration = bodyConfigurationCache.computeIfAbsent(resourceInfo.getResourceMethod(),
-                method -> new BodyConfiguration(resolveBodyConfiguration(REQUEST), resolveBodyConfiguration(RESPONSE)));
-        return target == REQUEST ? configuration.request() : configuration.response();
-    }
-
-    /**
-     * Finds the most specific body logging configuration for the given target (request or response)
-     * by walking the annotations present on the resource class/method matched by the current request.
-     *
-     * @param target The target for which to find the body logging configuration
-     * @return The most specific body logging configuration if present
-     */
-    protected Optional<LoggedBody> resolveBodyConfiguration(Direction target) {
-        LoggedBody both = null;
-        for (LoggedBody logging : getAnnotation(resourceInfo, LoggedBody.class, Logged.class, Logged::value)) {
-            List<Direction> targets = Arrays.asList(logging.targets());
-            if (targets.size() == 1 && targets.getFirst() == target) {
-                return Optional.of(logging);
-            }
-            if (targets.size() == 2 && targets.contains(REQUEST) && targets.contains(RESPONSE)) {
-                both = logging;
-            }
-        }
-        return Optional.ofNullable(both);
+        return resolver.getBodyConfiguration(resourceInfo, target);
     }
 
     /**
@@ -653,7 +586,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @return The list of filters to be applied
      */
     protected Set<LoggedBodyFilter> getBodyFiltersRequest() {
-        return getBodyFilters(getBodyConfiguration(REQUEST)
+        return bodyFilterFactory.getInstances(getBodyConfiguration(REQUEST)
                 .map(LoggedBody::filters)
                 .stream());
     }
@@ -664,55 +597,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @return The list of filters to be applied
      */
     protected Set<LoggedBodyFilter> getBodyFiltersResponse() {
-        return getBodyFilters(getBodyConfiguration(RESPONSE)
+        return bodyFilterFactory.getInstances(getBodyConfiguration(RESPONSE)
                 .map(LoggedBody::filters)
                 .stream());
-    }
-
-    /**
-     * Gets the filters instances that must be applied before logging a body.
-     * Instantiates the given filters if not already done (caching).
-     *
-     * @param filtersType The stream of filters classes to be instantiated
-     * @return The list of filters to be applied
-     */
-    protected Set<LoggedBodyFilter> getBodyFilters(Stream<Class<? extends LoggedBodyFilter>[]> filtersType) {
-        return filtersType
-                .flatMap(Stream::of)
-                .map(this::getBodyFiltersInstance)
-                .collect(toSet());
-    }
-
-    /**
-     * No-op filter cached for a body filter class that failed to be instantiated, so that failure is
-     * remembered instead of being retried (and re-logged) on every single request to the resource
-     * method referencing it.
-     * <p>
-     * A plain {@code null} cannot be used for that purpose: {@link ConcurrentHashMap#computeIfAbsent}
-     * does not record a mapping when the function returns {@code null} (see its Javadoc), so returning
-     * {@code null} on failure previously caused the reflective instantiation (and the {@code log.error}
-     * call) to be repeated on every request instead of once.
-     */
-    protected static final LoggedBodyFilter FAILED_BODY_FILTER = body -> {
-        // No-op: the class could not be instantiated, see the error logged once at that time
-    };
-
-    /**
-     * Creates a new instance of the given body filter type.
-     *
-     * @param type The body filter class to be instantiated
-     * @param <T>  The body filter type
-     * @return The instance created, or {@link #FAILED_BODY_FILTER} if it failed
-     */
-    protected <T extends LoggedBodyFilter> LoggedBodyFilter getBodyFiltersInstance(Class<T> type) {
-        return filtersCache.computeIfAbsent(type, ignored -> {
-            try {
-                return type.getConstructor().newInstance();
-            } catch (Exception e) {
-                log.error("Unable to instantiate body filter {}, it will be skipped for every subsequent request", type, e);
-                return FAILED_BODY_FILTER;
-            }
-        });
     }
 
     /**

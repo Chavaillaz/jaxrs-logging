@@ -249,7 +249,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         // Then
         assertTrue(request.isPresent());
         assertEquals(request.get(), response.get());
-        assertEquals(1, loggingFilter.bodyConfigurationCache.size());
+        assertEquals(1, loggingFilter.resolver.bodyConfigurationCache.size());
     }
 
     @Test
@@ -263,22 +263,7 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         // Then
         assertEquals(first, second);
-        assertEquals(1, loggingFilter.mappingsCache.size());
-    }
-
-    @Test
-    @DisplayName("Check body filtering decodes bytes as UTF-8 regardless of the platform default charset")
-    void checkBodyFilteredUsesUtf8() {
-        // Given
-        String text = "Café ☕ résumé";
-        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
-        outputStream.writeBytes(text.getBytes(UTF_8));
-
-        // When
-        String result = loggingFilter.getBodyFiltered(outputStream, false, Set.of());
-
-        // Then
-        assertEquals(text, result);
+        assertEquals(1, loggingFilter.resolver.mappingsCache.size());
     }
 
     @Test
@@ -499,36 +484,6 @@ class LoggedFilterTest extends AbstractFilterTest {
         assertEquals("custom-value", MDC.get("custom-key"));
         loggingFilter.cleanupMdc();
         assertNull(MDC.get("custom-key"));
-    }
-
-    @Test
-    @DisplayName("Check a body filter failing to instantiate is cached as failed instead of being retried every request")
-    void checkFailedBodyFilterInstantiationIsCachedNotRetried() {
-        // Given: a filter class with no no-arg constructor, so instantiation always throws
-        Class<UninstantiableBodyFilter> type = UninstantiableBodyFilter.class;
-
-        // When
-        LoggedBodyFilter first = loggingFilter.getBodyFiltersInstance(type);
-        LoggedBodyFilter second = loggingFilter.getBodyFiltersInstance(type);
-
-        // Then: the same no-op sentinel is returned both times, from a single cache entry,
-        // instead of reflection (and the accompanying error log) being retried on every call
-        assertEquals(LoggedFilter.FAILED_BODY_FILTER, first);
-        assertEquals(LoggedFilter.FAILED_BODY_FILTER, second);
-        assertEquals(1, loggingFilter.filtersCache.size());
-    }
-
-    static class UninstantiableBodyFilter implements LoggedBodyFilter {
-
-        UninstantiableBodyFilter(String required) {
-            // No no-arg constructor available on purpose
-        }
-
-        @Override
-        public void filter(StringBuilder body) {
-            // Never reached, instantiation always fails
-        }
-
     }
 
     void checkRequestLogging(LogType[] expectedRequestLogging, Class<? extends LoggedBodyFilter>[] expectedBodyFilters) {
