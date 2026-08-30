@@ -197,6 +197,13 @@ separate line rather than merged into those two: the response body is only avail
 actually reads the response entity, which may happen after (or not at all after) the `Called ...` line, so
 there is no single point to merge them into, unlike the server-side filter.
 
+For the same reason, only logging the body as a new log line is supported, not adding it to MDC: on the server
+side, `@LoggedBody(MDC)` works because `LoggedFilter` has a single, well-defined point (`logResponse`) at which
+the whole request is known to be complete, so an MDC entry can be added and removed around exactly that point.
+`LoggedClientFilter` has no equivalent point to scope such an entry to, since the response body may become
+available only after (or never, relative to) the point the call is considered done, so there is nothing for
+an MDC entry holding the body to be reliably paired with.
+
 ## Extension
 
 An example of extension of the filter is available
