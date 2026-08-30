@@ -134,6 +134,19 @@ class LoggedFilterTest extends AbstractFilterTest {
         doReturn(type).when(resourceInfo).getResourceClass();
         Method resourceMethod = type.getDeclaredMethod(method);
         doReturn(resourceMethod).when(resourceInfo).getResourceMethod();
+
+        // The filter's injected requestContext field is this mock, distinct from the real
+        // ContainerRequestContext each test passes as a method argument (which is what a real
+        // JAX-RS container would give it as the very same object): back it with a real map so
+        // properties set through the field (e.g. by cleanupMdc's callers) can be read back
+        Map<String, Object> contextProperty = new HashMap<>();
+        lenient().doAnswer(invocation ->
+                contextProperty.get(invocation.getArgument(0, String.class))
+        ).when(containerRequestContext).getProperty(any());
+        lenient().doAnswer(invocation -> {
+            contextProperty.put(invocation.getArgument(0, String.class), invocation.getArgument(1, Object.class));
+            return null;
+        }).when(containerRequestContext).setProperty(any(), any());
     }
 
     @ParameterizedTest(name = "{1}")
@@ -194,15 +207,6 @@ class LoggedFilterTest extends AbstractFilterTest {
                 return null;
             }).when(responseInterceptorContext).setProperty(any(), any());
         }
-
-        Map<String, Object> contextProperty = new HashMap<>();
-        lenient().doAnswer(invocation ->
-                contextProperty.get(invocation.getArgument(0, String.class))
-        ).when(containerRequestContext).getProperty(any());
-        lenient().doAnswer(invocation -> {
-            contextProperty.put(invocation.getArgument(0, String.class), invocation.getArgument(1, Object.class));
-            return null;
-        }).when(containerRequestContext).setProperty(any(), any());
 
         // When
         loggingFilter.filter(requestContext);
@@ -324,6 +328,25 @@ class LoggedFilterTest extends AbstractFilterTest {
         assertNotNull(requestId);
         assertNotEquals("malicious", requestId);
         assertEquals("news", MDC.get("topic"));
+    }
+
+    @Test
+    @DisplayName("Check MDC entries created by mappings are removed once the response has been logged")
+    void checkMappingKeysCleanedUpAfterResponse() throws Exception {
+        setupTest(AnnotatedResource.class, "autoMappedQueryParameters");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
+                MockHttpRequest.create("GET", "example.company.com/service?topic=news"));
+        ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext);
+
+        // When
+        loggingFilter.filter(requestContext);
+        assertEquals("news", MDC.get("topic"));
+        loggingFilter.filter(requestContext, responseContext);
+
+        // Then
+        assertNull(MDC.get("topic"));
     }
 
     @Test
