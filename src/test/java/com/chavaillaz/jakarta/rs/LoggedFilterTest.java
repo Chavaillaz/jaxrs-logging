@@ -438,6 +438,30 @@ class LoggedFilterTest extends AbstractFilterTest {
         assertNull(MDC.get(getMdcField(RESPONSE_STATUS)));
     }
 
+    @Test
+    @DisplayName("Check completing the request twice only logs and cleans up MDC once")
+    void checkLogResponseIsIdempotent() throws Exception {
+        // Guards against a request being completed twice, in case a future JAX-RS edge case (exception
+        // mapping, @Suspended AsyncResponse, ...) ever causes both filter(request, response) and
+        // aroundWriteTo to consider themselves responsible for completing the same request
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext);
+        loggingFilter.filter(requestContext);
+        loggingFilter.filter(requestContext, responseContext);
+
+        // When
+        loggingFilter.logResponse("");
+
+        // Then
+        long processedCount = listAppender.getMessages().stream()
+                .filter(event -> event.getMessage().getFormattedMessage().contains("Processed"))
+                .count();
+        assertEquals(1, processedCount);
+    }
+
     void checkRequestLogging(LogType[] expectedRequestLogging, Class<? extends LoggedBodyFilter>[] expectedBodyFilters) {
         LogEvent logReceived = listAppender.findFirstMessage("Received");
 

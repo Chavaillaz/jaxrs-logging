@@ -132,6 +132,20 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected static final String MAPPING_KEYS_PROPERTY = LoggedFilter.class.getName() + ".mappingKeys";
 
     /**
+     * Name of the property stored in container context to guard {@link #logResponse(String)} against
+     * running more than once for the same request.
+     * <p>
+     * Depending on whether the response has an entity, the end of a request/response cycle can be
+     * reached from two different callbacks of this provider: {@link #filter(ContainerRequestContext, ContainerResponseContext)}
+     * (no entity) or {@link #aroundWriteTo(WriterInterceptorContext)} (entity present). Rather than
+     * relying on the conditions in those two callbacks to always stay perfectly mutually exclusive
+     * (which is what let the "Processed" log line and MDC cleanup silently disappear for entity-less
+     * responses in the past), completion is centralized in {@link #logResponse(String)} and made
+     * idempotent: whichever callback gets there first wins, and the other becomes a no-op.
+     */
+    protected static final String COMPLETED_PROPERTY = LoggedFilter.class.getName() + ".completed";
+
+    /**
      * Names of MDC fields to be used for all logged fields.
      * Allows changes from children classes.
      */
@@ -417,12 +431,23 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Logs the response sent by the server.
+     * Logs the response sent by the server and completes the request/response cycle for this provider
+     * (see {@link #COMPLETED_PROPERTY}).
+     * <p>
+     * This is the single completion point for a request: idempotent, so it is safe to call from more
+     * than one callback without risking a duplicate "Processed" line, and unconditional, so cleanup
+     * always happens even when nothing about body logging applies to this request.
+     * <p>
      * Note that the response status and duration must have been stored in MDC before calling this method.
      *
      * @param responseBody The response body to be logged
      */
     protected void logResponse(String responseBody) {
+        if (Boolean.TRUE.equals(requestContext.getProperty(COMPLETED_PROPERTY))) {
+            return;
+        }
+        requestContext.setProperty(COMPLETED_PROPERTY, Boolean.TRUE);
+
         try {
             if (getBodyLoggingRequest().contains(LogType.MDC)) {
                 putMdc(REQUEST_BODY, (String) requestContext.getProperty(REQUEST_BODY_PROPERTY));
