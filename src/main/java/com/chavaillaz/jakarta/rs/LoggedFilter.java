@@ -247,7 +247,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         return of(requestContext)
                 .map(ContainerRequestContext::getHeaders)
                 .map(headers -> headers.getFirst("X-Request-ID"))
-                .orElse(randomUUID().toString());
+                // orElseGet (not orElse) so a UUID, which is comparatively expensive to generate
+                // (backed by SecureRandom), is only computed when the header is actually absent
+                .orElseGet(() -> randomUUID().toString());
     }
 
     @Override
