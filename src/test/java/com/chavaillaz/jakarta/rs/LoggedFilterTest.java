@@ -298,6 +298,46 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check control characters are stripped from the request identifier to prevent log injection")
+    void checkLogInjectionSanitizationOnRequestId() throws Exception {
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
+                MockHttpRequest.create("GET", "example.company.com/service")
+                        .header("X-Request-ID", "abc\r\nFAKE LOG LINE injected"));
+
+        // When
+        loggingFilter.filter(requestContext);
+
+        // Then
+        String requestId = getMdc(REQUEST_ID);
+        assertNotNull(requestId);
+        assertFalse(requestId.contains("\r"));
+        assertFalse(requestId.contains("\n"));
+        assertTrue(requestId.contains("FAKE LOG LINE injected"));
+    }
+
+    @Test
+    @DisplayName("Check control characters are stripped from auto-mapped parameter values to prevent log injection")
+    void checkLogInjectionSanitizationOnMappedParameter() throws Exception {
+        setupTest(AnnotatedResource.class, "autoMappedQueryParameters");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
+                MockHttpRequest.create("GET", "example.company.com/service?topic=news%0D%0AFAKE"));
+
+        // When
+        loggingFilter.filter(requestContext);
+
+        // Then
+        String topic = MDC.get("topic");
+        assertNotNull(topic);
+        assertFalse(topic.contains("\r"));
+        assertFalse(topic.contains("\n"));
+    }
+
+    @Test
     @DisplayName("Check MDC is cleaned up even if writing the response body fails")
     void checkMdcCleanupOnWriteFailure() throws Exception {
         setupTest(AnnotatedResource.class, "bodyAsLog");

@@ -43,6 +43,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
@@ -94,6 +95,13 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected static final Logger log = LoggerFactory.getLogger(LoggedFilter.class);
 
     /**
+     * Pattern matching control characters (e.g. CR, LF) that must be removed from client-controlled
+     * input (headers, query or path parameters) before it is stored in MDC, to prevent an attacker
+     * from forging fake log entries or corrupting the log line (log injection).
+     */
+    private static final Pattern CONTROL_CHARACTERS = Pattern.compile("\\p{Cntrl}");
+
+    /**
      * Name of the property stored in container context to compute the duration time.
      */
     protected static final String REQUEST_TIME_PROPERTY = "request-time";
@@ -140,6 +148,21 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
+     * Removes control characters (e.g. CR, LF) from the given value.
+     * <p>
+     * Meant to be applied to values sourced from client-controlled input (headers, query or path
+     * parameters) before storing them in MDC, to prevent log injection (an attacker forging fake log
+     * entries by including line breaks in a header, query or path parameter value). Not applied to
+     * logged request/response bodies, as those are expected to legitimately contain line breaks.
+     *
+     * @param value The value to sanitize
+     * @return The sanitized value, or {@code null} if the given value was {@code null}
+     */
+    protected static String sanitize(String value) {
+        return value == null ? null : CONTROL_CHARACTERS.matcher(value).replaceAll(" ");
+    }
+
+    /**
      * Maps the given parameters (path, query or headers) to MDC entries using the given mapping.
      *
      * @param parameters The parameters to be mapped
@@ -154,9 +177,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                     .filter(entry -> entry.getValue() != null && !entry.getValue().isEmpty())
                     .forEach(entry -> {
                         // Client-controlled parameter/header names must not be allowed to overwrite reserved MDC fields
-                        String mdcKey = mapping.mdcPrefix() + entry.getKey();
+                        String mdcKey = mapping.mdcPrefix() + sanitize(entry.getKey());
                         if (!mdcFields.values().contains(mdcKey)) {
-                            MDC.put(mdcKey, entry.getValue().getFirst());
+                            MDC.put(mdcKey, sanitize(entry.getValue().getFirst()));
                         }
                     });
         } else if (paramNames.stream().noneMatch(exclusion::contains)) {
@@ -170,7 +193,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                         .filter(list -> !list.isEmpty())
                         .map(List::getFirst)
                         .findFirst()
-                        .ifPresent(value -> MDC.put(mapping.mdcPrefix() + mapping.mdcKey(), value));
+                        .ifPresent(value -> MDC.put(mapping.mdcPrefix() + mapping.mdcKey(), sanitize(value)));
             }
         }
     }
@@ -202,16 +225,16 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     @Override
     public void filter(ContainerRequestContext requestContext) {
         requestContext.setProperty(REQUEST_TIME_PROPERTY, nanoTime());
-        putMdc(REQUEST_ID, getRequestId(requestContext));
-        putMdc(REQUEST_URI, requestContext.getUriInfo().getPath());
-        putMdc(REQUEST_PARAMETERS, requestContext.getUriInfo()
+        putMdc(REQUEST_ID, sanitize(getRequestId(requestContext)));
+        putMdc(REQUEST_URI, sanitize(requestContext.getUriInfo().getPath()));
+        putMdc(REQUEST_PARAMETERS, sanitize(requestContext.getUriInfo()
                 .getQueryParameters()
                 .entrySet()
                 .stream()
                 .sorted(comparingByKey())
                 .map(entry -> entry.getKey() + "=" + join(",", entry.getValue()))
-                .collect(joining("&")));
-        putMdc(REQUEST_METHOD, requestContext.getMethod());
+                .collect(joining("&"))));
+        putMdc(REQUEST_METHOD, sanitize(requestContext.getMethod()));
         Optional.ofNullable(resourceInfo.getResourceClass())
                 .map(Class::getSimpleName)
                 .ifPresent(value -> putMdc(RESOURCE_CLASS, value));
