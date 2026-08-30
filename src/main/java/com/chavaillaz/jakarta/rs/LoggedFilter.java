@@ -51,7 +51,9 @@ import java.util.stream.Stream;
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
 import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
 import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
+import jakarta.annotation.Priority;
 import jakarta.ws.rs.ConstrainedTo;
+import jakarta.ws.rs.Priorities;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
@@ -94,10 +96,19 @@ import org.slf4j.MDC;
  * This assumes a bounded, stable set of resource methods and {@link LoggedBodyFilter} classes, as is the
  * case for a typical application with a fixed set of JAX-RS endpoints; it is not suited to applications
  * that generate new resource classes at runtime (e.g. per-tenant code generation).
+ * <p>
+ * Declares a priority lower than the JAX-RS default ({@link Priorities#USER}) so this provider runs as
+ * early as possible among request filters/interceptors and, symmetrically, as late as possible among
+ * response filters/interceptors. Without it, ordering relative to other unprioritized providers is left
+ * to the container, which can leave the MDC context this provider establishes (request identifier,
+ * method, URI, ...) unavailable to another filter/interceptor that runs before it, or have another
+ * provider observe a request/response body already altered by this one's stream wrapping (or vice versa).
+ * A subclass can override this by declaring its own {@link Priority}.
  */
 @Logged
 @Provider
 @ConstrainedTo(SERVER)
+@Priority(Priorities.HEADER_DECORATOR)
 public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFilter, ReaderInterceptor, WriterInterceptor {
 
     protected static final Logger log = LoggerFactory.getLogger(LoggedFilter.class);
