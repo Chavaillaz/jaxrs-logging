@@ -249,6 +249,36 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check request body is still logged when reading the entity fails")
+    void checkRequestBodyLoggedOnReadFailure() throws Exception {
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ReaderInterceptorContext requestInterceptorContext = mock(ReaderInterceptorContext.class);
+        AtomicReference<InputStream> inputStream = new AtomicReference<>(requestContext.getEntityStream());
+        doAnswer(invocation -> inputStream.get()).when(requestInterceptorContext).getInputStream();
+        doAnswer(invocation -> {
+            inputStream.set(invocation.getArgument(0, InputStream.class));
+            return null;
+        }).when(requestInterceptorContext).setInputStream(any());
+        doAnswer(invocation -> {
+            inputStream.get().readAllBytes();
+            throw new IOException("Malformed payload");
+        }).when(requestInterceptorContext).proceed();
+
+        loggingFilter.filter(requestContext);
+
+        // When
+        assertThrows(IOException.class, () -> loggingFilter.aroundReadFrom(requestInterceptorContext));
+
+        // Then
+        LogEvent logReceived = listAppender.findFirstMessage("Received");
+        assertNotNull(logReceived);
+        assertTrue(logReceived.getMessage().getFormattedMessage().contains(INPUT));
+    }
+
+    @Test
     @DisplayName("Check automatic MDC mapping cannot override reserved fields")
     void checkAutoMappingReservedFieldProtection() throws Exception {
         setupTest(AnnotatedResource.class, "autoMappedQueryParameters");

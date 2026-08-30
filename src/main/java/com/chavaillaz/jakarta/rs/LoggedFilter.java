@@ -236,6 +236,14 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         }
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Note that most JAX-RS implementations only invoke this interceptor when the resource method
+     * actually reads the request entity (for example, when it declares an entity parameter). If a
+     * request has a body but no resource method parameter consumes it, this method is never called,
+     * so the request body will not be logged, even if activated in the annotation.
+     */
     @Override
     public Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
         Object entity;
@@ -245,13 +253,18 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                     context.getInputStream(),
                     new BoundedOutputStream(outputStream, getBodyLimitRequest()));
             context.setInputStream(teeInputStream);
-            entity = context.proceed();
-            String body = getBodyFiltered(outputStream, getBodyFiltersRequest());
-            if (getBodyLoggingRequest().contains(LogType.LOG) && isNotBlank(body)) {
-                logRequest(body);
-            }
-            if (getBodyLoggingRequest().contains(LogType.MDC)) {
-                requestContext.setProperty(REQUEST_BODY_PROPERTY, body);
+            try {
+                entity = context.proceed();
+            } finally {
+                // Logs whatever was captured even if reading the entity failed (e.g. malformed payload),
+                // so a deserialization error does not leave the request entirely unlogged
+                String body = getBodyFiltered(outputStream, getBodyFiltersRequest());
+                if (getBodyLoggingRequest().contains(LogType.LOG) && isNotBlank(body)) {
+                    logRequest(body);
+                }
+                if (getBodyLoggingRequest().contains(LogType.MDC)) {
+                    requestContext.setProperty(REQUEST_BODY_PROPERTY, body);
+                }
             }
         } else {
             entity = context.proceed();
