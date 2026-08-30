@@ -5,6 +5,7 @@ import static com.chavaillaz.jakarta.rs.UserLoggedFilter.USER_AGENT;
 import static com.chavaillaz.jakarta.rs.UserLoggedFilter.USER_ID;
 import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN_TYPE;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.mockito.Mockito.doReturn;
 
 import java.lang.reflect.Method;
@@ -56,6 +57,22 @@ class UserLoggedFilterTest extends AbstractFilterTest {
         assertEquals("CaseId", MDC.get(REQUEST_IDENTIFIER));
         assertEquals("Doe", MDC.get(USER_ID));
         assertEquals("Opera", MDC.get(USER_AGENT));
+    }
+
+    @Test
+    @DisplayName("Check filter falls back to a random request identifier when the custom header is absent")
+    void checkFilterFallsBackToRandomRequestId() throws URISyntaxException {
+        // Given
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
+                MockHttpRequest.create("POST", "example.company.com/service")
+                        .content("Hello, world!".getBytes())
+                        .contentType(TEXT_PLAIN_TYPE));
+
+        // When
+        requestLoggingFilter.filter(requestContext);
+
+        // Then
+        assertNotNull(MDC.get(REQUEST_IDENTIFIER));
     }
 
     private PreMatchContainerRequestContext getRequestContext() throws URISyntaxException {

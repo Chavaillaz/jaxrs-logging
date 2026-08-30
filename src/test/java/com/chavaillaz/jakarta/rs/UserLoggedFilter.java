@@ -2,6 +2,8 @@ package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.getAnnotation;
+import static java.util.Objects.requireNonNullElseGet;
+import static java.util.UUID.randomUUID;
 
 import jakarta.inject.Inject;
 import jakarta.ws.rs.container.ContainerRequestContext;
@@ -29,8 +31,9 @@ public class UserLoggedFilter extends LoggedFilter {
 
     @Override
     protected String getRequestId(ContainerRequestContext requestContext) {
-        // Take the request identifier from custom header received
-        return requestContext.getHeaderString("X-Case-ID");
+        // Take the request identifier from custom header received, falling back to a random one
+        // (like the base implementation) when the header is absent
+        return requireNonNullElseGet(requestContext.getHeaderString("X-Case-ID"), () -> randomUUID().toString());
     }
 
     @Override
