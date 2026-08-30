@@ -208,6 +208,30 @@ the whole request is known to be complete, so an MDC entry can be added and remo
 available only after (or never, relative to) the point the call is considered done, so there is nothing for
 an MDC entry holding the body to be reliably paired with.
 
+## MDC propagation across threads
+
+MDC is backed by a thread-local: entries set for a request (by `@Logged` or by application code) are only
+visible on the thread that set them, and are lost as soon as the work continues on another thread - a task
+submitted to an `ExecutorService`, a manually started `Thread`, a `@Suspended AsyncResponse` resumed from a
+different worker, or a reactive resource method.
+
+[MdcPropagation](src/main/java/com/chavaillaz/jakarta/rs/MdcPropagation.java) copies the calling thread's
+MDC context map onto the thread that runs a wrapped task, and restores that thread's own previous context
+map once the task completes:
+
+```java
+executorService.submit(MdcPropagation.wrap(() -> {
+    // Runs with the submitting thread's MDC context map
+}));
+```
+
+A whole `ExecutorService` can be wrapped instead, so every task submitted to it (through `execute`, `submit`
+or `invokeAll`/`invokeAny`) propagates context automatically:
+
+```java
+ExecutorService executorService = MdcPropagation.wrap(Executors.newFixedThreadPool(10));
+```
+
 ## Extension
 
 An example of extension of the filter is available
