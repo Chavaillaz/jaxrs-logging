@@ -34,16 +34,24 @@ public class LoggedUtils {
      */
     public static Set<LoggedMapping> getMergedMappings(ResourceInfo resourceInfo) {
         Set<LoggedMapping> mergedMappings = new HashSet<>();
+        Class<?> resourceClass = resourceInfo.getResourceClass();
+        Method resourceMethod = resourceInfo.getResourceMethod();
 
         // Priority: Method annotations > Interfaces annotations > Class annotation
-        Optional.ofNullable(resourceInfo.getResourceMethod().getAnnotation(LoggedMappings.class))
-                .ifPresent(mappings -> mergeMappings(mergedMappings, mappings.value()));
-        getAnnotationsInterfaces(resourceInfo.getResourceClass(), resourceInfo.getResourceMethod()).stream()
-                .filter(LoggedMapping.class::isInstance)
-                .map(LoggedMapping.class::cast)
-                .forEach(mappings -> mergeMappings(mergedMappings, mappings));
-        Optional.ofNullable(resourceInfo.getResourceClass().getAnnotation(LoggedMappings.class))
-                .ifPresent(mappings -> mergeMappings(mergedMappings, mappings.value()));
+        // Uses getAnnotationsByType() throughout, as it is the only lookup that correctly finds a
+        // @LoggedMapping regardless of whether it is declared once or repeated (java.lang.annotation.Repeatable
+        // only synthesizes the @LoggedMappings container when 2+ instances are present, so a single
+        // annotation would be missed by a plain getAnnotation(LoggedMappings.class) lookup).
+        mergeMappings(mergedMappings, resourceMethod.getAnnotationsByType(LoggedMapping.class));
+        for (Class<?> interfaceClass : getAllInterfaces(resourceClass)) {
+            for (Method interfaceMethod : interfaceClass.getMethods()) {
+                if (areMethodsEqual(interfaceMethod, resourceMethod)) {
+                    mergeMappings(mergedMappings, interfaceMethod.getAnnotationsByType(LoggedMapping.class));
+                }
+            }
+            mergeMappings(mergedMappings, interfaceClass.getAnnotationsByType(LoggedMapping.class));
+        }
+        mergeMappings(mergedMappings, resourceClass.getAnnotationsByType(LoggedMapping.class));
 
         return mergedMappings;
     }
