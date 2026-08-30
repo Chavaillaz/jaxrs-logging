@@ -207,6 +207,44 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check body filters are applied in the order they were declared on the builder")
+    void checkBodyFiltersAppliedInDeclarationOrder() throws Exception {
+        // Given
+        filter.filter(requestContext);
+        LoggedClientFilter bodyLoggingFilter = LoggedClientFilter.builder()
+                .logRequestBody()
+                .bodyFilters(AppendA.class, AppendB.class)
+                .build();
+        WriterInterceptorContext context = writerContext(properties, "body");
+
+        // When
+        bodyLoggingFilter.aroundWriteTo(context);
+
+        // Then
+        LogEvent event = listAppender.findFirstMessage("Request body");
+        assertNotNull(event);
+        assertTrue(event.getMessage().getFormattedMessage().contains("bodyAB"));
+    }
+
+    public static class AppendA implements LoggedBodyFilter {
+
+        @Override
+        public void filter(StringBuilder body) {
+            body.append("A");
+        }
+
+    }
+
+    public static class AppendB implements LoggedBodyFilter {
+
+        @Override
+        public void filter(StringBuilder body) {
+            body.append("B");
+        }
+
+    }
+
+    @Test
     @DisplayName("Check whatever was written to the request body is still logged when writing it then fails")
     void checkPartialRequestBodyLoggedOnWriteFailure() throws Exception {
         // Given

@@ -5,13 +5,13 @@ import static jakarta.ws.rs.RuntimeType.CLIENT;
 import static java.lang.System.nanoTime;
 import static java.util.Objects.requireNonNullElseGet;
 import static java.util.UUID.randomUUID;
-import static java.util.stream.Collectors.toSet;
+import static java.util.stream.Collectors.toCollection;
 import static org.apache.commons.lang3.StringUtils.LF;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.Optional;
 import java.util.Set;
 
@@ -135,7 +135,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         private boolean logResponseBody = false;
         private int requestBodyLimit = -1;
         private int responseBodyLimit = -1;
-        private final Set<Class<? extends LoggedBodyFilter>> bodyFilterClasses = new HashSet<>();
+        private final Set<Class<? extends LoggedBodyFilter>> bodyFilterClasses = new LinkedHashSet<>();
 
         /**
          * Sets the MDC key read to obtain the identifier propagated as {@value LoggedFilter#REQUEST_ID_HEADER}
@@ -207,7 +207,9 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         }
 
         /**
-         * Adds filters to be applied (both directions) before logging a body.
+         * Adds filters to be applied (both directions) before logging a body, in the given order (and in
+         * declaration order across multiple calls), so filters that depend on one another's output run
+         * predictably.
          *
          * @param filters The filter classes to add
          * @return This builder
@@ -346,12 +348,14 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     /**
      * Gets the filter instances configured for this client filter.
      *
-     * @return The set of filter instances to be applied
+     * @return The set of filter instances to be applied, iterating in the order the classes were declared
+     * through {@link Builder#bodyFilters(Class[])}, so filters that depend on one another's output run
+     * predictably
      */
     protected Set<LoggedBodyFilter> getBodyFilters() {
         return bodyFilterClasses.stream()
                 .map(bodyFilterFactory::getInstance)
-                .collect(toSet());
+                .collect(toCollection(LinkedHashSet::new));
     }
 
 }

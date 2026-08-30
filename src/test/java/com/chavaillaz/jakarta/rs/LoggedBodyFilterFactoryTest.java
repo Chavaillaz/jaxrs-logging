@@ -42,6 +42,42 @@ class LoggedBodyFilterFactoryTest {
     }
 
     @Test
+    @DisplayName("Check getInstances preserves the declaration order of filter classes")
+    void checkInstancesPreserveDeclarationOrder() {
+        // When: resolved repeatedly, ruling out an order that only happens to match declaration order by
+        // chance (e.g. a HashSet whose bucket layout is coincidentally insertion-ordered for these two
+        // particular classes)
+        for (int i = 0; i < 20; i++) {
+            Stream<Class<? extends LoggedBodyFilter>[]> filterTypes = Stream.of(
+                    new Class[]{AppendA.class}, new Class[]{AppendB.class});
+            Set<LoggedBodyFilter> instances = factory.getInstances(filterTypes);
+            StringBuilder body = new StringBuilder();
+            instances.forEach(instance -> instance.filter(body));
+
+            // Then
+            assertEquals("AB", body.toString());
+        }
+    }
+
+    public static class AppendA implements LoggedBodyFilter {
+
+        @Override
+        public void filter(StringBuilder body) {
+            body.append("A");
+        }
+
+    }
+
+    public static class AppendB implements LoggedBodyFilter {
+
+        @Override
+        public void filter(StringBuilder body) {
+            body.append("B");
+        }
+
+    }
+
+    @Test
     @DisplayName("Check a body filter failing to instantiate is cached as failed instead of being retried every call")
     void checkFailedInstantiationIsCachedNotRetried() {
         // Given: a filter class with no no-arg constructor, so instantiation always throws

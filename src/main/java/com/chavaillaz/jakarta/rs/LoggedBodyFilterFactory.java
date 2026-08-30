@@ -1,7 +1,8 @@
 package com.chavaillaz.jakarta.rs;
 
-import static java.util.stream.Collectors.toSet;
+import static java.util.stream.Collectors.toCollection;
 
+import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -49,13 +50,14 @@ public class LoggedBodyFilterFactory {
      *
      * @param filterTypes The stream of filter class arrays to instantiate (one array per resolved
      *                    annotation, as {@link LoggedBody#filters()} is itself an array)
-     * @return The set of filter instances to be applied
+     * @return The set of filter instances to be applied, iterating in the order the classes were declared
+     * in {@link LoggedBody#filters()}, so filters that depend on one another's output run predictably
      */
     public Set<LoggedBodyFilter> getInstances(Stream<Class<? extends LoggedBodyFilter>[]> filterTypes) {
         return filterTypes
                 .flatMap(Stream::of)
                 .map(this::getInstance)
-                .collect(toSet());
+                .collect(toCollection(LinkedHashSet::new));
     }
 
     /**

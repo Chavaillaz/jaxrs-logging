@@ -46,6 +46,9 @@ public @interface LoggedBody {
 
     /**
      * Indicates which filters must be applied before logging the request or response body.
+     * <p>
+     * Applied in the order declared here, so filters that depend on one another's output (for example one
+     * masking a value another then truncates) run predictably.
      *
      * @return The list of filters to be applied
      */
