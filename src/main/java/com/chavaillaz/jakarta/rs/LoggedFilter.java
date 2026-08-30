@@ -350,8 +350,13 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         putMdc(DURATION, valueOf(duration));
         putMdc(RESPONSE_STATUS, valueOf(responseContext.getStatus()));
 
-        // Logs directly from filter in case no response body is present as aroundWriteTo will not be called
-        if (!getBodyLoggingResponse().isEmpty() && !responseContext.hasEntity()) {
+        // Logs directly from filter in case no response body is present, as aroundWriteTo will not be
+        // called by the container in that case (e.g. 204 No Content, HEAD requests). This must happen
+        // unconditionally (not just when body logging is configured), as this is also where the MDC
+        // context for the request is cleaned up; skipping it here would silently drop the "Processed"
+        // log line and leak MDC fields onto the thread (which is normally pooled and reused) for as
+        // long as it takes another request handled by that same thread to overwrite them.
+        if (!responseContext.hasEntity()) {
             logResponse(EMPTY);
         }
     }

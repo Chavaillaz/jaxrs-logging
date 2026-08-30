@@ -392,6 +392,29 @@ class LoggedFilterTest extends AbstractFilterTest {
         assertNotNull(listAppender.findFirstMessage("Processed"));
     }
 
+    @Test
+    @DisplayName("Check response is logged and MDC cleaned up on an empty response even without body logging configured")
+    void checkResponseLoggedAndMdcCleanedUpWithoutBodyLoggingOnEmptyResponse() throws Exception {
+        // As with no response entity (e.g. 204 No Content, HEAD) the container never calls
+        // aroundWriteTo, filter(request, response) must be the one logging and cleaning up MDC
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext);
+
+        // When
+        loggingFilter.filter(requestContext);
+        loggingFilter.filter(requestContext, responseContext);
+
+        // Then
+        assertNotNull(listAppender.findFirstMessage("Processed"));
+        assertNull(MDC.get(getMdcField(REQUEST_ID)));
+        assertNull(MDC.get(getMdcField(REQUEST_URI)));
+        assertNull(MDC.get(getMdcField(DURATION)));
+        assertNull(MDC.get(getMdcField(RESPONSE_STATUS)));
+    }
+
     void checkRequestLogging(LogType[] expectedRequestLogging, Class<? extends LoggedBodyFilter>[] expectedBodyFilters) {
         LogEvent logReceived = listAppender.findFirstMessage("Received");
 
@@ -458,6 +481,15 @@ class LoggedFilterTest extends AbstractFilterTest {
         MockHttpResponse httpResponse = new MockHttpResponse();
         httpResponse.setStatus(responseStatus);
         BuiltResponse builtResponse = new BuiltResponse(responseStatus, headers, OUTPUT, null);
+        return new ContainerResponseContextImpl(request.getHttpRequest(), httpResponse, builtResponse);
+    }
+
+    ContainerResponseContextImpl getEmptyResponseContext(PreMatchContainerRequestContext request) {
+        int responseStatus = 204;
+        Headers<Object> headers = new Headers<>();
+        MockHttpResponse httpResponse = new MockHttpResponse();
+        httpResponse.setStatus(responseStatus);
+        BuiltResponse builtResponse = new BuiltResponse(responseStatus, headers, null, null);
         return new ContainerResponseContextImpl(request.getHttpRequest(), httpResponse, builtResponse);
     }
 
