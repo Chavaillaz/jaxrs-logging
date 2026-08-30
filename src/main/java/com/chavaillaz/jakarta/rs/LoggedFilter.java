@@ -108,8 +108,12 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     /**
      * Name of the property stored in container context to retrieve the request body after its processing.
+     * <p>
+     * Intentionally distinct from {@link LoggedField#REQUEST_BODY}'s default MDC field name
+     * ({@code request-body}), as the two serve different purposes: this is an internal request-scoped
+     * context property, while the other is a user-facing, renamable MDC key.
      */
-    protected static final String REQUEST_BODY_PROPERTY = "request-body";
+    protected static final String REQUEST_BODY_PROPERTY = LoggedFilter.class.getName() + ".requestBody";
 
     /**
      * Names of MDC fields to be used for all logged fields.
