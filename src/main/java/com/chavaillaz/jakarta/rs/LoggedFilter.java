@@ -639,24 +639,37 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         return filtersType
                 .flatMap(Stream::of)
                 .map(this::getBodyFiltersInstance)
-                .filter(Objects::nonNull)
                 .collect(toSet());
     }
+
+    /**
+     * No-op filter cached for a body filter class that failed to be instantiated, so that failure is
+     * remembered instead of being retried (and re-logged) on every single request to the resource
+     * method referencing it.
+     * <p>
+     * A plain {@code null} cannot be used for that purpose: {@link ConcurrentHashMap#computeIfAbsent}
+     * does not record a mapping when the function returns {@code null} (see its Javadoc), so returning
+     * {@code null} on failure previously caused the reflective instantiation (and the {@code log.error}
+     * call) to be repeated on every request instead of once.
+     */
+    protected static final LoggedBodyFilter FAILED_BODY_FILTER = body -> {
+        // No-op: the class could not be instantiated, see the error logged once at that time
+    };
 
     /**
      * Creates a new instance of the given body filter type.
      *
      * @param type The body filter class to be instantiated
      * @param <T>  The body filter type
-     * @return The instance created or {@code null} if it failed
+     * @return The instance created, or {@link #FAILED_BODY_FILTER} if it failed
      */
     protected <T extends LoggedBodyFilter> LoggedBodyFilter getBodyFiltersInstance(Class<T> type) {
         return filtersCache.computeIfAbsent(type, ignored -> {
             try {
                 return type.getConstructor().newInstance();
             } catch (Exception e) {
-                log.error("Unable to instantiate body filter {}", type, e);
-                return null;
+                log.error("Unable to instantiate body filter {}, it will be skipped for every subsequent request", type, e);
+                return FAILED_BODY_FILTER;
             }
         });
     }
