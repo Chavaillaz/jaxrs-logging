@@ -3,8 +3,8 @@ package com.chavaillaz.jakarta.rs;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
+import java.util.List;
 import java.util.Set;
-import java.util.stream.Stream;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -27,12 +27,11 @@ class LoggedBodyFilterFactoryTest {
     }
 
     @Test
-    @DisplayName("Check getInstances flattens filter classes declared over multiple annotations")
-    void checkInstancesFlattensMultipleAnnotations() {
+    @DisplayName("Check getInstances deduplicates a filter class referenced more than once")
+    void checkInstancesDeduplicateRepeatedClasses() {
         // Given
-        Stream<Class<? extends LoggedBodyFilter>[]> filterTypes = Stream.of(
-                new Class[]{SensitiveBodyFilter.class},
-                new Class[]{SensitiveBodyFilter.class});
+        @SuppressWarnings("unchecked")
+        Class<? extends LoggedBodyFilter>[] filterTypes = new Class[]{SensitiveBodyFilter.class, SensitiveBodyFilter.class};
 
         // When
         Set<LoggedBodyFilter> instances = factory.getInstances(filterTypes);
@@ -48,9 +47,7 @@ class LoggedBodyFilterFactoryTest {
         // chance (e.g. a HashSet whose bucket layout is coincidentally insertion-ordered for these two
         // particular classes)
         for (int i = 0; i < 20; i++) {
-            Stream<Class<? extends LoggedBodyFilter>[]> filterTypes = Stream.of(
-                    new Class[]{AppendA.class}, new Class[]{AppendB.class});
-            Set<LoggedBodyFilter> instances = factory.getInstances(filterTypes);
+            Set<LoggedBodyFilter> instances = factory.getInstances(List.of(AppendA.class, AppendB.class));
             StringBuilder body = new StringBuilder();
             instances.forEach(instance -> instance.filter(body));
 

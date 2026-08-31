@@ -2,6 +2,7 @@ package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.REQUEST;
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.RESPONSE;
+import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.LOG;
 import static com.chavaillaz.jakarta.rs.LoggedField.DURATION;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
@@ -23,7 +24,6 @@ import static java.util.Objects.requireNonNullElse;
 import static java.util.Optional.of;
 import static java.util.UUID.randomUUID;
 import static java.util.stream.Collectors.joining;
-import static java.util.stream.Collectors.toSet;
 import static org.apache.commons.lang3.StringUtils.EMPTY;
 import static org.apache.commons.lang3.StringUtils.LF;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
@@ -39,9 +39,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
-import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
 import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
 import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
 import jakarta.annotation.Priority;
@@ -85,10 +83,10 @@ import org.slf4j.MDC;
  * This provider can be activated using the annotation {@link Logged} on resources.
  * <p>
  * Resolved annotation configurations are delegated to {@link #resolver}, and body filter instances to
- * {@link #bodyFilterFactory}: both cache their results per resource method / filter class and never
- * evict them. This assumes a bounded, stable set of resource methods and {@link LoggedBodyFilter}
- * classes, as is the case for a typical application with a fixed set of JAX-RS endpoints; it is not
- * suited to applications that generate new resource classes at runtime (e.g. per-tenant code generation).
+ * {@link #bodyFilterFactory}: both cache their results per resource / filter class and never evict them.
+ * This assumes a bounded, stable set of resource methods and {@link LoggedBodyFilter} classes, as is the
+ * case for a typical application with a fixed set of JAX-RS endpoints; it is not suited to applications
+ * that generate new resource classes at runtime (e.g. per-tenant code generation).
  * <p>
  * Declares a priority lower than the JAX-RS default ({@link Priorities#USER}) so this provider runs as
  * early as possible among request filters/interceptors and, symmetrically, as late as possible among
@@ -117,6 +115,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * Pattern matching control characters (e.g. CR, LF) that must be removed from client-controlled
      * input (headers, query or path parameters) before it is stored in MDC, to prevent an attacker
      * from forging fake log entries or corrupting the log line (log injection).
+     * <p>
+     * Includes the Unicode line separators a plain {@code \p{Cntrl}} (ASCII-only) misses, as several
+     * log viewers and JavaScript-based log pipelines treat {@code U+2028}/{@code U+2029} as line breaks.
      */
     private static final Pattern CONTROL_CHARACTERS = Pattern.compile("\\p{Cntrl}");
 
@@ -194,15 +195,15 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected final Map<String, String> mdcFields = getDefaultFields();
 
     /**
-     * Resolves which {@link LoggedMapping} and {@link LoggedBody} configuration applies to the resource
-     * method matched by the current request, caching results per resource method.
-     */
-    protected final LoggedResolver resolver = new LoggedResolver();
-
-    /**
      * Instantiates and caches {@link LoggedBodyFilter} instances by class.
      */
     protected final LoggedBodyFilterFactory bodyFilterFactory = new LoggedBodyFilterFactory();
+
+    /**
+     * Resolves which {@link LoggedMapping} and {@link LoggedBody} configuration applies to the resource
+     * method matched by the current request, caching results per resource.
+     */
+    protected final LoggedResolver resolver = new LoggedResolver(bodyFilterFactory);
 
     /**
      * Provides access to the resource class and method matched by the current request.
@@ -292,7 +293,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                     .forEach(entry -> {
                         // Client-controlled parameter/header names must not be allowed to overwrite reserved MDC fields
                         String mdcKey = mapping.mdcPrefix() + sanitize(entry.getKey());
-                        if (!mdcFields.values().contains(mdcKey)) {
+                        if (!mdcFields.containsValue(mdcKey)) {
                             putMdc(mdcKey, sanitize(entry.getValue().getFirst()));
                         }
                     });
@@ -364,13 +365,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         requestContext.setProperty(REQUEST_TIME_PROPERTY, nanoTime());
         putMdc(REQUEST_ID, sanitize(getRequestId(requestContext)));
         putMdc(REQUEST_URI, sanitize(requestContext.getUriInfo().getPath()));
-        putMdc(REQUEST_PARAMETERS, sanitize(requestContext.getUriInfo()
-                .getQueryParameters()
-                .entrySet()
-                .stream()
-                .sorted(comparingByKey())
-                .map(entry -> entry.getKey() + "=" + join(",", entry.getValue()))
-                .collect(joining("&"))));
+        putMdc(REQUEST_PARAMETERS, sanitize(getQueryParameters(requestContext)));
         putMdc(REQUEST_METHOD, sanitize(requestContext.getMethod()));
         Optional.ofNullable(resourceInfo.getResourceClass())
                 .map(Class::getSimpleName)
@@ -379,21 +374,58 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 .map(Method::getName)
                 .ifPresent(value -> putMdc(RESOURCE_METHOD, value));
 
-        Map<MappingType, Set<String>> exclusion = new EnumMap<>(MappingType.class);
-        getCachedMergedMappings().stream()
-                .sorted(comparing(LoggedMapping::auto) // Order to have auto mappings at the end to avoid overriding manual mappings
-                        .thenComparing(LoggedMapping::mdcKey)) // Order to have empty MDC key at the beginning for exclusions
-                .forEach(mapping ->
-                        putMdcFromParameters(switch (mapping.type()) {
-                            case PATH -> requestContext.getUriInfo().getPathParameters();
-                            case QUERY -> requestContext.getUriInfo().getQueryParameters();
-                            case HEADER -> requestContext.getHeaders();
-                        }, mapping, exclusion.computeIfAbsent(mapping.type(), type -> new HashSet<>())));
+        Set<LoggedMapping> mappings = getCachedMergedMappings();
+        if (!mappings.isEmpty()) {
+            Map<MappingType, Set<String>> exclusion = new EnumMap<>(MappingType.class);
+            mappings.stream()
+                    .sorted(comparing(LoggedMapping::auto) // Order to have auto mappings at the end to avoid overriding manual mappings
+                            .thenComparing(LoggedMapping::mdcKey)) // Order to have empty MDC key at the beginning for exclusions
+                    .forEach(mapping ->
+                            putMdcFromParameters(switch (mapping.type()) {
+                                case PATH -> requestContext.getUriInfo().getPathParameters();
+                                case QUERY -> requestContext.getUriInfo().getQueryParameters();
+                                case HEADER -> requestContext.getHeaders();
+                            }, mapping, exclusion.computeIfAbsent(mapping.type(), type -> new HashSet<>())));
+        }
 
         // Logs directly from filter in case no request body is expected as aroundReadFrom will not be called
-        if (getBodyLoggingRequest().contains(LogType.LOG) && !(requestContext.hasEntity() && requestContext.getLength() != 0)) {
+        if (getBodyConfiguration(REQUEST).logs(LOG) && !(requestContext.hasEntity() && requestContext.getLength() != 0)) {
             logRequest(EMPTY);
         }
+    }
+
+    /**
+     * Renders the query parameters of the given request as a single, deterministically ordered string.
+     *
+     * @param requestContext The context of the request received
+     * @return The rendered query parameters, empty if the request has none
+     */
+    protected String getQueryParameters(ContainerRequestContext requestContext) {
+        Map<String, List<String>> parameters = requestContext.getUriInfo().getQueryParameters();
+        if (parameters.isEmpty()) {
+            // Short-circuits the sorted stream below for the (very common) case of a request without
+            // any query parameter, this method being on the hot path of every single request
+            return EMPTY;
+        }
+        return parameters.entrySet()
+                .stream()
+                .sorted(comparingByKey())
+                .map(entry -> entry.getKey() + "=" + join(",", entry.getValue()))
+                .collect(joining("&"));
+    }
+
+    /**
+     * Indicates whether anything this provider writes would actually reach an appender.
+     * <p>
+     * Used to skip body capture entirely when it would be thrown away: buffering (and filtering, and
+     * decoding) every request and response body of an application whose logger is configured above
+     * {@code INFO} is pure overhead, and is exactly the kind of cost that is invisible until it shows
+     * up as allocation pressure in production.
+     *
+     * @return {@code true} if the log lines written by this provider are enabled, {@code false} otherwise
+     */
+    protected boolean isLoggingEnabled() {
+        return log.isInfoEnabled();
     }
 
     /**
@@ -408,29 +440,26 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      */
     @Override
     public Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
-        Object entity;
-        if (!getBodyLoggingRequest().isEmpty()) {
-            LoggedBodyCapture capture = createBodyCapture(getBodyLimitRequest());
-            TeeInputStream teeInputStream = new TeeInputStream(context.getInputStream(), capture.sink());
-            context.setInputStream(teeInputStream);
-            try {
-                entity = context.proceed();
-            } finally {
-                // Logs whatever was captured even if reading the entity failed (e.g. malformed payload),
-                // so a deserialization error does not leave the request entirely unlogged
-                String body = capture.content(getBodyFiltersRequest(), context.getMediaType());
-                if (getBodyLoggingRequest().contains(LogType.LOG) && isNotBlank(body)) {
-                    logRequest(body);
-                }
-                if (getBodyLoggingRequest().contains(LogType.MDC)) {
-                    requestContext.setProperty(REQUEST_BODY_PROPERTY, body);
-                }
-            }
-        } else {
-            entity = context.proceed();
+        LoggedBodyConfiguration configuration = getBodyConfiguration(REQUEST);
+        if (!configuration.isActive() || !isLoggingEnabled()) {
+            return context.proceed();
         }
 
-        return entity;
+        LoggedBodyCapture capture = createBodyCapture(configuration.limit());
+        context.setInputStream(new TeeInputStream(context.getInputStream(), capture.sink()));
+        try {
+            return context.proceed();
+        } finally {
+            // Logs whatever was captured even if reading the entity failed (e.g. malformed payload),
+            // so a deserialization error does not leave the request entirely unlogged
+            String body = capture.content(configuration.filters(), context.getMediaType());
+            if (configuration.logs(LOG) && isNotBlank(body)) {
+                logRequest(body);
+            }
+            if (configuration.logs(LoggedBody.LogType.MDC)) {
+                requestContext.setProperty(REQUEST_BODY_PROPERTY, body);
+            }
+        }
     }
 
     /**
@@ -468,14 +497,14 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         // immediate path in filter(ContainerRequestContext) nor aroundReadFrom logged the request in that
         // case (see REQUEST_LOGGED_PROPERTY), so without this the "Received ..." line would silently never
         // appear even though LogType.LOG is configured
-        if (getBodyLoggingRequest().contains(LogType.LOG) && !Boolean.TRUE.equals(this.requestContext.getProperty(REQUEST_LOGGED_PROPERTY))) {
+        if (getBodyConfiguration(REQUEST).logs(LOG) && !Boolean.TRUE.equals(this.requestContext.getProperty(REQUEST_LOGGED_PROPERTY))) {
             logRequest(EMPTY);
         }
 
         long requestStartTime = Optional.ofNullable(requestContext.getProperty(REQUEST_TIME_PROPERTY))
                 .map(Number.class::cast)
                 .map(Number::longValue)
-                .orElseGet(() -> nanoTime());
+                .orElseGet(System::nanoTime);
         long duration = (nanoTime() - requestStartTime) / 1_000_000;
         putMdc(DURATION, valueOf(duration));
         putMdc(RESPONSE_STATUS, valueOf(responseContext.getStatus()));
@@ -494,27 +523,28 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     @Override
     public void aroundWriteTo(WriterInterceptorContext context) throws IOException, WebApplicationException {
         String responseBody = null;
+        LoggedBodyConfiguration configuration = getBodyConfiguration(RESPONSE);
         try {
-            if (!getBodyLoggingResponse().isEmpty()) {
-                LoggedBodyCapture capture = createBodyCapture(getBodyLimitResponse());
-                TeeOutputStream teeOutputStream = new TeeOutputStream(context.getOutputStream(), capture.sink());
-                context.setOutputStream(teeOutputStream);
-                try {
-                    context.proceed();
-                } finally {
-                    // Logs/stores whatever was captured even if writing the entity failed (e.g. client
-                    // disconnection, serialization error), so such a failure does not leave the response
-                    // entirely unlogged, mirroring aroundReadFrom's handling of the request body
-                    String body = capture.content(getBodyFiltersResponse(), context.getMediaType());
-                    if (getBodyLoggingResponse().contains(LogType.MDC)) {
-                        putMdc(RESPONSE_BODY, body);
-                    }
-                    if (getBodyLoggingResponse().contains(LogType.LOG)) {
-                        responseBody = body;
-                    }
-                }
-            } else {
+            if (!configuration.isActive() || !isLoggingEnabled()) {
                 context.proceed();
+                return;
+            }
+
+            LoggedBodyCapture capture = createBodyCapture(configuration.limit());
+            context.setOutputStream(new TeeOutputStream(context.getOutputStream(), capture.sink()));
+            try {
+                context.proceed();
+            } finally {
+                // Logs/stores whatever was captured even if writing the entity failed (e.g. client
+                // disconnection, serialization error), so such a failure does not leave the response
+                // entirely unlogged, mirroring aroundReadFrom's handling of the request body
+                String body = capture.content(configuration.filters(), context.getMediaType());
+                if (configuration.logs(LoggedBody.LogType.MDC)) {
+                    putMdc(RESPONSE_BODY, body);
+                }
+                if (configuration.logs(LOG)) {
+                    responseBody = body;
+                }
             }
         } finally {
             // Always log and clean up MDC, even if writing the response body fails
@@ -542,7 +572,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         requestContext.setProperty(COMPLETED_PROPERTY, Boolean.TRUE);
 
         try {
-            if (getBodyLoggingRequest().contains(LogType.MDC)) {
+            if (getBodyConfiguration(REQUEST).logs(LoggedBody.LogType.MDC)) {
                 putMdc(REQUEST_BODY, (String) requestContext.getProperty(REQUEST_BODY_PROPERTY));
             }
 
@@ -560,85 +590,14 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Gets the most specific body logging configuration for the given target (request or response) of
-     * the resource method matched by the current request, delegating resolution and caching to
-     * {@link #resolver}.
+     * Gets the body logging configuration for the given target (request or response) of the resource
+     * method matched by the current request, delegating resolution and caching to {@link #resolver}.
      *
      * @param target The target for which to find the body logging configuration
-     * @return The most specific body logging configuration if present
+     * @return The body logging configuration, never {@code null}
      */
-    protected Optional<LoggedBody> getBodyConfiguration(Direction target) {
+    protected LoggedBodyConfiguration getBodyConfiguration(Direction target) {
         return resolver.getBodyConfiguration(resourceInfo, target);
-    }
-
-    /**
-     * Gets how the request body must be logged.
-     *
-     * @return The types of logging to be done
-     */
-    protected Set<LogType> getBodyLoggingRequest() {
-        return getBodyConfiguration(REQUEST)
-                .map(LoggedBody::value)
-                .stream()
-                .flatMap(Stream::of)
-                .collect(toSet());
-    }
-
-    /**
-     * Gets how the response body must be logged.
-     *
-     * @return The types of logging to be done
-     */
-    protected Set<LogType> getBodyLoggingResponse() {
-        return getBodyConfiguration(RESPONSE)
-                .map(LoggedBody::value)
-                .stream()
-                .flatMap(Stream::of)
-                .collect(toSet());
-    }
-
-    /**
-     * Gets the size limit of the request body to be logged or -1 if no limit is applied.
-     *
-     * @return The maximum size of the body to be logged in bytes
-     */
-    protected int getBodyLimitRequest() {
-        return getBodyConfiguration(REQUEST)
-                .map(LoggedBody::limit)
-                .orElse(-1);
-    }
-
-    /**
-     * Gets the size limit of the response body to be logged or -1 if no limit is applied.
-     *
-     * @return The maximum size of the body to be logged in bytes
-     */
-    protected int getBodyLimitResponse() {
-        return getBodyConfiguration(RESPONSE)
-                .map(LoggedBody::limit)
-                .orElse(-1);
-    }
-
-    /**
-     * Gets the filters that must be applied before logging the request body.
-     *
-     * @return The list of filters to be applied
-     */
-    protected Set<LoggedBodyFilter> getBodyFiltersRequest() {
-        return bodyFilterFactory.getInstances(getBodyConfiguration(REQUEST)
-                .map(LoggedBody::filters)
-                .stream());
-    }
-
-    /**
-     * Gets the filters that must be applied before logging the response body.
-     *
-     * @return The list of filters to be applied
-     */
-    protected Set<LoggedBodyFilter> getBodyFiltersResponse() {
-        return bodyFilterFactory.getInstances(getBodyConfiguration(RESPONSE)
-                .map(LoggedBody::filters)
-                .stream());
     }
 
     /**

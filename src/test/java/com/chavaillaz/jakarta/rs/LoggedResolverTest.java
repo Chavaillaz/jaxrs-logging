@@ -10,7 +10,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doReturn;
 
-import java.util.Optional;
 import java.util.Set;
 
 import jakarta.ws.rs.container.ResourceInfo;
@@ -35,9 +34,8 @@ class LoggedResolverTest {
     private final LoggedResolver resolver = new LoggedResolver();
 
     // Used directly as the resource class/method (like LoggedFilterTest's AnnotatedResource), so each
-    // method's own annotations are found straight away without going through the interface-fallback
-    // path in LoggedUtils.getAnnotationsInterfaces (covered on its own, together with the priority it
-    // gives a method-level annotation over an interface's class-level one, by LoggedUtilsTest)
+    // method's own annotations are found straight away without walking the declaration sites above them
+    // (covered on its own, together with the priority between those sites, by LoggedUtilsTest)
     interface Resource {
 
         @LoggedBody(MDC)
@@ -65,11 +63,11 @@ class LoggedResolverTest {
     void checkBothDirectionsConfiguration() throws Exception {
         setup("bothMethod");
 
-        Optional<LoggedBody> request = resolver.getBodyConfiguration(resourceInfo, REQUEST);
-        Optional<LoggedBody> response = resolver.getBodyConfiguration(resourceInfo, RESPONSE);
+        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo, REQUEST);
+        LoggedBodyConfiguration response = resolver.getBodyConfiguration(resourceInfo, RESPONSE);
 
-        assertTrue(request.isPresent());
-        assertEquals(request.get(), response.get());
+        assertTrue(request.isActive());
+        assertEquals(request, response);
     }
 
     @Test
@@ -77,12 +75,11 @@ class LoggedResolverTest {
     void checkRequestOnlyConfiguration() throws Exception {
         setup("requestOnlyMethod");
 
-        Optional<LoggedBody> request = resolver.getBodyConfiguration(resourceInfo, REQUEST);
-        Optional<LoggedBody> response = resolver.getBodyConfiguration(resourceInfo, RESPONSE);
+        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo, REQUEST);
+        LoggedBodyConfiguration response = resolver.getBodyConfiguration(resourceInfo, RESPONSE);
 
-        assertTrue(request.isPresent());
-        assertEquals(Set.of(LOG), Set.of(request.get().value()));
-        assertFalse(response.isPresent());
+        assertEquals(Set.of(LOG), request.types());
+        assertFalse(response.isActive());
     }
 
     @Test
@@ -90,12 +87,11 @@ class LoggedResolverTest {
     void checkResponseOnlyConfiguration() throws Exception {
         setup("responseOnlyMethod");
 
-        Optional<LoggedBody> request = resolver.getBodyConfiguration(resourceInfo, REQUEST);
-        Optional<LoggedBody> response = resolver.getBodyConfiguration(resourceInfo, RESPONSE);
+        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo, REQUEST);
+        LoggedBodyConfiguration response = resolver.getBodyConfiguration(resourceInfo, RESPONSE);
 
-        assertFalse(request.isPresent());
-        assertTrue(response.isPresent());
-        assertEquals(Set.of(LOG), Set.of(response.get().value()));
+        assertFalse(request.isActive());
+        assertEquals(Set.of(LOG), response.types());
     }
 
     @Test
@@ -137,24 +133,87 @@ class LoggedResolverTest {
     void checkNullResourceMethodBodyConfiguration() {
         doReturn(null).when(resourceInfo).getResourceMethod();
 
-        Optional<LoggedBody> request = resolver.getBodyConfiguration(resourceInfo, REQUEST);
-        Optional<LoggedBody> response = resolver.getBodyConfiguration(resourceInfo, RESPONSE);
+        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo, REQUEST);
+        LoggedBodyConfiguration response = resolver.getBodyConfiguration(resourceInfo, RESPONSE);
 
-        assertFalse(request.isPresent());
-        assertFalse(response.isPresent());
+        assertFalse(request.isActive());
+        assertFalse(response.isActive());
         assertEquals(0, resolver.bodyConfigurationCache.size());
     }
 
     @Test
-    @DisplayName("Check a null resource method (some containers can still hand one out) does not throw")
+    @DisplayName("Check a null resource method (some containers can still hand one out) still resolves from the class")
     void checkNullResourceMethodMergedMappings() {
         doReturn(Resource.class).when(resourceInfo).getResourceClass();
         doReturn(null).when(resourceInfo).getResourceMethod();
 
         Set<LoggedMapping> mappings = resolver.getMergedMappings(resourceInfo);
 
+        // The interface declares its mappings on methods only, so nothing applies without one, but the
+        // class is still a valid cache key: only a resource with neither a class nor a method is skipped
         assertTrue(mappings.isEmpty());
-        assertEquals(0, resolver.mappingsCache.size());
+        assertEquals(1, resolver.mappingsCache.size());
+    }
+
+    @Test
+    @DisplayName("Check the cache distinguishes two resource classes sharing the same interface method")
+    void checkCacheKeyIncludesResourceClass() throws Exception {
+        // Given: two resource classes whose matched method is the very same java.lang.reflect.Method,
+        // as a container handing out the interface method for each implementation would produce
+        ResourceInfo first = resourceInfo(SharedInterfaceResource.class);
+        ResourceInfo second = resourceInfo(OtherSharedInterfaceResource.class);
+
+        // When
+        LoggedBodyConfiguration firstConfiguration = resolver.getBodyConfiguration(first, REQUEST);
+        LoggedBodyConfiguration secondConfiguration = resolver.getBodyConfiguration(second, REQUEST);
+
+        // Then: each class gets its own configuration instead of the first one resolved winning for both
+        assertEquals(Set.of(MDC), firstConfiguration.types());
+        assertEquals(Set.of(LOG), secondConfiguration.types());
+        assertEquals(2, resolver.bodyConfigurationCache.size());
+    }
+
+    private ResourceInfo resourceInfo(Class<?> resourceClass) throws Exception {
+        java.lang.reflect.Method method = SharedInterface.class.getMethod("shared");
+        return new ResourceInfo() {
+
+            @Override
+            public java.lang.reflect.Method getResourceMethod() {
+                return method;
+            }
+
+            @Override
+            public Class<?> getResourceClass() {
+                return resourceClass;
+            }
+
+        };
+    }
+
+    interface SharedInterface {
+
+        void shared();
+
+    }
+
+    @Logged(@LoggedBody(MDC))
+    static class SharedInterfaceResource implements SharedInterface {
+
+        @Override
+        public void shared() {
+            // No-op
+        }
+
+    }
+
+    @Logged(@LoggedBody(LOG))
+    static class OtherSharedInterfaceResource implements SharedInterface {
+
+        @Override
+        public void shared() {
+            // No-op
+        }
+
     }
 
 }

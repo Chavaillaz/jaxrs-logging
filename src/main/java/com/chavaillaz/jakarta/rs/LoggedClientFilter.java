@@ -5,7 +5,6 @@ import static jakarta.ws.rs.RuntimeType.CLIENT;
 import static java.lang.System.nanoTime;
 import static java.util.Objects.requireNonNullElseGet;
 import static java.util.UUID.randomUUID;
-import static java.util.stream.Collectors.toCollection;
 import static org.apache.commons.lang3.StringUtils.LF;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
@@ -97,7 +96,13 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     protected final boolean logResponseBody;
     protected final int requestBodyLimit;
     protected final int responseBodyLimit;
-    protected final Set<Class<? extends LoggedBodyFilter>> bodyFilterClasses;
+
+    /**
+     * Body filter instances, resolved once here rather than on every call: unlike {@link LoggedFilter},
+     * whose configuration depends on the resource method matched by each request, this provider's
+     * configuration is fixed at build time, so there is nothing about it left to resolve per call.
+     */
+    protected final Set<LoggedBodyFilter> bodyFilters;
 
     /**
      * Creates a new client filter with the default configuration (no body logging, correlation identifier
@@ -113,7 +118,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         this.logResponseBody = builder.logResponseBody;
         this.requestBodyLimit = builder.requestBodyLimit;
         this.responseBodyLimit = builder.responseBodyLimit;
-        this.bodyFilterClasses = builder.bodyFilterClasses;
+        this.bodyFilters = bodyFilterFactory.getInstances(builder.bodyFilterClasses);
     }
 
     /**
@@ -253,7 +258,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      */
     @Override
     public void aroundWriteTo(WriterInterceptorContext context) throws IOException, WebApplicationException {
-        if (!logRequestBody) {
+        if (!logRequestBody || !isLoggingEnabled()) {
             context.proceed();
             return;
         }
@@ -311,7 +316,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      */
     @Override
     public Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
-        if (!logResponseBody) {
+        if (!logResponseBody || !isLoggingEnabled()) {
             return context.proceed();
         }
 
@@ -353,9 +358,19 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      * predictably
      */
     protected Set<LoggedBodyFilter> getBodyFilters() {
-        return bodyFilterClasses.stream()
-                .map(bodyFilterFactory::getInstance)
-                .collect(toCollection(LinkedHashSet::new));
+        return bodyFilters;
+    }
+
+    /**
+     * Indicates whether anything this provider writes would actually reach an appender.
+     * <p>
+     * Used to skip body capture entirely when it would be thrown away, see
+     * {@link LoggedFilter#isLoggingEnabled()}.
+     *
+     * @return {@code true} if the log lines written by this provider are enabled, {@code false} otherwise
+     */
+    protected boolean isLoggingEnabled() {
+        return log.isInfoEnabled();
     }
 
 }

@@ -243,12 +243,12 @@ class LoggedFilterTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "bodyAsMdc");
 
         // When
-        Optional<LoggedBody> request = loggingFilter.getBodyConfiguration(REQUEST);
-        Optional<LoggedBody> response = loggingFilter.getBodyConfiguration(RESPONSE);
+        LoggedBodyConfiguration request = loggingFilter.getBodyConfiguration(REQUEST);
+        LoggedBodyConfiguration response = loggingFilter.getBodyConfiguration(RESPONSE);
 
         // Then
-        assertTrue(request.isPresent());
-        assertEquals(request.get(), response.get());
+        assertTrue(request.isActive());
+        assertEquals(request, response);
         assertEquals(1, loggingFilter.resolver.bodyConfigurationCache.size());
     }
 

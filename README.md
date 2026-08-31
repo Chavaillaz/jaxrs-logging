@@ -79,6 +79,9 @@ A body whose content type is not text-based (for example `application/octet-stre
 an `image/*`/`multipart/*` type) is logged as a lowercase hexadecimal string instead of being decoded as
 UTF-8 text, to avoid filling logs with replacement characters for binary payloads such as file uploads.
 
+Nothing is captured at all when the logger is configured above `INFO`, so an application that turns this
+logging off does not pay for buffering and filtering bodies it will never write.
+
 ## Example
 
 Given an endpoint on which users can create new articles, annotated with `@Logged`
@@ -208,6 +211,9 @@ public class ArticleResource {
 
 }
 ```
+
+Resolution is cached per resource class and method, so the reflection above happens once per endpoint
+rather than once per request.
 
 ## Client calls
 

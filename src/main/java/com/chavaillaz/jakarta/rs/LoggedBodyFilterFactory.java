@@ -1,12 +1,13 @@
 package com.chavaillaz.jakarta.rs;
 
-import static java.util.stream.Collectors.toCollection;
+import static java.util.Collections.unmodifiableSet;
 
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Stream;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,16 +49,29 @@ public class LoggedBodyFilterFactory {
      * Gets the filter instances for the given filter classes, instantiating (and caching) any not
      * already resolved.
      *
-     * @param filterTypes The stream of filter class arrays to instantiate (one array per resolved
-     *                    annotation, as {@link LoggedBody#filters()} is itself an array)
-     * @return The set of filter instances to be applied, iterating in the order the classes were declared
-     * in {@link LoggedBody#filters()}, so filters that depend on one another's output run predictably
+     * @param filterTypes The filter classes to instantiate
+     * @return The unmodifiable set of filter instances to be applied, iterating in the order the classes
+     * were declared, so filters that depend on one another's output run predictably
      */
-    public Set<LoggedBodyFilter> getInstances(Stream<Class<? extends LoggedBodyFilter>[]> filterTypes) {
-        return filterTypes
-                .flatMap(Stream::of)
-                .map(this::getInstance)
-                .collect(toCollection(LinkedHashSet::new));
+    public Set<LoggedBodyFilter> getInstances(Class<? extends LoggedBodyFilter>[] filterTypes) {
+        return getInstances(Arrays.asList(filterTypes));
+    }
+
+    /**
+     * Gets the filter instances for the given filter classes, instantiating (and caching) any not
+     * already resolved.
+     *
+     * @param filterTypes The filter classes to instantiate, in the order they must be applied
+     * @return The unmodifiable set of filter instances to be applied, iterating in the order the classes
+     * were declared, so filters that depend on one another's output run predictably
+     */
+    public Set<LoggedBodyFilter> getInstances(Collection<Class<? extends LoggedBodyFilter>> filterTypes) {
+        if (filterTypes.isEmpty()) {
+            return Set.of();
+        }
+        Set<LoggedBodyFilter> instances = new LinkedHashSet<>();
+        filterTypes.forEach(type -> instances.add(getInstance(type)));
+        return unmodifiableSet(instances);
     }
 
     /**
