@@ -15,6 +15,8 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import jakarta.ws.rs.POST;
+import jakarta.ws.rs.Path;
 import jakarta.ws.rs.container.ResourceInfo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -86,6 +88,36 @@ class LoggedUtilsTest {
             // No-op
         }
 
+    }
+
+    // The shape every real JAX-RS resource has: configuration on the class, JAX-RS annotations (and
+    // nothing else) on the method
+    @Path("/article")
+    @Logged(@LoggedBody(MDC))
+    static class ClassLevelResource {
+
+        @POST
+        @Path("/create")
+        public String create(String article) {
+            return article;
+        }
+
+    }
+
+    @Test
+    @DisplayName("Check a class-level configuration applies to a method carrying its own JAX-RS annotations")
+    void checkClassLevelAnnotationFoundForAnnotatedMethod() throws Exception {
+        // Given
+        doReturn(ClassLevelResource.class).when(resourceInfo).getResourceClass();
+        doReturn(ClassLevelResource.class.getMethod("create", String.class)).when(resourceInfo).getResourceMethod();
+
+        // When
+        List<LoggedBody> result = getAnnotation(resourceInfo, LoggedBody.class, Logged.class, Logged::value);
+
+        // Then: the method's own @POST/@Path must not hide the class-level configuration, as they used
+        // to by making the resolution stop at the (empty) interface level
+        assertEquals(1, result.size());
+        assertEquals(Set.of(MDC), Set.of(result.getFirst().value()));
     }
 
     @Test

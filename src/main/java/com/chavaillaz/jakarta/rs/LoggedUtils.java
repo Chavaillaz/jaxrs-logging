@@ -1,17 +1,17 @@
 package com.chavaillaz.jakarta.rs;
 
-import static java.util.Arrays.asList;
+import static java.util.Collections.emptyList;
+import static java.util.Collections.emptySet;
 import static org.apache.commons.lang3.ArrayUtils.containsAny;
 import static org.apache.commons.lang3.ClassUtils.getAllInterfaces;
 
 import java.lang.annotation.Annotation;
-import java.lang.reflect.AccessibleObject;
+import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -33,31 +33,23 @@ public class LoggedUtils {
      * @return The set of merged LoggedMapping annotations
      */
     public static Set<LoggedMapping> getMergedMappings(ResourceInfo resourceInfo) {
-        Set<LoggedMapping> mergedMappings = new HashSet<>();
         Class<?> resourceClass = resourceInfo.getResourceClass();
         Method resourceMethod = resourceInfo.getResourceMethod();
+        if (resourceClass == null && resourceMethod == null) {
+            return emptySet();
+        }
 
         // Priority: Method annotations > Interfaces annotations > Class annotation
         // Uses getAnnotationsByType() throughout, as it is the only lookup that correctly finds a
         // @LoggedMapping regardless of whether it is declared once or repeated (java.lang.annotation.Repeatable
         // only synthesizes the @LoggedMappings container when 2+ instances are present, so a single
         // annotation would be missed by a plain getAnnotation(LoggedMappings.class) lookup).
-        // resourceMethod can be null for a container that does not resolve it at this stage (see
-        // LoggedFilter#filter's own null-safe handling of it); areMethodsEqual below already tolerates
-        // it, so only the direct annotation lookup on the method itself needs its own guard.
-        if (resourceMethod != null) {
-            mergeMappings(mergedMappings, resourceMethod.getAnnotationsByType(LoggedMapping.class));
+        // Iterates the declaration sites in priority order (see declarationSites), which is deterministic,
+        // so a mapping declared closer to the resource method always wins over a competing one.
+        Set<LoggedMapping> mergedMappings = new LinkedHashSet<>();
+        for (AnnotatedElement site : declarationSites(resourceClass, resourceMethod)) {
+            mergeMappings(mergedMappings, site.getAnnotationsByType(LoggedMapping.class));
         }
-        for (Class<?> interfaceClass : getAllInterfaces(resourceClass)) {
-            for (Method interfaceMethod : interfaceClass.getMethods()) {
-                if (areMethodsEqual(interfaceMethod, resourceMethod)) {
-                    mergeMappings(mergedMappings, interfaceMethod.getAnnotationsByType(LoggedMapping.class));
-                }
-            }
-            mergeMappings(mergedMappings, interfaceClass.getAnnotationsByType(LoggedMapping.class));
-        }
-        mergeMappings(mergedMappings, resourceClass.getAnnotationsByType(LoggedMapping.class));
-
         return mergedMappings;
     }
 
@@ -71,7 +63,10 @@ public class LoggedUtils {
         Arrays.stream(mappings)
                 .filter(newMapping -> mergedMappings.stream()
                         .noneMatch(existingMapping -> newMapping.type() == existingMapping.type()
-                                && containsAny(newMapping.paramNames(), (Object[]) existingMapping.paramNames())))
+                                && (containsAny(newMapping.paramNames(), (Object[]) existingMapping.paramNames())
+                                // Two automatic mappings of the same type would otherwise both apply, as
+                                // neither declares any parameter name to detect the conflict with
+                                || (newMapping.auto() && existingMapping.auto()))))
                 .forEach(mergedMappings::add);
     }
 
@@ -81,7 +76,7 @@ public class LoggedUtils {
      * @param resourceInfo   The instance to access resource class and method
      * @param annotationType The annotation type to get
      * @param <A>            The annotation type
-     * @return The annotation found or {@link Optional#empty} otherwise
+     * @return The annotations found, or an empty list otherwise
      */
     public static <A extends Annotation> List<A> getAnnotation(ResourceInfo resourceInfo, Class<A> annotationType) {
         return getAnnotation(resourceInfo, annotationType, null, null);
@@ -90,10 +85,10 @@ public class LoggedUtils {
     /**
      * Gets the given annotation from the resource method, its interfaces or its class matched by the current request.
      * <p>
-     * Note that if the resource class implements <em>multiple</em> interfaces which each declare a conflicting
-     * annotation of this type for the same method, which one is returned is unspecified (it depends on the
-     * iteration order of an internal {@link Set}, not on interface declaration order). This only matters when
-     * such a conflict actually exists; a single annotated interface is resolved deterministically.
+     * The first declaration site (see {@link #declarationSites(Class, Method)}) that declares the annotation
+     * type, or its repeatable wrapper, wins entirely: a more specific declaration <em>replaces</em> a less
+     * specific one rather than being merged with it. This is what lets a resource method opt out of a
+     * class-level configuration by redeclaring an empty one (e.g. a bare {@code @Logged}).
      *
      * @param resourceInfo   The instance to access resource class and method
      * @param annotationType The annotation type to get
@@ -101,74 +96,94 @@ public class LoggedUtils {
      * @param mapper         The function to extract the annotation to get (repeatable) from its wrapper
      * @param <A>            The annotation type
      * @param <W>            The wrapper annotation type
-     * @return The annotation found or {@link Optional#empty} otherwise
+     * @return The annotations found, or an empty list otherwise
      */
     public static <A extends Annotation, W extends Annotation> List<A> getAnnotation(ResourceInfo resourceInfo, Class<A> annotationType, Class<W> wrapperType, Function<W, A[]> mapper) {
+        Class<?> resourceClass = resourceInfo.getResourceClass();
         Method resourceMethod = resourceInfo.getResourceMethod();
-        Set<Annotation> parentAnnotations = getAnnotationsInterfaces(resourceInfo.getResourceClass(), resourceMethod);
-        // Priority: Method annotations > Interfaces annotations > Class annotation
-        // resourceMethod can be null for a container that does not resolve it at this stage (see
-        // LoggedFilter#filter's own null-safe handling of it), hence the guards below.
-        if (resourceMethod != null && resourceMethod.isAnnotationPresent(annotationType)) {
-            return Arrays.asList(resourceMethod.getAnnotationsByType(annotationType));
-        } else if (resourceMethod != null && wrapperType != null && resourceMethod.isAnnotationPresent(wrapperType)) {
-            return Arrays.stream(resourceMethod.getAnnotationsByType(wrapperType))
-                    .map(mapper)
-                    .flatMap(Arrays::stream)
-                    .toList();
-        } else if (!parentAnnotations.isEmpty()) {
-            return parentAnnotations.stream()
-                    .map(instance -> wrapperType != null && wrapperType.isInstance(instance)
-                            ? Arrays.asList(mapper.apply(wrapperType.cast(instance)))
-                            : List.of(instance))
-                    .flatMap(List::stream)
-                    .filter(annotationType::isInstance)
-                    .map(annotationType::cast)
-                    .toList();
-        } else if (resourceInfo.getResourceClass().isAnnotationPresent(annotationType)) {
-            return Arrays.asList(resourceInfo.getResourceClass().getAnnotationsByType(annotationType));
-        } else if (wrapperType != null && resourceInfo.getResourceClass().isAnnotationPresent(wrapperType)) {
-            return Arrays.stream(resourceInfo.getResourceClass().getAnnotationsByType(wrapperType))
-                    .map(mapper)
-                    .flatMap(Arrays::stream)
-                    .toList();
-        } else {
-            return Collections.emptyList();
+        if (resourceClass == null && resourceMethod == null) {
+            return emptyList();
         }
+
+        for (AnnotatedElement site : declarationSites(resourceClass, resourceMethod)) {
+            List<A> declared = getDeclaredAnnotation(site, annotationType, wrapperType, mapper);
+            if (declared != null) {
+                return declared;
+            }
+        }
+        return emptyList();
     }
 
     /**
-     * Gets the annotations from the interfaces implemented by the given type and method.
-     * <p>
-     * A resource class overriding an interface method does not inherit that method's annotations (method
-     * annotations are never inherited by an override, regardless of {@link java.lang.annotation.Inherited}),
-     * so this is what lets such a method still pick up the annotation declared on the interface method it
-     * overrides. When a matching interface method annotation is found for at least one implemented
-     * interface, it takes priority over any class-level annotation declared on an implemented interface,
-     * consistent with the "method &gt; interfaces &gt; class" priority documented on {@link #getAnnotation}:
-     * without this, an interface's class-level annotation was returned merged together with (instead of
-     * overridden by) that same interface's method-level one for the overridden method, whenever a resource
-     * class implementing that interface did not redeclare the annotation on its own override.
+     * Gets the annotation, or the content of its repeatable wrapper, as declared on the given element.
      *
-     * @param type   The type to get the annotations from
-     * @param method The method to get the annotations from
-     * @return The set of annotations found
+     * @param element        The element to read the annotation from
+     * @param annotationType The annotation type to get
+     * @param wrapperType    The wrapper annotation type in case the annotation type is repeatable
+     * @param mapper         The function to extract the annotation to get (repeatable) from its wrapper
+     * @param <A>            The annotation type
+     * @param <W>            The wrapper annotation type
+     * @return The annotations declared on the element, or {@code null} if it declares neither the
+     * annotation type nor its wrapper. An <em>empty</em> list is a meaningful result, distinct from
+     * {@code null}: it means the element does declare the wrapper, but with no annotation inside it
+     * (e.g. a bare {@code @Logged}), which deliberately overrides any less specific declaration.
      */
-    public static Set<Annotation> getAnnotationsInterfaces(Class<?> type, Method method) {
-        Annotation[] baseAnnotations = Optional.ofNullable(method)
-                .map(AccessibleObject::getAnnotations)
-                .orElse(type.getAnnotations());
-        Set<Annotation> methodAnnotations = new HashSet<>(asList(baseAnnotations));
-        Set<Annotation> classAnnotations = new HashSet<>();
-        for (Class<?> interfaceClass : getAllInterfaces(type)) {
+    private static <A extends Annotation, W extends Annotation> List<A> getDeclaredAnnotation(AnnotatedElement element, Class<A> annotationType, Class<W> wrapperType, Function<W, A[]> mapper) {
+        if (element.isAnnotationPresent(annotationType)) {
+            return Arrays.asList(element.getAnnotationsByType(annotationType));
+        } else if (wrapperType != null && element.isAnnotationPresent(wrapperType)) {
+            return Arrays.stream(element.getAnnotationsByType(wrapperType))
+                    .map(mapper)
+                    .flatMap(Arrays::stream)
+                    .toList();
+        }
+        return null;
+    }
+
+    /**
+     * Lists the places an annotation can be declared for a given resource method, from the most specific
+     * to the least specific:
+     * <ol>
+     *     <li>the resource method itself</li>
+     *     <li>the methods it overrides on the interfaces implemented by the resource class - a method
+     *     annotation is never inherited by an override (regardless of {@link java.lang.annotation.Inherited}),
+     *     so this is what lets an implementation pick up an annotation declared on the interface it implements</li>
+     *     <li>the interfaces implemented by the resource class</li>
+     *     <li>the resource class itself</li>
+     * </ol>
+     * Interfaces deliberately rank above the resource class, keeping the "method &gt; interfaces &gt; class"
+     * priority this library has always documented: an API contract declared on an interface is not silently
+     * overridden by a broad annotation on the class implementing it.
+     * <p>
+     * The order within a level follows {@link org.apache.commons.lang3.ClassUtils#getAllInterfaces(Class)},
+     * which is deterministic (declaration order, depth first), so a resource class implementing several
+     * interfaces that each declare a competing annotation always resolves the same way, rather than
+     * depending on the iteration order of a hash-based collection as it used to.
+     *
+     * @param resourceClass  The resource class matched by the current request, possibly {@code null}
+     * @param resourceMethod The resource method matched by the current request, possibly {@code null}
+     * @return The declaration sites, in decreasing order of priority
+     */
+    public static List<AnnotatedElement> declarationSites(Class<?> resourceClass, Method resourceMethod) {
+        List<AnnotatedElement> sites = new ArrayList<>();
+        if (resourceMethod != null) {
+            sites.add(resourceMethod);
+        }
+
+        List<Class<?>> interfaces = resourceClass == null ? List.of() : getAllInterfaces(resourceClass);
+        for (Class<?> interfaceClass : interfaces) {
             for (Method interfaceMethod : interfaceClass.getMethods()) {
-                if (areMethodsEqual(interfaceMethod, method)) {
-                    methodAnnotations.addAll(asList(interfaceMethod.getAnnotations()));
+                if (areMethodsEqual(interfaceMethod, resourceMethod)) {
+                    sites.add(interfaceMethod);
                 }
             }
-            classAnnotations.addAll(asList(interfaceClass.getAnnotations()));
         }
-        return methodAnnotations.isEmpty() ? classAnnotations : methodAnnotations;
+
+        sites.addAll(interfaces);
+        if (resourceClass != null) {
+            sites.add(resourceClass);
+        }
+        return sites;
     }
 
     /**

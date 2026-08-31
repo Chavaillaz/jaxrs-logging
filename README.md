@@ -175,6 +175,38 @@ Specific mappings can also be excluded (without giving `mdcKey` value):
 Note that a field can only be mapped once, and its exclusion will have priority.
 If you try to map a field that is already mapped, it will be ignored.
 
+## Annotation resolution
+
+`@Logged`, `@LoggedBody` and `@LoggedMapping` are looked up, for the resource method matched by the request,
+at four declaration sites, from the most to the least specific:
+
+1. the resource method itself
+2. the methods it overrides on the interfaces implemented by the resource class
+3. those interfaces themselves
+4. the resource class itself
+
+The first site declaring the annotation wins **entirely** - a more specific declaration replaces a less
+specific one rather than being merged with it. This is what lets a method opt out of a class-level
+configuration by redeclaring an empty one:
+
+```java
+@Logged(@LoggedBody(MDC))
+public class ArticleResource {
+
+    @POST
+    public Article create(Article article) {
+        // Inherits the class-level body logging
+    }
+
+    @POST
+    @Path("/import")
+    @Logged // Redeclared empty: no body logging for this (potentially huge) payload
+    public void importArchive(InputStream archive) {
+    }
+
+}
+```
+
 ## Client calls
 
 The client-side counterpart [LoggedClientFilter](src/main/java/com/chavaillaz/jakarta/rs/LoggedClientFilter.java)
