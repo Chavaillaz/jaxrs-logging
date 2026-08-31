@@ -223,10 +223,31 @@ class BoundedOutputStreamTest {
         }
 
         @Test
-        @DisplayName("Check isTruncated is true once the limit is reached")
+        @DisplayName("Check isTruncated is true once bytes have been dropped")
         void checkTruncatedAtLimit() throws IOException {
             var bounded = new BoundedOutputStream(new ByteArrayOutputStream(), 10);
             bounded.write(DATA.getBytes(UTF_8));
+            assertTrue(bounded.isTruncated());
+        }
+
+        @Test
+        @DisplayName("Check isTruncated is false when the content is exactly as long as the limit")
+        void checkNotTruncatedAtExactlyTheLimit() throws IOException {
+            byte[] data = DATA.getBytes(UTF_8);
+            var bounded = new BoundedOutputStream(new ByteArrayOutputStream(), data.length);
+            bounded.write(data);
+            // Nothing was dropped: reporting truncation here would make the logs claim content is
+            // missing from a body that was captured whole
+            assertFalse(bounded.isTruncated());
+        }
+
+        @Test
+        @DisplayName("Check isTruncated is true when a single byte is dropped past the limit")
+        void checkTruncatedOnSingleByteWrite() throws IOException {
+            var bounded = new BoundedOutputStream(new ByteArrayOutputStream(), 1);
+            bounded.write('a');
+            assertFalse(bounded.isTruncated());
+            bounded.write('b');
             assertTrue(bounded.isTruncated());
         }
 

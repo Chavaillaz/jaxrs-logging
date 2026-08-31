@@ -19,20 +19,26 @@ import org.apache.commons.io.output.ProxyOutputStream;
  */
 public class BoundedOutputStream extends ProxyOutputStream {
 
+    /**
+     * Value of {@link #limit} meaning that no limit is applied.
+     */
+    public static final int NO_LIMIT = -1;
+
     private final int limit;
     private int writtenBytes = 0;
+    private boolean truncated = false;
 
     /**
      * Creates a new bounded output stream.
      *
      * @param out   The output stream to wrap
      * @param limit The maximum number of bytes to write into the wrapped output stream,
-     *              or {@code -1} to write without any limit
-     * @throws IllegalArgumentException if the limit is lower than {@code -1}
+     *              or {@link #NO_LIMIT} to write without any limit
+     * @throws IllegalArgumentException if the limit is lower than {@link #NO_LIMIT}
      */
     public BoundedOutputStream(OutputStream out, int limit) {
         super(out);
-        if (limit < -1) {
+        if (limit < NO_LIMIT) {
             throw new IllegalArgumentException("Limit must be -1 (unlimited) or a positive value, but was " + limit);
         }
         this.limit = limit;
@@ -40,9 +46,15 @@ public class BoundedOutputStream extends ProxyOutputStream {
 
     @Override
     public void write(int b) throws IOException {
-        if (writtenBytes < limit || limit == -1) {
+        if (limit == NO_LIMIT || writtenBytes < limit) {
             super.write(b);
-            writtenBytes++;
+            // Only tracked when a limit applies, as it would otherwise overflow on a body larger than
+            // Integer.MAX_VALUE and, for an unlimited stream, is not used for anything
+            if (limit != NO_LIMIT) {
+                writtenBytes++;
+            }
+        } else {
+            truncated = true;
         }
     }
 
@@ -53,26 +65,33 @@ public class BoundedOutputStream extends ProxyOutputStream {
 
     @Override
     public void write(byte[] b, int off, int len) throws IOException {
-        if (limit == -1) {
+        if (limit == NO_LIMIT) {
             super.write(b, off, len);
-            writtenBytes += len;
-        } else {
-            int count = min(len, limit - writtenBytes);
-            if (count > 0) {
-                super.write(b, off, count);
-                writtenBytes += count;
-            }
+            return;
+        }
+
+        int count = min(len, limit - writtenBytes);
+        if (count > 0) {
+            super.write(b, off, count);
+            writtenBytes += count;
+        }
+        if (count < len) {
+            truncated = true;
         }
     }
 
     /**
      * Indicates whether at least one byte was dropped because the configured limit was reached, meaning
-     * the captured content may end with a truncated multi-byte UTF-8 character.
+     * the captured content is incomplete and may end with a truncated multi-byte UTF-8 character.
+     * <p>
+     * Reports truncation only when bytes were <em>actually</em> dropped, not merely when the limit was
+     * reached exactly: a body whose size happens to equal the limit is complete, and reporting it as
+     * truncated would make the logs claim content is missing when none is.
      *
      * @return {@code true} if content was truncated, {@code false} otherwise
      */
     public boolean isTruncated() {
-        return limit != -1 && writtenBytes >= limit;
+        return truncated;
     }
 
     /**

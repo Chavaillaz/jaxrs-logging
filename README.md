@@ -71,7 +71,9 @@ By default, `@LoggedBody` applies to both the request and the response. Repeat t
 ```
 
 Be careful when activating any body logging, as it may produce performance or memory issues if the body size
-is not limited.
+is not limited: the captured body is buffered in memory, so an endpoint accepting large (or client-controlled)
+payloads should always set a `limit`. A body cut short by that limit ends with `...[truncated]`, so a partial
+payload is never mistaken for what the application actually sent or received.
 
 A body whose content type is not text-based (for example `application/octet-stream`, `application/pdf` or
 an `image/*`/`multipart/*` type) is logged as a lowercase hexadecimal string instead of being decoded as

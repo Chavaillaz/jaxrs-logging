@@ -59,8 +59,23 @@ class BoundedLoggedBodyCaptureTest {
         // When
         String result = capture.content(Set.of());
 
+        // Then: the dangling half character is gone, and what is left is marked as incomplete rather
+        // than reading, in the logs, as the whole body the application actually received
+        assertEquals("Caf" + BoundedLoggedBodyCapture.TRUNCATION_MARKER, result);
+    }
+
+    @Test
+    @DisplayName("Check content of a body exactly as long as the limit is not reported as truncated")
+    void checkContentAtExactlyTheLimitIsNotMarkedTruncated() throws IOException {
+        // Given: 5 bytes captured through a sink limited to exactly 5 bytes, so nothing was dropped
+        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(5);
+        capture.sink().write("Hello".getBytes(UTF_8));
+
+        // When
+        String result = capture.content(Set.of());
+
         // Then
-        assertEquals("Caf", result);
+        assertEquals("Hello", result);
     }
 
     @Test
