@@ -242,7 +242,10 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         requestContext.setProperty(REQUEST_METHOD_PROPERTY, requestContext.getMethod());
         requestContext.setProperty(REQUEST_URI_PROPERTY, requestContext.getUri().toString());
 
-        if (!requestContext.getHeaders().containsKey(REQUEST_ID_HEADER)) {
+        // HTTP header names are case-insensitive, but the client-side header map is not guaranteed to be
+        // (it is a plain MultivaluedMap in the JAX-RS Client API), so a caller having already set the
+        // header under a different casing would otherwise get it sent twice with two different values
+        if (requestContext.getHeaders().keySet().stream().noneMatch(REQUEST_ID_HEADER::equalsIgnoreCase)) {
             String correlationId = requireNonNullElseGet(MDC.get(correlationIdMdcKey), () -> randomUUID().toString());
             requestContext.getHeaders().putSingle(REQUEST_ID_HEADER, correlationId);
         }
