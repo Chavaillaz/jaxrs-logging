@@ -180,6 +180,13 @@ Specific mappings can also be excluded (without giving `mdcKey` value):
 Note that a field can only be mapped once, and its exclusion will have priority.
 If you try to map a field that is already mapped, it will be ignored.
 
+Automatic mapping never copies a credential-carrying header (`Authorization`, `Cookie`, `X-Api-Key`, ...)
+into MDC, as `auto = true` is a blanket "map whatever the client sent" instruction and is otherwise an easy
+way to end up with bearer tokens and session cookies permanently stored in a log aggregator. The exact list
+is [LoggedFilter#SENSITIVE_HEADERS](src/main/java/com/chavaillaz/jakarta/rs/LoggedFilter.java), extend or
+restrict it by overriding `isSensitive(MappingType, String)`. An explicit mapping naming a header is a
+deliberate decision and is left alone.
+
 ## Annotation resolution
 
 `@Logged`, `@LoggedBody` and `@LoggedMapping` are looked up, for the resource method matched by the request,

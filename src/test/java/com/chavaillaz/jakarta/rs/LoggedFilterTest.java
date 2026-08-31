@@ -12,6 +12,7 @@ import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_CLASS;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
+import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
 import static jakarta.ws.rs.core.HttpHeaders.CONTENT_TYPE;
 import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN_TYPE;
@@ -379,6 +380,63 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check automatic header mapping skips credential-carrying headers")
+    void checkAutoMappingSkipsSensitiveHeaders() throws Exception {
+        setupTest(AnnotatedResource.class, "autoMappedHeaders");
+
+        // Given
+        MockHttpRequest request = MockHttpRequest.create("GET", "example.company.com/service");
+        request.header("Authorization", "Bearer secret-token");
+        request.header("Cookie", "JSESSIONID=secret-session");
+        request.header("X-Api-Key", "secret-key");
+        request.header("User-Agent", "JUnit");
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(request);
+
+        // When
+        loggingFilter.filter(requestContext);
+
+        // Then: an "map everything the client sent" instruction must not silently ship credentials
+        // to the log aggregator, while ordinary headers are still mapped
+        assertNull(MDC.get("header-Authorization"));
+        assertNull(MDC.get("header-Cookie"));
+        assertNull(MDC.get("header-X-Api-Key"));
+        assertEquals("JUnit", MDC.get("header-User-Agent"));
+    }
+
+    @Test
+    @DisplayName("Check a request without query parameters does not create an empty MDC entry")
+    void checkNoEmptyParametersMdcEntry() throws Exception {
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
+                MockHttpRequest.create("GET", "example.company.com/service"));
+
+        // When
+        loggingFilter.filter(requestContext);
+
+        // Then: absent, rather than present and empty in every structured log line of the application
+        assertNull(getMdc(REQUEST_PARAMETERS));
+    }
+
+    @Test
+    @DisplayName("Check MDC fields left over on a pooled thread are swept before the request is logged")
+    void checkStaleMdcSweptAtRequestStart() throws Exception {
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given: a field left behind by a previous request that completed on another thread
+        MDC.put(getMdcField(RESPONSE_STATUS), "500");
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
+                MockHttpRequest.create("GET", "example.company.com/service"));
+
+        // When
+        loggingFilter.filter(requestContext);
+
+        // Then: the unrelated request now running on this thread is not mislabelled with it
+        assertNull(getMdc(RESPONSE_STATUS));
+    }
+
+    @Test
     @DisplayName("Check MDC entries created by mappings are removed once the response has been logged")
     void checkMappingKeysCleanedUpAfterResponse() throws Exception {
         setupTest(AnnotatedResource.class, "autoMappedQueryParameters");
@@ -714,6 +772,10 @@ class LoggedFilterTest extends AbstractFilterTest {
         @Logged
         @LoggedMapping(type = QUERY, auto = true)
         void autoMappedQueryParameters();
+
+        @Logged
+        @LoggedMapping(type = HEADER, auto = true, mdcPrefix = "header-")
+        void autoMappedHeaders();
 
     }
 

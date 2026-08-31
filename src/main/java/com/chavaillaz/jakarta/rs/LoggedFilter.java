@@ -14,10 +14,12 @@ import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
 import static com.chavaillaz.jakarta.rs.LoggedField.getDefaultFields;
+import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static jakarta.ws.rs.RuntimeType.SERVER;
 import static java.lang.String.join;
 import static java.lang.String.valueOf;
 import static java.lang.System.nanoTime;
+import static java.util.Collections.synchronizedList;
 import static java.util.Comparator.comparing;
 import static java.util.Map.Entry.comparingByKey;
 import static java.util.Objects.requireNonNullElse;
@@ -34,6 +36,7 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -119,7 +122,30 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * Includes the Unicode line separators a plain {@code \p{Cntrl}} (ASCII-only) misses, as several
      * log viewers and JavaScript-based log pipelines treat {@code U+2028}/{@code U+2029} as line breaks.
      */
-    private static final Pattern CONTROL_CHARACTERS = Pattern.compile("\\p{Cntrl}");
+    private static final Pattern CONTROL_CHARACTERS = Pattern.compile("[\\p{Cntrl}\\u0085\\u2028\\u2029]");
+
+    /**
+     * Headers whose value must never be copied into MDC by an automatic {@link LoggedMapping}, as they
+     * carry credentials: an automatic mapping is a blanket "map everything the client sent" instruction,
+     * which is exactly how bearer tokens, session cookies and API keys end up permanently stored in a
+     * log aggregator by an application that never intended to log them.
+     * <p>
+     * Only applies to {@link LoggedMapping#auto()}: an explicit mapping naming a header is a deliberate
+     * decision by the developer and is left alone. Compared in lower case, see {@link #isSensitive}.
+     */
+    protected static final Set<String> SENSITIVE_HEADERS = Set.of(
+            "authorization",
+            "proxy-authorization",
+            "www-authenticate",
+            "proxy-authenticate",
+            "cookie",
+            "set-cookie",
+            "x-api-key",
+            "api-key",
+            "x-auth-token",
+            "x-access-token",
+            "x-csrf-token",
+            "x-xsrf-token");
 
     /**
      * Name of the property stored in container context to compute the duration time.
@@ -154,8 +180,11 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * on a different thread than the one that called {@link #putMdc(String, String)} (for example, a
      * JAX-RS implementation that resumes a {@code @Suspended} response, or a reactive resource method,
      * on a different worker thread), closing these closeables removes the entries from the completing
-     * thread's MDC, not from the thread that actually set them - which then still leaks until that
-     * thread happens to process another request overwriting the same keys.
+     * thread's MDC, not from the thread that actually set them - which is why {@link #filter(ContainerRequestContext)}
+     * also sweeps stale fields at the start of every request (see {@link #resetMdc()}).
+     * <p>
+     * The list itself is synchronized for that same reason: the thread completing the request is not
+     * necessarily the one that started it, so entries can be added and closed from different threads.
      */
     protected static final String MDC_CLOSEABLES_PROPERTY = LoggedFilter.class.getName() + ".mdcCloseables";
 
@@ -228,7 +257,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected List<MDC.MDCCloseable> getMdcCloseables() {
         List<MDC.MDCCloseable> closeables = (List<MDC.MDCCloseable>) requestContext.getProperty(MDC_CLOSEABLES_PROPERTY);
         if (closeables == null) {
-            closeables = new ArrayList<>();
+            closeables = synchronizedList(new ArrayList<>());
             requestContext.setProperty(MDC_CLOSEABLES_PROPERTY, closeables);
         }
         return closeables;
@@ -244,10 +273,13 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * directly, to guarantee it does not outlive the request.
      *
      * @param key   The MDC key
-     * @param value The value to be associated with the given key, ignored if {@code null}
+     * @param value The value to be associated with the given key, ignored if {@code null} or blank
      */
     protected void putMdc(String key, String value) {
-        if (value != null) {
+        // Blank values are dropped rather than stored as an empty entry: an always-present, always-empty
+        // field (a request with no query parameter, a header sent with no value) is pure noise in every
+        // structured log line of the application, and is indistinguishable from a legitimately empty one
+        if (isNotBlank(value)) {
             getMdcCloseables().add(MDC.putCloseable(key, value));
         }
     }
@@ -278,6 +310,20 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
+     * Indicates whether the given parameter must never be copied into MDC by an automatic mapping.
+     * <p>
+     * Override to extend (or restrict) the default set of credential-carrying headers, for example to
+     * also exclude a query parameter carrying a signed URL token.
+     *
+     * @param type The type of parameter being mapped
+     * @param name The name of the parameter being mapped
+     * @return {@code true} if the parameter must be skipped, {@code false} otherwise
+     */
+    protected boolean isSensitive(MappingType type, String name) {
+        return type == HEADER && SENSITIVE_HEADERS.contains(name.toLowerCase(Locale.ROOT));
+    }
+
+    /**
      * Maps the given parameters (path, query or headers) to MDC entries using the given mapping.
      *
      * @param parameters The parameters to be mapped
@@ -289,6 +335,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         if (mapping.auto()) {
             parameters.entrySet().stream()
                     .filter(entry -> !exclusion.contains(entry.getKey()))
+                    .filter(entry -> !isSensitive(mapping.type(), entry.getKey()))
                     .filter(entry -> entry.getValue() != null && !entry.getValue().isEmpty())
                     .forEach(entry -> {
                         // Client-controlled parameter/header names must not be allowed to overwrite reserved MDC fields
@@ -346,6 +393,11 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * Gets the request identifier that will be stored in MDC for the complete request processing.
      * Returns the header value of {@code X-Request-ID} (truncated to {@link #REQUEST_ID_MAX_LENGTH}
      * characters) or a random UUID when not present.
+     * <p>
+     * Note that the identifier is taken from the client as-is (beyond truncation and
+     * {@link #sanitize(String)}): it is a correlation hint, never an authenticated value, so nothing
+     * downstream should treat two requests sharing one as necessarily related. Override this method to
+     * always generate the identifier server-side when the caller is untrusted.
      *
      * @param requestContext The context of the request received
      * @return The request identifier
@@ -354,14 +406,30 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         return of(requestContext)
                 .map(ContainerRequestContext::getHeaders)
                 .map(headers -> headers.getFirst(REQUEST_ID_HEADER))
+                .filter(org.apache.commons.lang3.StringUtils::isNotBlank)
                 .map(value -> value.length() > REQUEST_ID_MAX_LENGTH ? value.substring(0, REQUEST_ID_MAX_LENGTH) : value)
                 // orElseGet (not orElse) so a UUID, which is comparatively expensive to generate
                 // (backed by SecureRandom), is only computed when the header is actually absent
                 .orElseGet(() -> randomUUID().toString());
     }
 
+    /**
+     * Removes any MDC field owned by this provider still present on the current thread.
+     * <p>
+     * Called at the very start of every request as a safety net, not as the normal cleanup path (which is
+     * {@link #cleanupMdc()}): MDC is thread-local and request threads are pooled, so an entry that could
+     * not be removed at the end of a previous request - because it completed on another thread, or because
+     * the container never reached this provider's completion callbacks (an entity whose
+     * {@code MessageBodyWriter} failed to be selected, for instance) - would otherwise stay attached to
+     * this thread and silently mislabel every log line of the unrelated request now running on it.
+     */
+    protected void resetMdc() {
+        mdcFields.values().forEach(MDC::remove);
+    }
+
     @Override
     public void filter(ContainerRequestContext requestContext) {
+        resetMdc();
         requestContext.setProperty(REQUEST_TIME_PROPERTY, nanoTime());
         putMdc(REQUEST_ID, sanitize(getRequestId(requestContext)));
         putMdc(REQUEST_URI, sanitize(requestContext.getUriInfo().getPath()));
@@ -610,8 +678,12 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * {@link #putMdc(LoggedField, String)}) after registering it there.
      */
     protected void cleanupMdc() {
-        mdcFields.values().forEach(MDC::remove);
-        getMdcCloseables().forEach(MDC.MDCCloseable::close);
+        resetMdc();
+        List<MDC.MDCCloseable> closeables = getMdcCloseables();
+        synchronized (closeables) {
+            closeables.forEach(MDC.MDCCloseable::close);
+            closeables.clear();
+        }
     }
 
 }
