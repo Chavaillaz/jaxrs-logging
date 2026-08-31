@@ -44,7 +44,9 @@ Processed [method] [URI] with status [status] in [duration]ms
 with the following MDC fields set:
 
 * Response HTTP status
-* Response duration in milliseconds
+* Response duration in milliseconds, covering the whole request including serializing and writing the
+  response entity (a response whose body takes 200ms to render is reported as such, not as the handful of
+  milliseconds preceding it)
 
 Additional logging features can be activated by adding `@LoggedBody` (repeatable) to `@Logged`:
 

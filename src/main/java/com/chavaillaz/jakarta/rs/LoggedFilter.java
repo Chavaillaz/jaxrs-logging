@@ -569,12 +569,6 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             logRequest(EMPTY);
         }
 
-        long requestStartTime = Optional.ofNullable(requestContext.getProperty(REQUEST_TIME_PROPERTY))
-                .map(Number.class::cast)
-                .map(Number::longValue)
-                .orElseGet(System::nanoTime);
-        long duration = (nanoTime() - requestStartTime) / 1_000_000;
-        putMdc(DURATION, valueOf(duration));
         putMdc(RESPONSE_STATUS, valueOf(responseContext.getStatus()));
 
         // Logs directly from filter in case no response body is present, as aroundWriteTo will not be
@@ -629,7 +623,11 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * than one callback without risking a duplicate "Processed" line, and unconditional, so cleanup
      * always happens even when nothing about body logging applies to this request.
      * <p>
-     * Note that the response status and duration must have been stored in MDC before calling this method.
+     * The duration is measured here rather than when the response filter runs, so it covers serializing
+     * and writing the entity too: a response whose body takes 200ms to render used to be reported as
+     * having been processed in the handful of milliseconds preceding it.
+     * <p>
+     * Note that the response status must have been stored in MDC before calling this method.
      *
      * @param responseBody The response body to be logged
      */
@@ -640,6 +638,12 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         requestContext.setProperty(COMPLETED_PROPERTY, Boolean.TRUE);
 
         try {
+            long requestStartTime = Optional.ofNullable(requestContext.getProperty(REQUEST_TIME_PROPERTY))
+                    .map(Number.class::cast)
+                    .map(Number::longValue)
+                    .orElseGet(System::nanoTime);
+            putMdc(DURATION, valueOf((nanoTime() - requestStartTime) / 1_000_000));
+
             if (getBodyConfiguration(REQUEST).logs(LoggedBody.LogType.MDC)) {
                 putMdc(REQUEST_BODY, (String) requestContext.getProperty(REQUEST_BODY_PROPERTY));
             }
