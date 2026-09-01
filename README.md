@@ -217,9 +217,9 @@ the request.
 Automatic mapping never copies a credential-carrying header (`Authorization`, `Cookie`, `X-Api-Key`, ...)
 into MDC, as `auto = true` is a blanket "map whatever the client sent" instruction and is otherwise an easy
 way to end up with bearer tokens and session cookies permanently stored in a log aggregator. The exact list
-is [LoggedFilter#SENSITIVE_HEADERS](src/main/java/com/chavaillaz/jakarta/rs/LoggedFilter.java), extend or
-restrict it by overriding `isSensitive(MappingType, String)`. An explicit mapping naming a header is a
-deliberate decision and is left alone.
+is in [CredentialNames](src/main/java/com/chavaillaz/jakarta/rs/CredentialNames.java); extend or restrict
+it by overriding `isSensitive(MappingType, String)`. An explicit mapping naming a header is a deliberate
+decision and is left alone.
 
 ## Credentials in query parameters
 
@@ -229,10 +229,9 @@ practice and well known as such, and it is also what OAuth's implicit and author
 presigned URLs and plenty of internal APIs do - the application has no say in what its callers send.
 
 The value of a parameter whose name is a well-known credential name (`access_token`, `password`,
-`client_secret`, ... see
-[LoggedFilter#SENSITIVE_PARAMETERS](src/main/java/com/chavaillaz/jakarta/rs/LoggedFilter.java)) is
-therefore replaced with `***`, while the name stays visible - knowing a token was supplied at all is the
-useful part for troubleshooting, and the name is not the secret:
+`client_secret`, ... see [CredentialNames](src/main/java/com/chavaillaz/jakarta/rs/CredentialNames.java))
+is therefore replaced with `***`, while the name stays visible - knowing a token was supplied at all is
+the useful part for troubleshooting, and the name is not the secret:
 
 ```
 request-parameters: access_token=***&topic=news

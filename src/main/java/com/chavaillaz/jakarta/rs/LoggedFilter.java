@@ -36,7 +36,6 @@ import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -131,63 +130,6 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * log viewers and JavaScript-based log pipelines treat {@code U+2028}/{@code U+2029} as line breaks.
      */
     private static final Pattern CONTROL_CHARACTERS = Pattern.compile("[\\p{Cntrl}\\u0085\\u2028\\u2029]");
-
-    /**
-     * Headers whose value must never be copied into MDC by an automatic {@link LoggedMapping}, as they
-     * carry credentials: an automatic mapping is a blanket "map everything the client sent" instruction,
-     * which is exactly how bearer tokens, session cookies and API keys end up permanently stored in a
-     * log aggregator by an application that never intended to log them.
-     * <p>
-     * Only applies to {@link LoggedMapping#auto()}: an explicit mapping naming a header is a deliberate
-     * decision by the developer and is left alone. Compared in lower case, see {@link #isSensitive}.
-     */
-    protected static final Set<String> SENSITIVE_HEADERS = Set.of(
-            "authorization",
-            "proxy-authorization",
-            "www-authenticate",
-            "proxy-authenticate",
-            "cookie",
-            "set-cookie",
-            "x-api-key",
-            "api-key",
-            "x-auth-token",
-            "x-access-token",
-            "x-csrf-token",
-            "x-xsrf-token");
-
-    /**
-     * Query parameters whose value must never be written to the logs, for the same reason as
-     * {@link #SENSITIVE_HEADERS}, and with more urgency: unlike a header, a query parameter is logged
-     * by default, without anything having to be configured, as part of {@link LoggedField#REQUEST_PARAMETERS}.
-     * <p>
-     * Passing a credential in a query string is bad practice and well known as such, yet it is exactly
-     * what OAuth's implicit and authorization-code-in-URL flows, presigned URLs and countless internal
-     * APIs do, so an application has no say in whether its callers do it. Reaching a value here is not a
-     * decision by the developer the way an explicitly named {@link LoggedMapping} is, so, unlike a header,
-     * this applies whether or not any mapping is involved: the value is replaced by
-     * {@link MaskingBodyFilter#DEFAULT_MASK} while the parameter name stays visible, which is the part
-     * that is useful for troubleshooting anyway.
-     * <p>
-     * Compared in lower case, see {@link #isSensitive}. Override that method to add whatever else an
-     * application's callers put in a query string ({@code code} for an OAuth authorization code, a
-     * signed-URL token, ...), left out here as they are too commonly ordinary parameter names to mask
-     * for everyone by default.
-     */
-    protected static final Set<String> SENSITIVE_PARAMETERS = Set.of(
-            "password",
-            "passwd",
-            "pwd",
-            "secret",
-            "client_secret",
-            "token",
-            "access_token",
-            "refresh_token",
-            "id_token",
-            "api_key",
-            "apikey",
-            "auth",
-            "authorization",
-            "signature");
 
     /**
      * Name of the property stored in container context to compute the duration time.
@@ -430,8 +372,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * masks the value while keeping the parameter name. An explicit mapping naming a parameter is a
      * deliberate decision by the developer and is left alone by both.
      * <p>
-     * Override to extend (or restrict) the defaults, for example to also mask a query parameter carrying
-     * a signed URL token:
+     * The defaults come from {@link CredentialNames}, which only knows what callers conventionally name
+     * their secrets. Override to extend (or restrict) them for an application that knows its own, for
+     * example to also mask a query parameter carrying a signed URL token:
      * <pre>{@code
      * @Override
      * protected boolean isSensitive(MappingType type, String name) {
@@ -446,8 +389,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      */
     protected boolean isSensitive(MappingType type, String name) {
         return switch (type) {
-            case HEADER -> SENSITIVE_HEADERS.contains(name.toLowerCase(Locale.ROOT));
-            case QUERY -> SENSITIVE_PARAMETERS.contains(name.toLowerCase(Locale.ROOT));
+            case HEADER -> CredentialNames.isHeader(name);
+            case QUERY -> CredentialNames.isQueryParameter(name);
             // Path parameter names are chosen by the application itself, not by whoever calls it, so
             // there is no equivalent list of names that "just happen" to carry a credential
             case PATH -> false;
