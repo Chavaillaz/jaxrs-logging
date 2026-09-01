@@ -7,9 +7,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
@@ -248,6 +250,111 @@ class MdcPropagationTest {
         assertTrue(executor.isShutdown());
         assertTrue(executor.isTerminated());
         assertTrue(rawExecutor.isShutdown());
+    }
+
+    @Test
+    @DisplayName("Check a wrapped Executor carries context through a whole CompletableFuture chain")
+    void checkExecutorCarriesCompletableFutureChain() throws Exception {
+        ExecutorService pool = Executors.newFixedThreadPool(2);
+        try {
+            // Given
+            MDC.put("request-id", "abc-123");
+            Executor executor = MdcPropagation.wrap(pool);
+            List<String> seen = new CopyOnWriteArrayList<>();
+
+            // When: every stage runs on a pool thread, and each one submits the next
+            String result = CompletableFuture
+                    .supplyAsync(() -> record(seen, "loaded"), executor)
+                    .thenApplyAsync(value -> value + record(seen, ""), executor)
+                    .thenApplyAsync(value -> value + record(seen, ""), executor)
+                    .get(5, TimeUnit.SECONDS);
+
+            // Then: the context reaches every stage, not just the first
+            assertEquals("loaded", result);
+            assertEquals(3, seen.size());
+            assertTrue(seen.stream().allMatch("abc-123"::equals));
+        } finally {
+            pool.shutdown();
+            assertTrue(pool.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
+    private static String record(List<String> seen, String result) {
+        seen.add(MDC.get("request-id"));
+        return result;
+    }
+
+    @Test
+    @DisplayName("Check a wrapped Executor restores the running thread's own context after each task")
+    void checkExecutorRestoresContext() throws Exception {
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            // Given: a task submitted with a context, then one submitted without
+            MDC.put("request-id", "abc-123");
+            Executor executor = MdcPropagation.wrap(pool);
+            executor.execute(() -> {
+                // No-op, only there to leave a context behind on the pool thread
+            });
+            MDC.clear();
+
+            // When
+            AtomicReference<String> seen = new AtomicReference<>("not-run");
+            CountDownLatch latch = new CountDownLatch(1);
+            executor.execute(() -> {
+                seen.set(MDC.get("request-id"));
+                latch.countDown();
+            });
+
+            // Then
+            assertTrue(latch.await(5, TimeUnit.SECONDS));
+            assertNull(seen.get());
+        } finally {
+            pool.shutdown();
+            assertTrue(pool.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    @DisplayName("Check the wrapped CompletableFuture stage functions see the wrapping thread's context")
+    void checkStageFunctionsSeeWrappingThreadContext() throws Exception {
+        // Given: the common ForkJoinPool, which cannot be wrapped, so the functions themselves are
+        MDC.put("request-id", "abc-123");
+        List<String> seen = new CopyOnWriteArrayList<>();
+
+        // When
+        String result = CompletableFuture
+                .supplyAsync(MdcPropagation.wrapSupplier(() -> record(seen, "loaded")))
+                .thenApplyAsync(MdcPropagation.wrapFunction(value -> value + record(seen, "")))
+                .get(5, TimeUnit.SECONDS);
+
+        AtomicReference<String> consumed = new AtomicReference<>();
+        CompletableFuture
+                .completedFuture(result)
+                .thenAcceptAsync(MdcPropagation.wrapConsumer(value -> consumed.set(MDC.get("request-id"))))
+                .get(5, TimeUnit.SECONDS);
+
+        AtomicReference<String> completed = new AtomicReference<>();
+        CompletableFuture
+                .completedFuture(result)
+                .whenCompleteAsync(MdcPropagation.wrapBiConsumer((value, error) -> completed.set(MDC.get("request-id"))))
+                .get(5, TimeUnit.SECONDS);
+
+        AtomicReference<String> handled = new AtomicReference<>();
+        CompletableFuture
+                .completedFuture(result)
+                .handleAsync(MdcPropagation.wrapBiFunction((value, error) -> {
+                    handled.set(MDC.get("request-id"));
+                    return value;
+                }))
+                .get(5, TimeUnit.SECONDS);
+
+        // Then
+        assertEquals("loaded", result);
+        assertEquals(2, seen.size());
+        assertTrue(seen.stream().allMatch("abc-123"::equals));
+        assertEquals("abc-123", consumed.get());
+        assertEquals("abc-123", completed.get());
+        assertEquals("abc-123", handled.get());
     }
 
 }

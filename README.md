@@ -336,6 +336,53 @@ or `invokeAll`/`invokeAny`) propagates context automatically:
 ExecutorService executorService = MdcPropagation.wrap(Executors.newFixedThreadPool(10));
 ```
 
+### CompletableFuture
+
+Every `*Async` method of `CompletableFuture` accepts an `Executor`, so passing a wrapped one to each stage
+carries the context along the whole chain: each stage runs with the context restored, and therefore submits
+the next one from a thread that already has it.
+
+```java
+Executor executor = MdcPropagation.wrap(pool);
+
+CompletableFuture.supplyAsync(() -> load(id), executor)
+        .thenApplyAsync(this::render, executor)
+        .thenAcceptAsync(response::resume, executor);
+```
+
+The `*Async` methods taking no executor run on the common `ForkJoinPool`, which cannot be wrapped. Wrap the
+stage functions themselves instead:
+
+```java
+CompletableFuture.supplyAsync(MdcPropagation.wrapSupplier(() -> load(id)))
+        .thenApplyAsync(MdcPropagation.wrapFunction(this::render))
+        .thenAcceptAsync(MdcPropagation.wrapConsumer(response::resume));
+```
+
+There is one method per shape (`wrapSupplier`, `wrapFunction`, `wrapConsumer`, `wrapBiFunction`,
+`wrapBiConsumer`) rather than more `wrap` overloads, because `Supplier` has the same shape as `Callable` and
+`Function` the same as `Consumer`: overloading them would make `wrap(() -> value)` ambiguous rather than
+resolving to the one meant.
+
+### @Suspended AsyncResponse
+
+A resource method taking a `@Suspended AsyncResponse` returns before the response exists, and the container
+only runs the response filters and writes the entity when `resume` is called - on whatever thread the
+application calls it from. Without propagation, that thread carries none of the request's MDC, so the
+`Processed ...` line lands with no request identifier, no URI and no method.
+
+Wrapping the response covers the completion however the application got there - a pool, a
+`CompletableFuture` chain, a callback from a client library - and covers the timeout handler too, which the
+container would otherwise invoke with the unwrapped response on a timer thread:
+
+```java
+@GET
+public void get(@Suspended AsyncResponse response) {
+    AsyncResponse propagating = MdcPropagation.wrap(response);
+    pool.execute(() -> propagating.resume(load()));
+}
+```
+
 ## Extension
 
 An example of extension of the filter is available
