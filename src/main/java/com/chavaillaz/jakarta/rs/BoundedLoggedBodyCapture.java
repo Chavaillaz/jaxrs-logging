@@ -8,6 +8,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.util.HexFormat;
+import java.util.Locale;
 import java.util.Set;
 
 import jakarta.ws.rs.core.MediaType;
@@ -52,6 +53,20 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
      * logging it costs a credential in a log aggregator.
      */
     public static final String FILTERING_FAILURE_MARKER = "[body dropped: a filter failed]";
+
+    /**
+     * The {@code application} subtypes that carry text rather than bytes, in lower case.
+     * <p>
+     * The {@code application} type is the only one needing a list: {@code text/*} is textual by
+     * definition, and everything else ({@code image}, {@code audio}, {@code video}, {@code multipart})
+     * is not. Subtypes ending in a structured syntax suffix are recognized separately, see
+     * {@link #isTextualApplicationSubtype(String)}.
+     */
+    protected static final Set<String> TEXTUAL_APPLICATION_SUBTYPES = Set.of(
+            "json",
+            "xml",
+            "javascript",
+            "x-www-form-urlencoded");
 
     /**
      * Initial capacity of the buffer, also used as its upper bound when a limit is configured, so a
@@ -132,21 +147,27 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
      * @return {@code true} if the body should be treated as binary, {@code false} otherwise
      */
     protected static boolean isBinary(MediaType mediaType) {
-        if (mediaType == null) {
-            return false;
-        } else if ("text".equalsIgnoreCase(mediaType.getType())) {
+        if (mediaType == null || "text".equalsIgnoreCase(mediaType.getType())) {
             return false;
         } else if (!"application".equalsIgnoreCase(mediaType.getType())) {
             return true;
         }
+        return !isTextualApplicationSubtype(mediaType.getSubtype().toLowerCase(Locale.ROOT));
+    }
 
-        String subtype = mediaType.getSubtype();
-        return !("json".equalsIgnoreCase(subtype)
-                || "xml".equalsIgnoreCase(subtype)
-                || "javascript".equalsIgnoreCase(subtype)
-                || "x-www-form-urlencoded".equalsIgnoreCase(subtype)
-                || subtype.toLowerCase().endsWith("+json")
-                || subtype.toLowerCase().endsWith("+xml"));
+    /**
+     * Indicates whether the given {@code application} subtype is one of those carrying text.
+     *
+     * @param subtype The subtype to check, already lower cased
+     * @return {@code true} if a body of that subtype is text, {@code false} otherwise
+     */
+    private static boolean isTextualApplicationSubtype(String subtype) {
+        // A structured syntax suffix (RFC 6838) is what makes a vendor-specific type readable without
+        // knowing the vendor: application/hal+json and application/vnd.acme.order+xml are text, whatever
+        // precedes the suffix
+        return TEXTUAL_APPLICATION_SUBTYPES.contains(subtype)
+                || subtype.endsWith("+json")
+                || subtype.endsWith("+xml");
     }
 
 }

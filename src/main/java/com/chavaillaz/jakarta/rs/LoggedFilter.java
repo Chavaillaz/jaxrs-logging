@@ -298,38 +298,77 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     /**
      * Maps the given parameters (path, query or headers) to MDC entries using the given mapping.
+     * <p>
+     * The two kinds of mapping have almost nothing in common beyond their annotation: an automatic one
+     * copies whatever the client happened to send, an explicit one names what it wants, so each is
+     * handled on its own below.
      *
      * @param parameters The parameters to be mapped
      * @param mapping    The mapping to be applied
      * @param exclusion  The parameters name to be excluded from mapping (already mapped or explicitly excluded)
      */
     protected void putMdcFromParameters(Map<String, List<String>> parameters, LoggedMapping mapping, Set<String> exclusion) {
-        Set<String> paramNames = Set.of(mapping.paramNames());
         if (mapping.auto()) {
-            parameters.entrySet().stream()
-                    .filter(entry -> !exclusion.contains(entry.getKey()))
-                    .filter(entry -> !isSensitive(mapping.type(), entry.getKey()))
-                    .filter(entry -> entry.getValue() != null && !entry.getValue().isEmpty())
-                    .forEach(entry -> {
-                        // Client-controlled parameter/header names must not be allowed to overwrite reserved MDC fields
-                        String mdcKey = mapping.mdcPrefix() + sanitize(entry.getKey());
-                        if (!mdcFields.containsValue(mdcKey)) {
-                            putMdc(mdcKey, sanitize(entry.getValue().getFirst()));
-                        }
-                    });
-        } else if (paramNames.stream().noneMatch(exclusion::contains)) {
-            // Avoid a field to be mapped multiple times
-            exclusion.addAll(paramNames);
-            // MDC key can be blank in case of exclusion
-            if (isNotBlank(mapping.mdcKey())) {
-                paramNames.stream()
-                        .map(parameters::get)
-                        .filter(Objects::nonNull)
-                        .filter(list -> !list.isEmpty())
-                        .map(List::getFirst)
-                        .findFirst()
-                        .ifPresent(value -> putMdc(mapping.mdcPrefix() + mapping.mdcKey(), sanitize(value)));
-            }
+            putMdcFromEveryParameter(parameters, mapping, exclusion);
+        } else {
+            putMdcFromNamedParameters(parameters, mapping, exclusion);
+        }
+    }
+
+    /**
+     * Maps every parameter the client sent to an MDC entry of the same name, for a mapping declared with
+     * {@link LoggedMapping#auto()}.
+     * <p>
+     * The MDC key is therefore chosen by the caller, not by the application, which is what the two guards
+     * here are about: a parameter carrying a credential is skipped outright rather than logged (see
+     * {@link #isSensitive(MappingType, String)}), and a key colliding with one of this provider's own
+     * fields is dropped, so no client can relabel its request as somebody else's by naming a parameter
+     * {@code request-id}.
+     *
+     * @param parameters The parameters to be mapped
+     * @param mapping    The mapping to be applied
+     * @param exclusion  The parameter names already mapped or explicitly excluded
+     */
+    protected void putMdcFromEveryParameter(Map<String, List<String>> parameters, LoggedMapping mapping, Set<String> exclusion) {
+        parameters.entrySet().stream()
+                .filter(entry -> !exclusion.contains(entry.getKey()))
+                .filter(entry -> !isSensitive(mapping.type(), entry.getKey()))
+                .filter(entry -> entry.getValue() != null && !entry.getValue().isEmpty())
+                .forEach(entry -> {
+                    String mdcKey = mapping.mdcPrefix() + sanitize(entry.getKey());
+                    if (!mdcFields.containsValue(mdcKey)) {
+                        putMdc(mdcKey, sanitize(entry.getValue().getFirst()));
+                    }
+                });
+    }
+
+    /**
+     * Maps the first of the parameters named by the given mapping to the MDC key it declares.
+     * <p>
+     * A mapping declaring no MDC key is an exclusion: it claims its parameter names so that no later
+     * mapping - in particular an automatic one, which is sorted last for exactly this reason - can map
+     * them. Claiming the names is therefore done whether or not anything is then written, and a mapping
+     * whose names another has already claimed does nothing at all.
+     *
+     * @param parameters The parameters to be mapped
+     * @param mapping    The mapping to be applied
+     * @param exclusion  The parameter names already mapped or explicitly excluded
+     */
+    protected void putMdcFromNamedParameters(Map<String, List<String>> parameters, LoggedMapping mapping, Set<String> exclusion) {
+        Set<String> paramNames = Set.of(mapping.paramNames());
+        if (paramNames.stream().anyMatch(exclusion::contains)) {
+            return;
+        }
+
+        exclusion.addAll(paramNames);
+        if (isNotBlank(mapping.mdcKey())) {
+            paramNames.stream()
+                    .map(parameters::get)
+                    .filter(Objects::nonNull)
+                    .filter(values -> !values.isEmpty())
+                    .map(List::getFirst)
+                    .findFirst()
+                    .ifPresent(value -> putMdc(mapping.mdcPrefix() + mapping.mdcKey(), sanitize(value)));
         }
     }
 
@@ -425,6 +464,26 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         // Attaches the state to the request, which starts measuring its duration and records this
         // instance as the one handling it, for LoggedBodyInterceptor to hand its captures back to
         getState();
+
+        putMdcFromRequest(requestContext);
+        putMdcFromMappings(requestContext);
+
+        // Logs directly from filter in case no request body is expected as aroundReadFrom will not be called
+        if (getBodyConfiguration(REQUEST).logs(LOG) && !(requestContext.hasEntity() && requestContext.getLength() != 0)) {
+            logRequest(EMPTY);
+        }
+    }
+
+    /**
+     * Puts the MDC entries this provider always creates, describing the request itself and the resource
+     * matched for it.
+     * <p>
+     * Everything sourced from the request is passed through {@link #sanitize(String)} first, as all of it
+     * is client-controlled.
+     *
+     * @param requestContext The context of the request received
+     */
+    protected void putMdcFromRequest(ContainerRequestContext requestContext) {
         putMdc(REQUEST_ID, sanitize(getRequestId(requestContext)));
         putMdc(REQUEST_URI, sanitize(requestContext.getUriInfo().getPath()));
         putMdc(REQUEST_PARAMETERS, sanitize(getQueryParameters(requestContext)));
@@ -435,25 +494,47 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         Optional.ofNullable(resourceInfo.getResourceMethod())
                 .map(Method::getName)
                 .ifPresent(value -> putMdc(RESOURCE_METHOD, value));
+    }
 
+    /**
+     * Puts the MDC entries the {@link LoggedMapping} annotations of the matched resource method ask for.
+     * <p>
+     * Mappings are applied in an order chosen so that the more specific intent wins: exclusions first (a
+     * mapping declaring no MDC key means "never map this"), then explicit mappings, then automatic ones.
+     * Each mapping records the parameter names it consumed in a per-type exclusion set, which is what
+     * later mappings check to avoid mapping a parameter twice under two different keys.
+     *
+     * @param requestContext The context of the request received
+     */
+    protected void putMdcFromMappings(ContainerRequestContext requestContext) {
         Set<LoggedMapping> mappings = getCachedMergedMappings();
-        if (!mappings.isEmpty()) {
-            Map<MappingType, Set<String>> exclusion = new EnumMap<>(MappingType.class);
-            mappings.stream()
-                    .sorted(comparing(LoggedMapping::auto) // Order to have auto mappings at the end to avoid overriding manual mappings
-                            .thenComparing(LoggedMapping::mdcKey)) // Order to have empty MDC key at the beginning for exclusions
-                    .forEach(mapping ->
-                            putMdcFromParameters(switch (mapping.type()) {
-                                case PATH -> requestContext.getUriInfo().getPathParameters();
-                                case QUERY -> requestContext.getUriInfo().getQueryParameters();
-                                case HEADER -> requestContext.getHeaders();
-                            }, mapping, exclusion.computeIfAbsent(mapping.type(), type -> new HashSet<>())));
+        if (mappings.isEmpty()) {
+            return;
         }
 
-        // Logs directly from filter in case no request body is expected as aroundReadFrom will not be called
-        if (getBodyConfiguration(REQUEST).logs(LOG) && !(requestContext.hasEntity() && requestContext.getLength() != 0)) {
-            logRequest(EMPTY);
-        }
+        Map<MappingType, Set<String>> exclusion = new EnumMap<>(MappingType.class);
+        mappings.stream()
+                .sorted(comparing(LoggedMapping::auto) // Order to have auto mappings at the end to avoid overriding manual mappings
+                        .thenComparing(LoggedMapping::mdcKey)) // Order to have empty MDC key at the beginning for exclusions
+                .forEach(mapping -> putMdcFromParameters(
+                        getParameters(requestContext, mapping.type()),
+                        mapping,
+                        exclusion.computeIfAbsent(mapping.type(), type -> new HashSet<>())));
+    }
+
+    /**
+     * Gets the parameters of the given request a mapping of the given type reads from.
+     *
+     * @param requestContext The context of the request received
+     * @param type           The type of parameter to read
+     * @return The parameters of that type, by name
+     */
+    protected Map<String, List<String>> getParameters(ContainerRequestContext requestContext, MappingType type) {
+        return switch (type) {
+            case PATH -> requestContext.getUriInfo().getPathParameters();
+            case QUERY -> requestContext.getUriInfo().getQueryParameters();
+            case HEADER -> requestContext.getHeaders();
+        };
     }
 
     /**
