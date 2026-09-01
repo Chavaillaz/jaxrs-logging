@@ -56,9 +56,10 @@ import org.slf4j.event.Level;
  * </ul>
  * If body logging is enabled, the request/response body is logged as a further, separate line rather
  * than being merged into the lines above (unlike {@link LoggedFilter}): the response body is only
- * available if/when the calling code actually reads the response entity (see {@link #aroundReadFrom},
- * mirroring the equivalent, well-known limitation on {@link LoggedFilter#aroundReadFrom} for the request
- * body), which can happen after - or not at all after - the "Called ..." line above already logged, so
+ * available if/when the calling code actually reads the response entity (see
+ * {@link #captureResponseBody(ReaderInterceptorContext)}, mirroring the equivalent, well-known limitation
+ * on {@link LoggedFilter#aroundReadFrom} for the request body), which can happen after - or not at all
+ * after - the "Called ..." line above already logged, so
  * there is no single point at which both the status line and the body are guaranteed to be available
  * together to merge into one line the way the server-side filter does.
  * <p>
@@ -82,8 +83,8 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
 
     /**
      * Name of the property stored in request context to retrieve the request method when logging the
-     * request body from {@link #aroundWriteTo(WriterInterceptorContext)}, which has no direct access to
-     * the {@link ClientRequestContext} the method was read from.
+     * request body from {@link #captureRequestBody(WriterInterceptorContext)}, which has no direct
+     * access to the {@link ClientRequestContext} the method was read from.
      */
     protected static final String REQUEST_METHOD_PROPERTY = LoggedClientFilter.class.getName() + ".requestMethod";
 
@@ -321,7 +322,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     /**
      * {@inheritDoc}
      * <p>
-     * Falls back to a zero duration when {@value #REQUEST_TIME_PROPERTY} was never set, which happens
+     * Falls back to a zero duration when {@link #REQUEST_TIME_PROPERTY} was never set, which happens
      * when a client request filter running before this one (lower {@link Priority} value) aborts the
      * request with {@link ClientRequestContext#abortWith(jakarta.ws.rs.core.Response)}: response filters
      * still run for an aborted request, but {@link #filter(ClientRequestContext)} above, where this
