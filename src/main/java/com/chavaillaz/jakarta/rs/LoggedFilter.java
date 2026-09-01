@@ -545,30 +545,13 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Runs the given logging action, swallowing anything it throws.
-     * <p>
-     * Every callback of this provider does its work in a {@code finally} block, so that a request is
-     * logged (and its MDC cleaned up) even when the exchange itself failed. That placement makes an
-     * exception thrown while logging strictly worse than useless: it <em>replaces</em> the application
-     * exception on its way out, so a bug in a {@link LoggedBodyFilter}, an appender that ran out of disk
-     * or a container returning an unexpected {@code null} does not just lose a log line, it turns the
-     * real failure into an unrelated one - or turns a perfectly good response into a 500.
-     * <p>
-     * Observability must never be the reason a request fails: whatever goes wrong here is reported on
-     * this provider's own logger and goes no further.
+     * Runs the given logging action, swallowing anything it throws, so that logging a request can never
+     * be the reason it fails. See {@link LoggedSupport#safely(Logger, String, Runnable)}.
      *
      * @param action The logging action to run
      */
     protected void safely(Runnable action) {
-        try {
-            action.run();
-        } catch (Exception e) {
-            try {
-                log.error("Unable to log the request or response, the exchange itself is left unaffected", e);
-            } catch (Exception ignored) {
-                // Nothing left to report it with: reporting must not be the thing that breaks the request
-            }
-        }
+        LoggedSupport.safely(log, "Unable to log the request or response, the exchange itself is left unaffected", action);
     }
 
     /**
@@ -918,17 +901,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Gets the level at which the completion of a request answered with the given status is logged.
-     * <p>
-     * A server error logged at the same level as a successful call is a log line nobody is alerted on:
-     * the one place that knows a request failed is the library writing the line, and leaving every
-     * completion at {@code INFO} pushes that knowledge into a message-parsing rule in whatever consumes
-     * the logs. Server errors are therefore logged at {@code ERROR}, client errors at {@code WARN}, and
-     * everything else at {@code INFO}.
-     * <p>
-     * Client errors are deliberately not errors: a {@code 404} or a {@code 400} is the application
-     * working as designed and says something about the caller, not about the service, so alerting on it
-     * would page someone for somebody else's typo. {@code WARN} keeps them visible without that.
+     * Gets the level at which the completion of a request answered with the given status is logged, see
+     * {@link LoggedSupport#levelOf(int)} for why it is not simply {@code INFO}.
      * <p>
      * Override to fit an application's own conventions, for example to leave an expected {@code 404} at
      * {@code INFO}, or to raise a specific status the application treats as an incident.
@@ -939,13 +913,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected Level getResponseLevel(String status) {
         // Parsed rather than taken from the response context, so the level still matches the status that
         // was actually logged when completion happens somewhere the response context is not at hand
-        int code = NumberUtils.toInt(status);
-        if (code >= 500) {
-            return Level.ERROR;
-        } else if (code >= 400) {
-            return Level.WARN;
-        }
-        return Level.INFO;
+        return LoggedSupport.levelOf(NumberUtils.toInt(status));
     }
 
     /**

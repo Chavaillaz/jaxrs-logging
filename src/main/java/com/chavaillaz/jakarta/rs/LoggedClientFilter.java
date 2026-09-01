@@ -345,24 +345,14 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     }
 
     /**
-     * Gets the level at which a call answered with the given status is logged.
-     * <p>
-     * Mirrors {@link LoggedFilter#getResponseLevel(String)}, with the roles reversed: here a server error
-     * is the <em>downstream</em> service failing, which is this application's problem to react to, and a
-     * client error means this application sent something the downstream service rejected - a bug on this
-     * side, not somebody else's typo. Both are worth more than {@code INFO}, so server errors are logged
-     * at {@code ERROR} and client errors at {@code WARN}.
+     * Gets the level at which a call answered with the given status is logged, see
+     * {@link LoggedSupport#levelOf(int)}, which covers both sides of the call.
      *
      * @param status The status of the response received
      * @return The level to log the call at
      */
     protected Level getResponseLevel(int status) {
-        if (status >= 500) {
-            return Level.ERROR;
-        } else if (status >= 400) {
-            return Level.WARN;
-        }
-        return Level.INFO;
+        return LoggedSupport.levelOf(status);
     }
 
     /**
@@ -461,24 +451,13 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     }
 
     /**
-     * Runs the given logging action, swallowing anything it throws.
-     * <p>
-     * Same reasoning as {@link LoggedFilter#safely(Runnable)}: the body capture below does its logging
-     * from a {@code finally} block, so an exception raised there would replace the failure the call
-     * actually hit (or fail a call that had succeeded) instead of merely losing a log line.
+     * Runs the given logging action, swallowing anything it throws, so that logging a call can never be
+     * the reason it fails. See {@link LoggedSupport#safely(Logger, String, Runnable)}.
      *
      * @param action The logging action to run
      */
     protected void safely(Runnable action) {
-        try {
-            action.run();
-        } catch (Exception e) {
-            try {
-                log.error("Unable to log the client call, the call itself is left unaffected", e);
-            } catch (Exception ignored) {
-                // Nothing left to report it with: reporting must not be the thing that breaks the call
-            }
-        }
+        LoggedSupport.safely(log, "Unable to log the client call, the call itself is left unaffected", action);
     }
 
     /**
