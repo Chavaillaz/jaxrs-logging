@@ -60,7 +60,8 @@ Additional logging features can be activated by adding `@LoggedBody` (repeatable
     * `MDC`: Logging the body as MDC only, included in the `Processed ...` log line
 * **filters**: Classes implementing the functional interface
   [LoggedBodyFilter](src/main/java/com/chavaillaz/jakarta/rs/LoggedBodyFilter.java) to filter any body
-  before writing it in logs, for example to remove sensitive data that could be present.
+  before writing it in logs, for example to remove sensitive data that could be present
+  (see [Body filters](#body-filters) for the ready-made ones).
 * **limit**: Size limit in bytes of the body logged (not limited by default).
 * **targets**: Whether the configuration applies to the request, the response, or both (default).
 
@@ -195,6 +196,53 @@ way to end up with bearer tokens and session cookies permanently stored in a log
 is [LoggedFilter#SENSITIVE_HEADERS](src/main/java/com/chavaillaz/jakarta/rs/LoggedFilter.java), extend or
 restrict it by overriding `isSensitive(MappingType, String)`. An explicit mapping naming a header is a
 deliberate decision and is left alone.
+
+## Body filters
+
+A body filter rewrites a captured body before it is logged, which is how a value that must never reach the
+logs is kept out of them. Three ready-made ones cover the usual cases:
+
+| Filter                                                                                       | Masks                                                                     |
+|----------------------------------------------------------------------------------------------|---------------------------------------------------------------------------|
+| [JsonMaskingBodyFilter](src/main/java/com/chavaillaz/jakarta/rs/JsonMaskingBodyFilter.java)     | The value of the named JSON properties, at any depth                       |
+| [FormMaskingBodyFilter](src/main/java/com/chavaillaz/jakarta/rs/FormMaskingBodyFilter.java)     | The value of the named `application/x-www-form-urlencoded` parameters      |
+| [RegexMaskingBodyFilter](src/main/java/com/chavaillaz/jakarta/rs/RegexMaskingBodyFilter.java)   | Whatever a given regular expression captures, for any other format         |
+
+```
+{"user":"jane","password":"hunter2"}   ->  {"user":"jane","password":"***"}
+grant_type=password&password=hunter2   ->  grant_type=password&password=***
+```
+
+`@LoggedBody(filters = ...)` takes classes, which must be instantiable without arguments, so configuring
+one for a resource means declaring a subclass that fixes its arguments:
+
+```java
+public class CredentialsMask extends JsonMaskingBodyFilter {
+
+    public CredentialsMask() {
+        super("password", "token");
+    }
+
+}
+```
+
+```java
+@Logged(@LoggedBody(value = MDC, filters = CredentialsMask.class))
+```
+
+`LoggedClientFilter.builder()` accepts instances as well, so no subclass is needed there:
+
+```java
+client.register(LoggedClientFilter.builder()
+        .logRequestBody()
+        .bodyFilters(new JsonMaskingBodyFilter("password", "token"))
+        .build());
+```
+
+Filters run in the order they are declared, so one masking a value and another truncating it behave
+predictably. They work on the captured text rather than on a parsed document on purpose: a body reaching a
+filter may have been cut by `limit`, or be malformed - which is exactly when the logs matter most - and a
+parser would reject both.
 
 ## Annotation resolution
 

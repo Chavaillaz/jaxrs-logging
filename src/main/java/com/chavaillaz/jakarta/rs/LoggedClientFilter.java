@@ -3,6 +3,7 @@ package com.chavaillaz.jakarta.rs;
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static jakarta.ws.rs.RuntimeType.CLIENT;
 import static java.lang.System.nanoTime;
+import static java.util.Collections.unmodifiableSet;
 import static java.util.Objects.requireNonNullElseGet;
 import static java.util.UUID.randomUUID;
 import static org.apache.commons.lang3.StringUtils.LF;
@@ -120,7 +121,11 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         this.logResponseBody = builder.logResponseBody;
         this.requestBodyLimit = builder.requestBodyLimit;
         this.responseBodyLimit = builder.responseBodyLimit;
-        this.bodyFilters = bodyFilterFactory.getInstances(builder.bodyFilterClasses);
+        // Classes first, then instances, keeping the declaration order within each: a filter given as a
+        // class cannot depend on one given as an instance without the caller having built both anyway
+        Set<LoggedBodyFilter> filters = new LinkedHashSet<>(bodyFilterFactory.getInstances(builder.bodyFilterClasses));
+        filters.addAll(builder.bodyFilterInstances);
+        this.bodyFilters = unmodifiableSet(filters);
     }
 
     /**
@@ -143,6 +148,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         private int requestBodyLimit = -1;
         private int responseBodyLimit = -1;
         private final Set<Class<? extends LoggedBodyFilter>> bodyFilterClasses = new LinkedHashSet<>();
+        private final Set<LoggedBodyFilter> bodyFilterInstances = new LinkedHashSet<>();
 
         /**
          * Sets the MDC key read to obtain the identifier propagated as {@value LoggedFilter#REQUEST_ID_HEADER}
@@ -224,6 +230,25 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         @SafeVarargs
         public final Builder bodyFilters(Class<? extends LoggedBodyFilter>... filters) {
             this.bodyFilterClasses.addAll(Arrays.asList(filters));
+            return this;
+        }
+
+        /**
+         * Adds already built filters to be applied (both directions) before logging a body, in the given
+         * order (and in declaration order across multiple calls), so filters that depend on one another's
+         * output run predictably.
+         * <p>
+         * Unlike the overload taking classes, which mirrors what {@link LoggedBody#filters()} can express
+         * and therefore needs each filter to be instantiable without arguments, this one takes instances:
+         * a configured built-in filter such as
+         * {@code new JsonMaskingBodyFilter("password")} can be passed straight in, without a subclass
+         * declared only to fix its arguments.
+         *
+         * @param filters The filter instances to add
+         * @return This builder
+         */
+        public Builder bodyFilters(LoggedBodyFilter... filters) {
+            this.bodyFilterInstances.addAll(Arrays.asList(filters));
             return this;
         }
 
