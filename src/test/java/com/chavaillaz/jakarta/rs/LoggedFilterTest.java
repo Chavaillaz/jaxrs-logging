@@ -555,6 +555,33 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check a mapped MDC key left over on a pooled thread is swept at the start of the next request")
+    void checkStaleMappedMdcKeySweptAtRequestStart() throws Exception {
+        // The per-request closeables can only remove entries from the thread that closes them, so a
+        // request completing elsewhere (a resumed @Suspended response, a container that never reaches the
+        // completion callbacks) leaves its entries behind. Sweeping the fixed fields covered request-id
+        // and its siblings; a key an automatic mapping derived from what the client sent stayed on the
+        // (pooled) thread and mislabelled every later request served by it, as no request overwrites a
+        // key the next client does not happen to send.
+        setupTest(AnnotatedResource.class, "autoMappedHeaders");
+
+        // Given: a previous request that mapped a header, completed without this thread cleaning up
+        MockHttpRequest previous = MockHttpRequest.create("GET", "example.company.com/service");
+        previous.header("User-Agent", "JUnit");
+        loggingFilter.filter(new PreMatchContainerRequestContext(previous));
+        assertEquals("JUnit", MDC.get("header-User-Agent"));
+        contextProperties.clear();
+
+        // When: an unrelated request, mapping nothing, now runs on this very thread
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+        loggingFilter.filter(new PreMatchContainerRequestContext(
+                MockHttpRequest.create("GET", "example.company.com/other")));
+
+        // Then
+        assertNull(MDC.get("header-User-Agent"));
+    }
+
+    @Test
     @DisplayName("Check MDC entries created by mappings are removed once the response has been logged")
     void checkMappingKeysCleanedUpAfterResponse() throws Exception {
         setupTest(AnnotatedResource.class, "autoMappedQueryParameters");

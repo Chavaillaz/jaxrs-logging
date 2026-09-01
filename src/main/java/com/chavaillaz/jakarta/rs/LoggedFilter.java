@@ -203,7 +203,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * JAX-RS implementation that resumes a {@code @Suspended} response, or a reactive resource method,
      * on a different worker thread), closing these closeables removes the entries from the completing
      * thread's MDC, not from the thread that actually set them - which is why {@link #filter(ContainerRequestContext)}
-     * also sweeps stale fields at the start of every request (see {@link #resetMdc()}).
+     * also sweeps stale entries at the start of every request (see {@link #resetMdc()} and
+     * {@link #threadMdcKeys}).
      * <p>
      * The list itself is synchronized for that same reason: the thread completing the request is not
      * necessarily the one that started it, so entries can be added and closed from different threads.
@@ -238,6 +239,27 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * request, even though {@link com.chavaillaz.jakarta.rs.LoggedBody.LogType#LOG} is configured.
      */
     protected static final String REQUEST_LOGGED_PROPERTY = LoggedFilter.class.getName() + ".requestLogged";
+
+    /**
+     * MDC keys this provider has put on the current thread, whichever request they belong to, so
+     * {@link #resetMdc()} can sweep every one of them and not just the fixed {@link #mdcFields}.
+     * <p>
+     * The closeables tracked per request (see {@link #MDC_CLOSEABLES_PROPERTY}) cannot remove an entry
+     * from a thread other than the one closing them, so a request completed elsewhere - a
+     * {@code @Suspended} response resumed from a worker, a reactive resource method, a container never
+     * reaching this provider's completion callbacks at all - leaves its entries on the thread that set
+     * them. Sweeping {@link #mdcFields} alone was enough for {@code request-id} and its siblings, whose
+     * names are known up front, but not for the keys whose names are only known at runtime: an automatic
+     * {@link LoggedMapping} derives them from the parameters the client sent, and a subclass can put
+     * anything it likes through {@link #putMdc(String, String)}. Those stayed attached to the (pooled)
+     * thread and mislabelled every log line of the unrelated requests it went on to serve, with no
+     * request ever overwriting them because the next client sends different headers.
+     * <p>
+     * Recorded per thread rather than per request precisely because it is the thread, not the request,
+     * that outlives the leak. Removed rather than cleared once swept, so a thread pool outliving the
+     * application does not keep a now-useless entry alive in each of its threads.
+     */
+    private static final ThreadLocal<Set<String>> threadMdcKeys = new ThreadLocal<>();
 
     /**
      * Names of MDC fields to be used for all logged fields.
@@ -302,8 +324,23 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         // field (a request with no query parameter, a header sent with no value) is pure noise in every
         // structured log line of the application, and is indistinguishable from a legitimately empty one
         if (isNotBlank(value)) {
+            trackMdcKey(key);
             getMdcCloseables().add(MDC.putCloseable(key, value));
         }
+    }
+
+    /**
+     * Records the given key as having been put in MDC on the current thread, see {@link #threadMdcKeys}.
+     *
+     * @param key The MDC key just put on the current thread
+     */
+    private static void trackMdcKey(String key) {
+        Set<String> keys = threadMdcKeys.get();
+        if (keys == null) {
+            keys = new HashSet<>();
+            threadMdcKeys.set(keys);
+        }
+        keys.add(key);
     }
 
     /**
@@ -463,7 +500,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Removes any MDC field owned by this provider still present on the current thread.
+     * Removes any MDC entry owned by this provider still present on the current thread.
      * <p>
      * Called at the very start of every request as a safety net, not as the normal cleanup path (which is
      * {@link #cleanupMdc()}): MDC is thread-local and request threads are pooled, so an entry that could
@@ -471,9 +508,18 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * the container never reached this provider's completion callbacks (an entity whose
      * {@code MessageBodyWriter} failed to be selected, for instance) - would otherwise stay attached to
      * this thread and silently mislabel every log line of the unrelated request now running on it.
+     * <p>
+     * Covers both the fixed {@link #mdcFields}, whose names are known up front, and every other key this
+     * provider put on this thread (see {@link #threadMdcKeys}), such as those an automatic
+     * {@link LoggedMapping} derives from what the client sent.
      */
     protected void resetMdc() {
         mdcFields.values().forEach(MDC::remove);
+        Set<String> keys = threadMdcKeys.get();
+        if (keys != null) {
+            keys.forEach(MDC::remove);
+            threadMdcKeys.remove();
+        }
     }
 
     @Override
@@ -773,9 +819,10 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * current request (see {@link #MDC_CLOSEABLES_PROPERTY}), which covers every entry put by this
      * provider itself as well as any subclass following the same convention.
      * <p>
-     * Also sweeps the fixed set of fields in {@link #mdcFields} as a safety net, in case a subclass
-     * still puts one of those directly through {@link MDC#put(String, String)} (as opposed to
-     * {@link #putMdc(LoggedField, String)}) after registering it there.
+     * Also sweeps, through {@link #resetMdc()}, the fixed set of fields in {@link #mdcFields} as a safety
+     * net, in case a subclass still puts one of those directly through {@link MDC#put(String, String)}
+     * (as opposed to {@link #putMdc(LoggedField, String)}) after registering it there, along with every
+     * other key this provider put on the completing thread.
      */
     protected void cleanupMdc() {
         resetMdc();
