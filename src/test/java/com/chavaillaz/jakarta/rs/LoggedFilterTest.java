@@ -826,6 +826,47 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check the request identifier is returned to the caller")
+    void checkRequestIdReturnedToCaller() throws Exception {
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext);
+        loggingFilter.filter(requestContext);
+        String requestId = getMdc(REQUEST_ID);
+
+        // When
+        loggingFilter.filter(requestContext, responseContext);
+
+        // Then: a caller quoting it in a bug report points straight at the request, instead of leaving
+        // whoever picks the report up searching the logs by timestamp
+        assertEquals(requestId, responseContext.getHeaders().getFirst(LoggedFilter.REQUEST_ID_HEADER));
+    }
+
+    @Test
+    @DisplayName("Check a request identifier already set on the response is not overwritten")
+    void checkExistingRequestIdHeaderKept() throws Exception {
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given: an application, or a gateway in front of it, setting its own (in a different casing,
+        // as HTTP header names are case-insensitive but the response header map need not be)
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext);
+        responseContext.getHeaders().putSingle("x-request-id", "chosen-by-the-application");
+        loggingFilter.filter(requestContext);
+
+        // When
+        loggingFilter.filter(requestContext, responseContext);
+
+        // Then
+        assertEquals(1, responseContext.getHeaders().keySet().stream()
+                .filter(LoggedFilter.REQUEST_ID_HEADER::equalsIgnoreCase)
+                .count());
+        assertEquals("chosen-by-the-application", responseContext.getHeaders().getFirst("x-request-id"));
+    }
+
+    @Test
     @DisplayName("Check completing the request twice only logs and cleans up MDC once")
     void checkLogResponseIsIdempotent() throws Exception {
         // Guards against a request being completed twice, in case a future JAX-RS edge case (exception

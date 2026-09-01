@@ -59,6 +59,13 @@ Note that setting the logger above `INFO` disables body capture entirely (see be
 then logged at `WARN`/`ERROR` but without their bodies: whether a request failed is only known once it
 has been answered, long after the decision to capture its body had to be made.
 
+The identifier the request was logged under is also returned to the caller as `X-Request-ID`. Without it,
+that identifier only exists on the server: a caller reporting "your API returned a 500 at about 14:32"
+leaves whoever picks up the report searching by timestamp, while a caller quoting the identifier from the
+response points straight at the request. A header already set by the application (or by a gateway in front
+of it) is left alone; override `addRequestId(ContainerResponseContext)` to return it under another name,
+or to do nothing at all.
+
 Additional logging features can be activated by adding `@LoggedBody` (repeatable) to `@Logged`:
 
 ```java

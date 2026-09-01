@@ -776,6 +776,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         }
 
         putMdc(RESPONSE_STATUS, valueOf(responseContext.getStatus()));
+        addRequestId(responseContext);
 
         // Logs directly from filter in case no response body is present, as aroundWriteTo will not be
         // called by the container in that case (e.g. 204 No Content, HEAD requests). This must happen
@@ -785,6 +786,32 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         // long as it takes another request handled by that same thread to overwrite them.
         if (!responseContext.hasEntity()) {
             logResponse(EMPTY);
+        }
+    }
+
+    /**
+     * Returns the identifier this request was logged under to the caller, as
+     * {@value #REQUEST_ID_HEADER}.
+     * <p>
+     * Without it, the identifier tying every log line of a request together exists only on the server:
+     * a caller reporting "your API returned a 500 at about 14:32" leaves whoever picks up the report
+     * searching by timestamp, while a caller quoting the identifier from the response they received
+     * points straight at the request. It is also what lets a browser, a load test or any client that
+     * does not send its own identifier still correlate what it saw with what the server logged.
+     * <p>
+     * Left alone if the response already carries the header, whatever its casing, so an application (or
+     * a gateway in front of it) deliberately setting its own is not overwritten by this one. Override to
+     * do nothing to opt out entirely, or to return the identifier under a different header name.
+     *
+     * @param responseContext The context of the response to be sent
+     */
+    protected void addRequestId(ContainerResponseContext responseContext) {
+        String requestId = getMdc(REQUEST_ID);
+        // HTTP header names are case-insensitive, but the response header map is only a MultivaluedMap
+        // in the JAX-RS API, so a container backing it with a case-sensitive one would otherwise send
+        // the header twice with two different values
+        if (isNotBlank(requestId) && responseContext.getHeaders().keySet().stream().noneMatch(REQUEST_ID_HEADER::equalsIgnoreCase)) {
+            responseContext.getHeaders().putSingle(REQUEST_ID_HEADER, requestId);
         }
     }
 
