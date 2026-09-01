@@ -37,8 +37,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.MDC;
+import org.slf4j.event.Level;
 
 @DisplayName("Logged client filter")
 @ExtendWith(MockitoExtension.class)
@@ -153,6 +156,24 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         LogEvent event = listAppender.findFirstMessage("Called");
         assertNotNull(event);
         assertTrue(event.getMessage().getFormattedMessage().contains("status 503"));
+    }
+
+    @ParameterizedTest(name = "status {0} logged at {1}")
+    @CsvSource({"200, INFO", "302, INFO", "404, WARN", "429, WARN", "500, ERROR", "503, ERROR"})
+    @DisplayName("Check the level of the call line follows the status of the response received")
+    void checkResponseLevelFollowsStatus(int status, Level expectedLevel) {
+        // Given
+        filter.filter(requestContext);
+        ClientResponseContext responseContext = mock(ClientResponseContext.class);
+        doReturn(status).when(responseContext).getStatus();
+
+        // When
+        filter.filter(requestContext, responseContext);
+
+        // Then
+        LogEvent event = listAppender.findFirstMessage("Called");
+        assertNotNull(event);
+        assertEquals(expectedLevel.name(), event.getLevel().name());
     }
 
     @Test

@@ -63,9 +63,11 @@ import jakarta.ws.rs.ext.WriterInterceptor;
 import jakarta.ws.rs.ext.WriterInterceptorContext;
 import org.apache.commons.io.input.TeeInputStream;
 import org.apache.commons.io.output.TeeOutputStream;
+import org.apache.commons.lang3.math.NumberUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.slf4j.event.Level;
 
 /**
  * Provider adding the following request information to {@link MDC}:
@@ -664,6 +666,13 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * decoding) every request and response body of an application whose logger is configured above
      * {@code INFO} is pure overhead, and is exactly the kind of cost that is invisible until it shows
      * up as allocation pressure in production.
+     * <p>
+     * Checks {@code INFO}, the lowest level this provider writes at, and not the level the completion of
+     * this particular request will end up being logged at ({@link #getResponseLevel(String)}): whether a
+     * request failed is only known once it has been answered, long after the decision to capture its body
+     * had to be made. An application configured above {@code INFO} therefore gets its failures logged at
+     * {@code WARN}/{@code ERROR} but without bodies, which is the deliberate trade: the alternative is
+     * buffering every body of every request in case it turns out to fail.
      *
      * @return {@code true} if the log lines written by this provider are enabled, {@code false} otherwise
      */
@@ -866,17 +875,50 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 putMdc(REQUEST_BODY, (String) requestContext.getProperty(REQUEST_BODY_PROPERTY));
             }
 
-            log.info("Processed {} {} with status {} in {}ms{}{}",
-                    getMdc(REQUEST_METHOD),
-                    getMdc(REQUEST_URI),
-                    getMdc(RESPONSE_STATUS),
-                    getMdc(DURATION),
-                    isNotBlank(responseBody) ? LF : EMPTY,
-                    responseBody);
+            String status = getMdc(RESPONSE_STATUS);
+            log.atLevel(getResponseLevel(status))
+                    .log("Processed {} {} with status {} in {}ms{}{}",
+                            getMdc(REQUEST_METHOD),
+                            getMdc(REQUEST_URI),
+                            status,
+                            getMdc(DURATION),
+                            isNotBlank(responseBody) ? LF : EMPTY,
+                            responseBody);
 
         } finally {
             cleanupMdc();
         }
+    }
+
+    /**
+     * Gets the level at which the completion of a request answered with the given status is logged.
+     * <p>
+     * A server error logged at the same level as a successful call is a log line nobody is alerted on:
+     * the one place that knows a request failed is the library writing the line, and leaving every
+     * completion at {@code INFO} pushes that knowledge into a message-parsing rule in whatever consumes
+     * the logs. Server errors are therefore logged at {@code ERROR}, client errors at {@code WARN}, and
+     * everything else at {@code INFO}.
+     * <p>
+     * Client errors are deliberately not errors: a {@code 404} or a {@code 400} is the application
+     * working as designed and says something about the caller, not about the service, so alerting on it
+     * would page someone for somebody else's typo. {@code WARN} keeps them visible without that.
+     * <p>
+     * Override to fit an application's own conventions, for example to leave an expected {@code 404} at
+     * {@code INFO}, or to raise a specific status the application treats as an incident.
+     *
+     * @param status The response status as stored in MDC, possibly {@code null} if it was never resolved
+     * @return The level to log the completion of the request at
+     */
+    protected Level getResponseLevel(String status) {
+        // Parsed rather than taken from the response context, so the level still matches the status that
+        // was actually logged when completion happens somewhere the response context is not at hand
+        int code = NumberUtils.toInt(status);
+        if (code >= 500) {
+            return Level.ERROR;
+        } else if (code >= 400) {
+            return Level.WARN;
+        }
+        return Level.INFO;
     }
 
     /**

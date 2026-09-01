@@ -35,6 +35,7 @@ import org.apache.commons.io.output.TeeOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.slf4j.event.Level;
 
 /**
  * Client-side counterpart of {@link LoggedFilter}, logging outgoing JAX-RS Client calls and
@@ -334,11 +335,33 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
                 .orElseGet(System::nanoTime);
         long duration = (nanoTime() - requestStartTime) / 1_000_000;
 
-        log.info("Called {} {} with status {} in {}ms",
-                requestContext.getMethod(),
-                requestContext.getUri(),
-                responseContext.getStatus(),
-                duration);
+        log.atLevel(getResponseLevel(responseContext.getStatus()))
+                .log("Called {} {} with status {} in {}ms",
+                        requestContext.getMethod(),
+                        requestContext.getUri(),
+                        responseContext.getStatus(),
+                        duration);
+    }
+
+    /**
+     * Gets the level at which a call answered with the given status is logged.
+     * <p>
+     * Mirrors {@link LoggedFilter#getResponseLevel(String)}, with the roles reversed: here a server error
+     * is the <em>downstream</em> service failing, which is this application's problem to react to, and a
+     * client error means this application sent something the downstream service rejected - a bug on this
+     * side, not somebody else's typo. Both are worth more than {@code INFO}, so server errors are logged
+     * at {@code ERROR} and client errors at {@code WARN}.
+     *
+     * @param status The status of the response received
+     * @return The level to log the call at
+     */
+    protected Level getResponseLevel(int status) {
+        if (status >= 500) {
+            return Level.ERROR;
+        } else if (status >= 400) {
+            return Level.WARN;
+        }
+        return Level.INFO;
     }
 
     /**

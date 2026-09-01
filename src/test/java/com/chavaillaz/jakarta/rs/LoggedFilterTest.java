@@ -72,11 +72,13 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.api.function.ThrowingConsumer;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.MDC;
+import org.slf4j.event.Level;
 
 @DisplayName("Original filter")
 @ExtendWith(MockitoExtension.class)
@@ -800,6 +802,29 @@ class LoggedFilterTest extends AbstractFilterTest {
         assertNull(MDC.get(getMdcField(RESPONSE_STATUS)));
     }
 
+    @ParameterizedTest(name = "status {0} logged at {1}")
+    @CsvSource({"200, INFO", "304, INFO", "400, WARN", "404, WARN", "500, ERROR", "503, ERROR"})
+    @DisplayName("Check the level of the completion line follows the response status")
+    void checkResponseLevelFollowsStatus(int status, Level expectedLevel) throws Exception {
+        // A failed request logged at the same level as a successful one is a line nobody is alerted on:
+        // the library is the one place that knows the request failed, so leaving every completion at INFO
+        // pushes that knowledge into a message-parsing rule in whatever consumes the logs
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext, status);
+
+        // When
+        loggingFilter.filter(requestContext);
+        loggingFilter.filter(requestContext, responseContext);
+
+        // Then
+        LogEvent event = listAppender.findFirstMessage("Processed");
+        assertNotNull(event);
+        assertEquals(expectedLevel.name(), event.getLevel().name());
+    }
+
     @Test
     @DisplayName("Check completing the request twice only logs and cleans up MDC once")
     void checkLogResponseIsIdempotent() throws Exception {
@@ -961,7 +986,10 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     ContainerResponseContextImpl getEmptyResponseContext(PreMatchContainerRequestContext request) {
-        int responseStatus = 204;
+        return getEmptyResponseContext(request, 204);
+    }
+
+    ContainerResponseContextImpl getEmptyResponseContext(PreMatchContainerRequestContext request, int responseStatus) {
         Headers<Object> headers = new Headers<>();
         MockHttpResponse httpResponse = new MockHttpResponse();
         httpResponse.setStatus(responseStatus);

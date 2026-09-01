@@ -48,6 +48,17 @@ with the following MDC fields set:
   response entity (a response whose body takes 200ms to render is reported as such, not as the handful of
   milliseconds preceding it)
 
+That line is written at a level derived from the status: `ERROR` for a server error (5xx), `WARN` for a
+client error (4xx), `INFO` otherwise. Client errors are deliberately not errors - a `404` or a `400` is
+the application working as designed and says something about the caller, not about the service - but a
+failed request logged at the same level as a successful one is a line nobody is alerted on, and the
+library is the one place that already knows which it was. Override `getResponseLevel(String)` to fit your
+own conventions.
+
+Note that setting the logger above `INFO` disables body capture entirely (see below), so failures are
+then logged at `WARN`/`ERROR` but without their bodies: whether a request failed is only known once it
+has been answered, long after the decision to capture its body had to be made.
+
 Additional logging features can be activated by adding `@LoggedBody` (repeatable) to `@Logged`:
 
 ```java
@@ -343,7 +354,10 @@ client.register(LoggedClientFilter.builder()
 ```
 
 It logs `Calling [method] [uri]` before sending the request and `Called [method] [uri] with status [status]
-in [duration]ms` once the response is received. If body logging is activated, the body is logged as a further,
+in [duration]ms` once the response is received, the latter at a level derived from the status the same way
+as on the server side (`getResponseLevel(int)`). The roles are reversed there: a 5xx is the downstream
+service failing, which is this application's problem to react to, and a 4xx means this application sent
+something that service rejected - a bug on this side rather than somebody else's typo. If body logging is activated, the body is logged as a further,
 separate line rather than merged into those two: the response body is only available if/when the calling code
 actually reads the response entity, which may happen after (or not at all after) the `Called ...` line, so
 there is no single point to merge them into, unlike the server-side filter.
