@@ -18,6 +18,7 @@ import static jakarta.ws.rs.core.HttpHeaders.CONTENT_TYPE;
 import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN_TYPE;
 import static java.lang.Integer.parseInt;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -735,6 +736,55 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check a body filter that throws neither breaks the response nor leaks the body")
+    void checkFailingBodyFilterDoesNotBreakResponse() throws Exception {
+        setupTest(AnnotatedResource.class, "bodyWithFailingFilter");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ContainerResponseContextImpl responseContext = getResponseContext(requestContext);
+        WriterInterceptorContext responseInterceptorContext = writerContext(output -> output.write(OUTPUT.getBytes(UTF_8)));
+
+        loggingFilter.filter(requestContext);
+        loggingFilter.filter(requestContext, responseContext);
+
+        // When: a bug in a filter must not turn a perfectly good response into a 500
+        assertDoesNotThrow(() -> loggingFilter.aroundWriteTo(responseInterceptorContext));
+
+        // Then: the response is still logged, without the payload the filter failed to redact,
+        // and the request is still completed (MDC cleaned up)
+        LogEvent event = listAppender.findFirstMessage("Processed");
+        assertNotNull(event);
+        assertFalse(event.getMessage().getFormattedMessage().contains("1234-ABCD"));
+        assertNull(MDC.get(getMdcField(REQUEST_ID)));
+    }
+
+    @Test
+    @DisplayName("Check a body filter that throws does not replace the exception the exchange failed with")
+    void checkFailingBodyFilterKeepsOriginalException() throws Exception {
+        // The capture and logging happen in a finally block, so an exception raised there does not just
+        // lose a log line: it replaces the real failure on its way out, leaving nothing pointing at what
+        // actually went wrong
+        setupTest(AnnotatedResource.class, "bodyWithFailingFilter");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ContainerResponseContextImpl responseContext = getResponseContext(requestContext);
+        WriterInterceptorContext responseInterceptorContext = writerContext(output -> {
+            throw new IOException("Client disconnected");
+        });
+
+        loggingFilter.filter(requestContext);
+        loggingFilter.filter(requestContext, responseContext);
+
+        // When
+        IOException thrown = assertThrows(IOException.class, () -> loggingFilter.aroundWriteTo(responseInterceptorContext));
+
+        // Then
+        assertEquals("Client disconnected", thrown.getMessage());
+    }
+
+    @Test
     @DisplayName("Check putMdc(String, String) tracks the key so cleanupMdc removes it")
     void checkPutMdcTracksKeyForCleanup() throws Exception {
         setupTest(AnnotatedResource.class, "noBodyLogging");
@@ -876,6 +926,9 @@ class LoggedFilterTest extends AbstractFilterTest {
         @LoggedBody(value = LogType.LOG, targets = RESPONSE)
         void bodyAsMix();
 
+        @LoggedBody(value = {LogType.MDC, LogType.LOG}, filters = FailingBodyFilter.class)
+        void bodyWithFailingFilter();
+
         @Logged
         void noBodyLogging();
 
@@ -886,6 +939,19 @@ class LoggedFilterTest extends AbstractFilterTest {
         @Logged
         @LoggedMapping(type = HEADER, auto = true, mdcPrefix = "header-")
         void autoMappedHeaders();
+
+    }
+
+    /**
+     * Body filter standing in for any buggy one an application could declare (a regular expression
+     * blowing up on an unexpected payload, a null dereference, ...).
+     */
+    public static class FailingBodyFilter implements LoggedBodyFilter {
+
+        @Override
+        public void filter(StringBuilder body) {
+            throw new IllegalStateException("Filter bug");
+        }
 
     }
 

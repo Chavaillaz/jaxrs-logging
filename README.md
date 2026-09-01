@@ -244,6 +244,14 @@ predictably. They work on the captured text rather than on a parsed document on 
 filter may have been cut by `limit`, or be malformed - which is exactly when the logs matter most - and a
 parser would reject both.
 
+A filter that throws never reaches the application: the body is dropped and logged as
+`[body dropped: a filter failed]`, and the failure is reported on the library's own logger. Dropping it
+rather than falling back to the captured text is deliberate - a filter that threw has by definition not
+finished redacting, so what it was working on is exactly what must not be written. More generally, nothing
+this library does while logging is allowed to fail a request: capture, filtering and log writing all run
+inside a `finally` block, where a thrown exception would otherwise replace the exception the exchange
+actually failed with (or turn a good response into a 500).
+
 ## Annotation resolution
 
 `@Logged`, `@LoggedBody` and `@LoggedMapping` are looked up, for the resource method matched by the request,

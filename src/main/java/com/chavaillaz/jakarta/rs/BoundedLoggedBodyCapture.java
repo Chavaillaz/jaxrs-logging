@@ -11,6 +11,8 @@ import java.util.HexFormat;
 import java.util.Set;
 
 import jakarta.ws.rs.core.MediaType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Default {@link LoggedBodyCapture} implementation, capturing at most a configured number of bytes in
@@ -21,6 +23,12 @@ import jakarta.ws.rs.core.MediaType;
  * uploaded image, a protobuf message, ...) has no reason to be valid UTF-8, so decoding it as such would
  * produce a log line full of replacement characters instead of anything usable for troubleshooting.
  * <p>
+ * A {@link LoggedBodyFilter} that throws is not allowed to leak the body it was meant to redact: the
+ * whole content is replaced with {@link #FILTERING_FAILURE_MARKER}, as the only thing known for certain
+ * at that point is that the redaction the application asked for did not happen. Nor is it allowed to
+ * break the exchange, which is why the failure is logged and swallowed rather than propagated back into
+ * the entity stream this capture is teeing.
+ * <p>
  * When the limit actually dropped bytes, the rendered content ends with {@link #TRUNCATION_MARKER}: a
  * body silently cut at the limit otherwise reads, in the logs, as a complete (and often syntactically
  * broken) payload, which is exactly the kind of thing someone troubleshooting from those logs will
@@ -28,10 +36,22 @@ import jakarta.ws.rs.core.MediaType;
  */
 public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
 
+    protected static final Logger log = LoggerFactory.getLogger(BoundedLoggedBodyCapture.class);
+
     /**
      * Appended to the rendered content when the configured limit dropped part of the body.
      */
     public static final String TRUNCATION_MARKER = "...[truncated]";
+
+    /**
+     * Written in place of the whole body when a {@link LoggedBodyFilter} failed on it.
+     * <p>
+     * The body is dropped rather than logged as captured, because a filter is a "this must never reach
+     * the logs" instruction: a filter that threw has, by definition, not finished redacting, so what it
+     * was working on is exactly what must not be written. Dropping it costs one unreadable log line;
+     * logging it costs a credential in a log aggregator.
+     */
+    public static final String FILTERING_FAILURE_MARKER = "[body dropped: a filter failed]";
 
     /**
      * Initial capacity of the buffer, also used as its upper bound when a limit is configured, so a
@@ -82,7 +102,12 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
 
         if (!filters.isEmpty()) {
             StringBuilder bodyBuilder = new StringBuilder(body);
-            filters.forEach(filter -> filter.filter(bodyBuilder));
+            try {
+                filters.forEach(filter -> filter.filter(bodyBuilder));
+            } catch (Exception e) {
+                log.error("A body filter failed, the body is dropped rather than logged unfiltered", e);
+                return FILTERING_FAILURE_MARKER;
+            }
             body = bodyBuilder.toString();
         }
 

@@ -5,6 +5,7 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_OCTET_STREAM_TYPE;
 import static jakarta.ws.rs.core.MediaType.APPLICATION_XML_TYPE;
 import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN_TYPE;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -159,6 +160,39 @@ class BoundedLoggedBodyCaptureTest {
         assertTrue(BoundedLoggedBodyCapture.isBinary(new MediaType("application", "pdf")));
         assertTrue(BoundedLoggedBodyCapture.isBinary(new MediaType("image", "png")));
         assertTrue(BoundedLoggedBodyCapture.isBinary(new MediaType("multipart", "form-data")));
+    }
+
+    @Test
+    @DisplayName("Check a filter that throws drops the body instead of leaking it unfiltered")
+    void checkFailingFilterDropsBody() throws IOException {
+        // A filter is a "this must never reach the logs" instruction, so a filter that threw halfway
+        // through must not result in the raw payload being written: what it was redacting is precisely
+        // what must not appear
+        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
+        capture.sink().write("{\"password\":\"hunter2\"}".getBytes(UTF_8));
+
+        // When
+        String result = capture.content(Set.of(body -> {
+            throw new IllegalStateException("Filter bug");
+        }));
+
+        // Then
+        assertEquals(BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER, result);
+        assertFalse(result.contains("hunter2"));
+    }
+
+    @Test
+    @DisplayName("Check a filter that throws does not propagate into the entity stream being captured")
+    void checkFailingFilterDoesNotPropagate() throws IOException {
+        // Given
+        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
+        capture.sink().write("content".getBytes(UTF_8));
+
+        // When / Then: assertDoesNotThrow, as a broken filter breaking the request it was only meant to
+        // be logging is the one outcome this must never have
+        assertDoesNotThrow(() -> capture.content(Set.of(body -> {
+            throw new IllegalStateException("Filter bug");
+        }), TEXT_PLAIN_TYPE));
     }
 
     @Test

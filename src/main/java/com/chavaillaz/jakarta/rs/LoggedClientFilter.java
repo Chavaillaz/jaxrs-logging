@@ -304,14 +304,16 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         } finally {
             // Logs whatever was captured even if writing the entity failed (e.g. connection reset before
             // the body was fully sent), mirroring aroundReadFrom's handling of the response body below
-            String body = capture.content(getBodyFilters(), context.getMediaType());
-            if (isNotBlank(body)) {
-                log.info("Request body {} {}{}{}",
-                        context.getProperty(REQUEST_METHOD_PROPERTY),
-                        context.getProperty(REQUEST_URI_PROPERTY),
-                        LF,
-                        body);
-            }
+            safely(() -> {
+                String body = capture.content(getBodyFilters(), context.getMediaType());
+                if (isNotBlank(body)) {
+                    log.info("Request body {} {}{}{}",
+                            context.getProperty(REQUEST_METHOD_PROPERTY),
+                            context.getProperty(REQUEST_URI_PROPERTY),
+                            LF,
+                            body);
+                }
+            });
         }
     }
 
@@ -363,14 +365,16 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         try {
             return context.proceed();
         } finally {
-            String body = capture.content(getBodyFilters(), context.getMediaType());
-            if (isNotBlank(body)) {
-                log.info("Response body {} {}{}{}",
-                        context.getProperty(REQUEST_METHOD_PROPERTY),
-                        context.getProperty(REQUEST_URI_PROPERTY),
-                        LF,
-                        body);
-            }
+            safely(() -> {
+                String body = capture.content(getBodyFilters(), context.getMediaType());
+                if (isNotBlank(body)) {
+                    log.info("Response body {} {}{}{}",
+                            context.getProperty(REQUEST_METHOD_PROPERTY),
+                            context.getProperty(REQUEST_URI_PROPERTY),
+                            LF,
+                            body);
+                }
+            });
         }
     }
 
@@ -430,6 +434,27 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
             return filter.captureResponseBody(context);
         }
 
+    }
+
+    /**
+     * Runs the given logging action, swallowing anything it throws.
+     * <p>
+     * Same reasoning as {@link LoggedFilter#safely(Runnable)}: the body capture below does its logging
+     * from a {@code finally} block, so an exception raised there would replace the failure the call
+     * actually hit (or fail a call that had succeeded) instead of merely losing a log line.
+     *
+     * @param action The logging action to run
+     */
+    protected void safely(Runnable action) {
+        try {
+            action.run();
+        } catch (Exception e) {
+            try {
+                log.error("Unable to log the client call, the call itself is left unaffected", e);
+            } catch (Exception ignored) {
+                // Nothing left to report it with: reporting must not be the thing that breaks the call
+            }
+        }
     }
 
     /**
