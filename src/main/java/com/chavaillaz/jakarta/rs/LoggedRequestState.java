@@ -1,0 +1,291 @@
+package com.chavaillaz.jakarta.rs;
+
+import static java.lang.System.nanoTime;
+import static java.util.Collections.synchronizedList;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import com.chavaillaz.jakarta.rs.LoggedResolver.BodyConfiguration;
+import jakarta.ws.rs.container.ContainerRequestContext;
+import jakarta.ws.rs.ext.InterceptorContext;
+import org.slf4j.MDC;
+
+/**
+ * Everything {@link LoggedFilter} remembers about one request while it is being processed.
+ * <p>
+ * A JAX-RS provider is a singleton shared by every concurrent request, so anything it needs to carry
+ * from one callback to the next has to live on the request rather than on the provider. The container
+ * offers exactly one place for that, the untyped {@code String -> Object} property map, which is why
+ * this used to be eight separate property-name constants read back through casts and
+ * {@code Boolean.TRUE.equals} checks. Gathering them into one object stored under one property gives
+ * them a type, a name, and somewhere to state the invariants they share; it also lets the provider read
+ * as the sequence of decisions it makes rather than as bookkeeping.
+ * <p>
+ * The request rather than the thread is deliberate throughout: a request can be started on one thread
+ * and completed on another (a {@code @Suspended} response resumed from a worker, a reactive resource
+ * method), so both flags are atomic and the mutable fields volatile. The state is created on the thread
+ * handling the start of the request, before any hand-off can have happened.
+ *
+ * @see LoggedFilter#getState()
+ */
+public class LoggedRequestState {
+
+    /**
+     * Name of the single container property this state is stored under.
+     * <p>
+     * Qualified with the class name, as the property map is shared with the container, the application
+     * and every other provider registered alongside this one.
+     */
+    protected static final String PROPERTY = LoggedRequestState.class.getName();
+
+    /**
+     * Provider handling this request, handed to {@link LoggedBodyInterceptor}, which captures the bodies
+     * from a later position in the interceptor chain but delegates every decision about them back here.
+     * <p>
+     * Passed through the request rather than injected there, so the capture is handed back to the exact
+     * instance - a subclass, possibly one of several registered, with its own {@code createBodyCapture}
+     * or MDC field names - that is handling this particular request.
+     */
+    private final LoggedFilter provider;
+
+    /**
+     * Moment the request started, read back once it completes to report how long it took.
+     */
+    private final long startTime;
+
+    /**
+     * Every {@link MDC.MDCCloseable} obtained through {@link LoggedFilter#putMdc(String, String)} for
+     * this request, so {@link LoggedFilter#cleanupMdc()} closes exactly what was added.
+     * <p>
+     * Using {@link MDC#putCloseable(String, String)} rather than hand-rolled key tracking removes an
+     * entire class of bugs where an entry is put without being recorded for cleanup (or recorded under
+     * the wrong key): the only way to obtain a value to put in this list is the very call that already
+     * knows how to remove it, so there is nothing left to keep in sync by convention.
+     * <p>
+     * This does not by itself solve MDC being thread-local. A request completed on a different thread
+     * than the one that put the entries has them closed against the completing thread's MDC, not against
+     * the thread that actually set them, which is why {@link LoggedFilter#resetMdc()} sweeps stale
+     * entries at the start of every request as well. Synchronized for the same reason: entries can be
+     * added and closed from different threads.
+     */
+    private final List<MDC.MDCCloseable> mdcCloseables = synchronizedList(new ArrayList<>());
+
+    /**
+     * Whether the {@code "Received ..."} line has already been logged for this request.
+     * <p>
+     * That line is normally emitted either directly from {@link LoggedFilter#filter(ContainerRequestContext)}
+     * (no entity expected) or from {@link LoggedFilter#aroundReadFrom(jakarta.ws.rs.ext.ReaderInterceptorContext)}
+     * (entity read). However, most JAX-RS implementations only invoke the latter when the resource method
+     * actually reads the request entity: a request that has a body but whose resource method declares no
+     * parameter consuming it hits neither path, and without this flag the response filter could not tell
+     * whether it still has to emit the line - so it would either be lost or logged twice.
+     */
+    private final AtomicBoolean requestLogged = new AtomicBoolean();
+
+    /**
+     * Whether the request has already been completed, guarding {@link LoggedFilter#logResponse(String)}
+     * against running more than once.
+     * <p>
+     * Depending on whether the response has an entity, the end of a request/response cycle can be reached
+     * from two different callbacks: the response filter (no entity) or the writer interceptor (entity
+     * present). Rather than relying on the conditions in those two callbacks to always stay perfectly
+     * mutually exclusive - which is what let the "Processed" log line and the MDC cleanup silently
+     * disappear for entity-less responses in the past - completion is centralized and made idempotent:
+     * whichever callback gets there first wins, and the other becomes a no-op.
+     */
+    private final AtomicBoolean completed = new AtomicBoolean();
+
+    /**
+     * Body logging configuration resolved for this request, kept so the several callbacks asking for it
+     * share one resolution. See {@link LoggedFilter#getBodyConfiguration(LoggedBody.Direction)}.
+     */
+    private volatile BodyConfiguration bodyConfiguration;
+
+    /**
+     * Request body as captured and filtered, waiting for the callback that logs it.
+     */
+    private volatile String requestBody;
+
+    /**
+     * Response body as captured and filtered, waiting for the callback that logs it.
+     */
+    private volatile String responseBody;
+
+    /**
+     * Creates the state of a request handled by the given provider, starting its duration measurement.
+     *
+     * @param provider The provider handling the request
+     */
+    protected LoggedRequestState(LoggedFilter provider) {
+        this.provider = provider;
+        this.startTime = nanoTime();
+    }
+
+    /**
+     * Gets the state of the request carried by the given context, creating and attaching it on first use.
+     *
+     * @param context  The context of the request being processed
+     * @param provider The provider handling the request, recorded when the state is created
+     * @return The state of the request, never {@code null}
+     */
+    public static LoggedRequestState of(ContainerRequestContext context, LoggedFilter provider) {
+        LoggedRequestState state = find(context);
+        if (state == null) {
+            state = new LoggedRequestState(provider);
+            context.setProperty(PROPERTY, state);
+        }
+        return state;
+    }
+
+    /**
+     * Gets the state of the request carried by the given context, without creating one.
+     *
+     * @param context The context of the request being processed
+     * @return The state of the request, or {@code null} if no {@link LoggedFilter} is active on it
+     */
+    public static LoggedRequestState find(ContainerRequestContext context) {
+        return asState(context.getProperty(PROPERTY));
+    }
+
+    /**
+     * Gets the state of the request carried by the given context, without creating one.
+     * <p>
+     * The overload an interceptor uses: {@link InterceptorContext} exposes the same request-scoped
+     * property map, but the JAX-RS API gives it no supertype in common with
+     * {@link ContainerRequestContext} to read it through.
+     *
+     * @param context The context of the entity being read or written
+     * @return The state of the request, or {@code null} if no {@link LoggedFilter} is active on it
+     */
+    public static LoggedRequestState find(InterceptorContext context) {
+        return asState(context.getProperty(PROPERTY));
+    }
+
+    /**
+     * Reads a container property as a state, tolerating both its absence and anything else found under
+     * that name: no state simply means no {@link LoggedFilter} is active for this request (the resource
+     * is not annotated, or {@link LoggedBodyInterceptor} was registered without it).
+     *
+     * @param property The value found in the property map
+     * @return The state, or {@code null} if there is none
+     */
+    private static LoggedRequestState asState(Object property) {
+        return property instanceof LoggedRequestState state ? state : null;
+    }
+
+    /**
+     * Gets the provider handling this request, see {@link #provider}.
+     *
+     * @return The provider handling this request
+     */
+    public LoggedFilter getProvider() {
+        return provider;
+    }
+
+    /**
+     * Gets how long this request has been running, in milliseconds.
+     * <p>
+     * Read once the response has been written rather than when the response filter runs, so it covers
+     * serializing and writing the entity too: a response whose body takes 200ms to render used to be
+     * reported as having been processed in the handful of milliseconds preceding it.
+     *
+     * @return The time elapsed since the request started, in milliseconds
+     */
+    public long getElapsedMillis() {
+        return NANOSECONDS.toMillis(nanoTime() - startTime);
+    }
+
+    /**
+     * Gets the MDC closeables obtained so far for this request, see {@link #mdcCloseables}.
+     *
+     * @return The mutable, synchronized list of closeables to be closed once the request is done
+     */
+    public List<MDC.MDCCloseable> getMdcCloseables() {
+        return mdcCloseables;
+    }
+
+    /**
+     * Records that the {@code "Received ..."} line has been logged for this request.
+     *
+     * @return {@code true} if this call was the one that recorded it, {@code false} if it already was
+     */
+    public boolean markRequestLogged() {
+        return requestLogged.compareAndSet(false, true);
+    }
+
+    /**
+     * Indicates whether the {@code "Received ..."} line has already been logged, see {@link #requestLogged}.
+     *
+     * @return {@code true} if the request has already been logged, {@code false} otherwise
+     */
+    public boolean isRequestLogged() {
+        return requestLogged.get();
+    }
+
+    /**
+     * Records that this request has been completed, see {@link #completed}.
+     *
+     * @return {@code true} if this call was the one that completed it, {@code false} if it already was
+     */
+    public boolean markCompleted() {
+        return completed.compareAndSet(false, true);
+    }
+
+    /**
+     * Gets the body logging configuration resolved for this request, see {@link #bodyConfiguration}.
+     *
+     * @return The configuration, or {@code null} if it has not been resolved yet
+     */
+    public BodyConfiguration getBodyConfiguration() {
+        return bodyConfiguration;
+    }
+
+    /**
+     * Sets the body logging configuration resolved for this request.
+     *
+     * @param bodyConfiguration The configuration resolved
+     */
+    public void setBodyConfiguration(BodyConfiguration bodyConfiguration) {
+        this.bodyConfiguration = bodyConfiguration;
+    }
+
+    /**
+     * Gets the captured request body, see {@link #requestBody}.
+     *
+     * @return The request body as it must be logged, or {@code null} if none was captured
+     */
+    public String getRequestBody() {
+        return requestBody;
+    }
+
+    /**
+     * Sets the captured request body.
+     *
+     * @param requestBody The request body as it must be logged
+     */
+    public void setRequestBody(String requestBody) {
+        this.requestBody = requestBody;
+    }
+
+    /**
+     * Gets the captured response body, see {@link #responseBody}.
+     *
+     * @return The response body as it must be logged, or {@code null} if none was captured
+     */
+    public String getResponseBody() {
+        return responseBody;
+    }
+
+    /**
+     * Sets the captured response body.
+     *
+     * @param responseBody The response body as it must be logged
+     */
+    public void setResponseBody(String responseBody) {
+        this.responseBody = responseBody;
+    }
+
+}

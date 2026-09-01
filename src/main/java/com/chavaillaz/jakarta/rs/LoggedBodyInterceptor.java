@@ -8,6 +8,7 @@ import jakarta.annotation.Priority;
 import jakarta.ws.rs.ConstrainedTo;
 import jakarta.ws.rs.Priorities;
 import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.ext.InterceptorContext;
 import jakarta.ws.rs.ext.Provider;
 import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
@@ -47,13 +48,13 @@ public class LoggedBodyInterceptor implements ReaderInterceptor, WriterIntercept
 
     @Override
     public Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
-        LoggedFilter filter = getFilter(context.getProperty(LoggedFilter.PROVIDER_PROPERTY));
+        LoggedFilter filter = getFilter(context);
         return filter == null ? context.proceed() : filter.captureRequestBody(context);
     }
 
     @Override
     public void aroundWriteTo(WriterInterceptorContext context) throws IOException, WebApplicationException {
-        LoggedFilter filter = getFilter(context.getProperty(LoggedFilter.PROVIDER_PROPERTY));
+        LoggedFilter filter = getFilter(context);
         if (filter == null) {
             context.proceed();
         } else {
@@ -62,7 +63,7 @@ public class LoggedBodyInterceptor implements ReaderInterceptor, WriterIntercept
     }
 
     /**
-     * Gets the {@link LoggedFilter} instance handling the current request, as recorded by
+     * Gets the {@link LoggedFilter} instance handling the current request, as recorded on the request by
      * {@link LoggedFilter#filter(jakarta.ws.rs.container.ContainerRequestContext)}.
      * <p>
      * Reading it from the request rather than injecting it is what lets this provider hand the capture
@@ -70,11 +71,12 @@ public class LoggedBodyInterceptor implements ReaderInterceptor, WriterIntercept
      * this request. Its absence simply means no {@link LoggedFilter} is active here (the resource is not
      * annotated, or this provider was registered without it), in which case there is nothing to capture.
      *
-     * @param property The value found in the request context
+     * @param context The context of the entity being read or written
      * @return The filter handling the current request, or {@code null} if there is none
      */
-    protected LoggedFilter getFilter(Object property) {
-        return property instanceof LoggedFilter filter ? filter : null;
+    protected LoggedFilter getFilter(InterceptorContext context) {
+        LoggedRequestState state = LoggedRequestState.find(context);
+        return state == null ? null : state.getProvider();
     }
 
 }

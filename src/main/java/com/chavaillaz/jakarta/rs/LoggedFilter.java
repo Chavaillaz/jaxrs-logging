@@ -18,8 +18,6 @@ import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
 import static jakarta.ws.rs.RuntimeType.SERVER;
 import static java.lang.String.join;
 import static java.lang.String.valueOf;
-import static java.lang.System.nanoTime;
-import static java.util.Collections.synchronizedList;
 import static java.util.Comparator.comparing;
 import static java.util.Map.Entry.comparingByKey;
 import static java.util.Objects.requireNonNullElse;
@@ -32,7 +30,6 @@ import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
 import java.io.IOException;
 import java.lang.reflect.Method;
-import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
@@ -132,116 +129,11 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     private static final Pattern CONTROL_CHARACTERS = Pattern.compile("[\\p{Cntrl}\\u0085\\u2028\\u2029]");
 
     /**
-     * Name of the property stored in container context to compute the duration time.
-     */
-    protected static final String REQUEST_TIME_PROPERTY = "request-time";
-
-    /**
-     * Name of the property stored in container context to retrieve the request body after its processing.
-     * <p>
-     * Intentionally distinct from {@link LoggedField#REQUEST_BODY}'s default MDC field name
-     * ({@code request-body}), as the two serve different purposes: this is an internal request-scoped
-     * context property, while the other is a user-facing, renamable MDC key.
-     */
-    protected static final String REQUEST_BODY_PROPERTY = LoggedFilter.class.getName() + ".requestBody";
-
-    /**
-     * Name of the property stored in container context to retrieve the response body once it has been
-     * written, for the same reason as {@link #REQUEST_BODY_PROPERTY}.
-     */
-    protected static final String RESPONSE_BODY_PROPERTY = LoggedFilter.class.getName() + ".responseBody";
-
-    /**
-     * Name of the property stored in container context to hand the instance handling the current request
-     * to {@link LoggedBodyInterceptor}, which captures the bodies from a later position in the
-     * interceptor chain but delegates every decision about them back to this provider.
-     * <p>
-     * The instance is passed through the request rather than injected there, so the capture is handed
-     * back to the exact instance - a subclass, possibly one of several registered, with its own
-     * {@code createBodyCapture} or MDC field names - that is handling this particular request.
-     */
-    protected static final String PROVIDER_PROPERTY = LoggedFilter.class.getName() + ".provider";
-
-    /**
-     * Name of the property stored in container context to keep track of every {@link MDC.MDCCloseable}
-     * obtained through {@link #putMdc(String, String)} for the current request, so {@link #cleanupMdc()}
-     * can close exactly what was added.
-     * <p>
-     * This is what gives MDC entries set by this provider a single, structurally-enforced lifecycle:
-     * any code, including a subclass, that wants an MDC entry removed at the end of the request must
-     * go through {@link #putMdc(String, String)} (or one of its overloads) instead of calling
-     * {@link MDC#put(String, String)} directly, or it will not be tracked here and will leak onto the
-     * thread (normally pooled and reused) handling the next, unrelated request.
-     * <p>
-     * Using {@link MDC#putCloseable(String, String)} rather than hand-rolled key tracking removes an
-     * entire class of bugs where an entry is put without being recorded for cleanup (or recorded under
-     * the wrong key): the only way to obtain a value to put in this list is the very call that already
-     * knows how to remove it, so there is nothing left to keep in sync by convention. This does not by
-     * itself solve MDC being thread-local: if a request is completed (see {@link #COMPLETED_PROPERTY})
-     * on a different thread than the one that called {@link #putMdc(String, String)} (for example, a
-     * JAX-RS implementation that resumes a {@code @Suspended} response, or a reactive resource method,
-     * on a different worker thread), closing these closeables removes the entries from the completing
-     * thread's MDC, not from the thread that actually set them - which is why {@link #filter(ContainerRequestContext)}
-     * also sweeps stale entries at the start of every request (see {@link #resetMdc()} and
-     * {@link #threadMdcKeys}).
-     * <p>
-     * The list itself is synchronized for that same reason: the thread completing the request is not
-     * necessarily the one that started it, so entries can be added and closed from different threads.
-     */
-    protected static final String MDC_CLOSEABLES_PROPERTY = LoggedFilter.class.getName() + ".mdcCloseables";
-
-    /**
-     * Name of the property stored in container context to hold the body logging configuration resolved
-     * for the current request, so the seven or so callbacks asking for it over the life of a request
-     * share one resolution instead of repeating it.
-     * <p>
-     * The resolver already caches per resource method, so what this avoids is not the annotation
-     * reflection but everything around it: two calls into {@link #resourceInfo} - a request-scoped
-     * object the container usually hands out as a proxy resolving through a thread-local - plus a key
-     * allocation and a map lookup, on the hot path of every request the application serves.
-     * <p>
-     * Keeping it on the request rather than on the thread also means the configuration is still the one
-     * belonging to this request when a later callback runs somewhere the container did not bind a
-     * resource to, which is where reading {@link #resourceInfo} again would quietly resolve to nothing
-     * and turn body logging off for a request that had asked for it.
-     */
-    protected static final String BODY_CONFIGURATION_PROPERTY = LoggedFilter.class.getName() + ".bodyConfiguration";
-
-    /**
-     * Name of the property stored in container context to guard {@link #logResponse(String)} against
-     * running more than once for the same request.
-     * <p>
-     * Depending on whether the response has an entity, the end of a request/response cycle can be
-     * reached from two different callbacks of this provider: {@link #filter(ContainerRequestContext, ContainerResponseContext)}
-     * (no entity) or {@link #aroundWriteTo(WriterInterceptorContext)} (entity present). Rather than
-     * relying on the conditions in those two callbacks to always stay perfectly mutually exclusive
-     * (which is what let the "Processed" log line and MDC cleanup silently disappear for entity-less
-     * responses in the past), completion is centralized in {@link #logResponse(String)} and made
-     * idempotent: whichever callback gets there first wins, and the other becomes a no-op.
-     */
-    protected static final String COMPLETED_PROPERTY = LoggedFilter.class.getName() + ".completed";
-
-    /**
-     * Name of the property stored in container context to record that {@link #logRequest(String)} has
-     * already emitted the "Received ..." line for the current request, so
-     * {@link #filter(ContainerRequestContext, ContainerResponseContext)} knows whether it must still do so.
-     * <p>
-     * Most of the time, that line is emitted either directly from {@link #filter(ContainerRequestContext)}
-     * (no entity expected) or from {@link #aroundReadFrom(ReaderInterceptorContext)} (entity read). However,
-     * {@link #aroundReadFrom(ReaderInterceptorContext)} is only invoked by most JAX-RS implementations when
-     * the resource method actually reads the request entity (see its Javadoc): a request that has a body
-     * but whose resource method declares no parameter consuming it hits neither path, and without this
-     * fallback the "Received ..." line - not just its body - would silently never be logged for such a
-     * request, even though {@link com.chavaillaz.jakarta.rs.LoggedBody.LogType#LOG} is configured.
-     */
-    protected static final String REQUEST_LOGGED_PROPERTY = LoggedFilter.class.getName() + ".requestLogged";
-
-    /**
      * MDC keys this provider has put on the current thread, whichever request they belong to, so
      * {@link #resetMdc()} can sweep every one of them and not just the fixed {@link #mdcFields}.
      * <p>
-     * The closeables tracked per request (see {@link #MDC_CLOSEABLES_PROPERTY}) cannot remove an entry
-     * from a thread other than the one closing them, so a request completed elsewhere - a
+     * The closeables tracked per request (see {@link LoggedRequestState#getMdcCloseables()}) cannot
+     * remove an entry from a thread other than the one closing them, so a request completed elsewhere - a
      * {@code @Suspended} response resumed from a worker, a reactive resource method, a container never
      * reaching this provider's completion callbacks at all - leaves its entries on the thread that set
      * them. Sweeping {@link #mdcFields} alone was enough for {@code request-id} and its siblings, whose
@@ -287,25 +179,32 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected ContainerRequestContext requestContext;
 
     /**
+     * Gets everything this provider remembers about the request being processed, creating and attaching
+     * it to the request on first use.
+     * <p>
+     * Always read through the injected {@link #requestContext} rather than through whichever context a
+     * callback was handed - the very same object in a container - so every callback, including the
+     * interceptors and the completion, works on one state.
+     *
+     * @return The state of the current request, never {@code null}
+     */
+    protected LoggedRequestState getState() {
+        return LoggedRequestState.of(requestContext, this);
+    }
+
+    /**
      * Gets the mutable, request-scoped list of {@link MDC.MDCCloseable} obtained so far for the current
-     * request through {@link #putMdc(String, String)}, creating and registering it as a container
-     * property on first use.
+     * request through {@link #putMdc(String, String)}.
      *
      * @return The closeables to be closed by {@link #cleanupMdc()} once the request is done
      */
-    @SuppressWarnings("unchecked")
     protected List<MDC.MDCCloseable> getMdcCloseables() {
-        List<MDC.MDCCloseable> closeables = (List<MDC.MDCCloseable>) requestContext.getProperty(MDC_CLOSEABLES_PROPERTY);
-        if (closeables == null) {
-            closeables = synchronizedList(new ArrayList<>());
-            requestContext.setProperty(MDC_CLOSEABLES_PROPERTY, closeables);
-        }
-        return closeables;
+        return getState().getMdcCloseables();
     }
 
     /**
      * Puts a diagnostic context value identified by the given key into the current thread's context map,
-     * tracking the resulting {@link MDC.MDCCloseable} (see {@link #MDC_CLOSEABLES_PROPERTY}) so
+     * tracking the resulting {@link MDC.MDCCloseable} (see {@link LoggedRequestState#getMdcCloseables()}) so
      * {@link #cleanupMdc()} removes it once the request has been fully processed.
      * <p>
      * Every MDC entry set by this provider, or a subclass extending it, should go through this method
@@ -523,11 +422,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     @Override
     public void filter(ContainerRequestContext requestContext) {
         resetMdc();
-        // Set through the injected context rather than the argument (the very same object in a
-        // container) so every property this provider writes is written where all of them are read back:
-        // the interceptor callbacks and logResponse only ever see the injected one
-        this.requestContext.setProperty(REQUEST_TIME_PROPERTY, nanoTime());
-        this.requestContext.setProperty(PROVIDER_PROPERTY, this);
+        // Attaches the state to the request, which starts measuring its duration and records this
+        // instance as the one handling it, for LoggedBodyInterceptor to hand its captures back to
+        getState();
         putMdc(REQUEST_ID, sanitize(getRequestId(requestContext)));
         putMdc(REQUEST_URI, sanitize(requestContext.getUriInfo().getPath()));
         putMdc(REQUEST_PARAMETERS, sanitize(getQueryParameters(requestContext)));
@@ -614,7 +511,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * request has a body but no resource method parameter consumes it, this method is never called, so
      * the request body will not be logged, even if activated in the annotation. The {@code "Received ..."}
      * line itself is still logged (without a body) by the fallback in
-     * {@link #filter(ContainerRequestContext, ContainerResponseContext)}, see {@link #REQUEST_LOGGED_PROPERTY}.
+     * {@link #filter(ContainerRequestContext, ContainerResponseContext)}, see {@link LoggedRequestState#isRequestLogged()}.
      */
     @Override
     public Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
@@ -624,7 +521,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             // Logs whatever was captured even if reading the entity failed (e.g. malformed payload),
             // so a deserialization error does not leave the request entirely unlogged
             safely(() -> {
-                String body = (String) requestContext.getProperty(REQUEST_BODY_PROPERTY);
+                String body = getState().getRequestBody();
                 if (isNotBlank(body) && getBodyConfiguration(REQUEST).logs(LOG)) {
                     logRequest(body);
                 }
@@ -634,7 +531,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     /**
      * Captures the request body while the entity is being read, storing it as
-     * {@link #REQUEST_BODY_PROPERTY} for {@link #aroundReadFrom(ReaderInterceptorContext)} and
+     * {@link LoggedRequestState#getRequestBody()} for {@link #aroundReadFrom(ReaderInterceptorContext)} and
      * {@link #logResponse(String)} to log.
      * <p>
      * Called by {@link LoggedBodyInterceptor} rather than from this provider's own interceptor position,
@@ -657,7 +554,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         try {
             return context.proceed();
         } finally {
-            safely(() -> requestContext.setProperty(REQUEST_BODY_PROPERTY,
+            safely(() -> getState().setRequestBody(
                     capture.content(configuration.filters(), context.getMediaType())));
         }
     }
@@ -683,7 +580,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param requestBody The request body to be logged
      */
     protected void logRequest(String requestBody) {
-        requestContext.setProperty(REQUEST_LOGGED_PROPERTY, Boolean.TRUE);
+        getState().markRequestLogged();
         log.info("Received {} {}{}{}",
                 getMdc(REQUEST_METHOD),
                 getMdc(REQUEST_URI),
@@ -695,9 +592,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext) {
         // Fallback for a request that has a body but whose resource method never reads it: neither the
         // immediate path in filter(ContainerRequestContext) nor aroundReadFrom logged the request in that
-        // case (see REQUEST_LOGGED_PROPERTY), so without this the "Received ..." line would silently never
+        // case (see LoggedRequestState#isRequestLogged), so without this the "Received ..." line would never
         // appear even though LogType.LOG is configured
-        if (getBodyConfiguration(REQUEST).logs(LOG) && !Boolean.TRUE.equals(this.requestContext.getProperty(REQUEST_LOGGED_PROPERTY))) {
+        if (getBodyConfiguration(REQUEST).logs(LOG) && !getState().isRequestLogged()) {
             logRequest(EMPTY);
         }
 
@@ -752,7 +649,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             safely(() -> {
                 try {
                     LoggedBodyConfiguration configuration = getBodyConfiguration(RESPONSE);
-                    String body = (String) requestContext.getProperty(RESPONSE_BODY_PROPERTY);
+                    String body = getState().getResponseBody();
                     if (configuration.logs(LoggedBody.LogType.MDC)) {
                         putMdc(RESPONSE_BODY, body);
                     }
@@ -769,7 +666,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     /**
      * Captures the response body while the entity is being written, storing it as
-     * {@link #RESPONSE_BODY_PROPERTY} for {@link #aroundWriteTo(WriterInterceptorContext)} to log.
+     * {@link LoggedRequestState#getResponseBody()} for {@link #aroundWriteTo(WriterInterceptorContext)} to log.
      * <p>
      * Called by {@link LoggedBodyInterceptor}, for the same reason as
      * {@link #captureRequestBody(ReaderInterceptorContext)}.
@@ -790,14 +687,14 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         try {
             context.proceed();
         } finally {
-            safely(() -> requestContext.setProperty(RESPONSE_BODY_PROPERTY,
+            safely(() -> getState().setResponseBody(
                     capture.content(configuration.filters(), context.getMediaType())));
         }
     }
 
     /**
      * Logs the response sent by the server and completes the request/response cycle for this provider
-     * (see {@link #COMPLETED_PROPERTY}).
+     * (see {@link LoggedRequestState#markCompleted()}).
      * <p>
      * This is the single completion point for a request: idempotent, so it is safe to call from more
      * than one callback without risking a duplicate "Processed" line, and unconditional, so cleanup
@@ -812,20 +709,16 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param responseBody The response body to be logged
      */
     protected void logResponse(String responseBody) {
-        if (Boolean.TRUE.equals(requestContext.getProperty(COMPLETED_PROPERTY))) {
+        LoggedRequestState state = getState();
+        if (!state.markCompleted()) {
             return;
         }
-        requestContext.setProperty(COMPLETED_PROPERTY, Boolean.TRUE);
 
         try {
-            long requestStartTime = Optional.ofNullable(requestContext.getProperty(REQUEST_TIME_PROPERTY))
-                    .map(Number.class::cast)
-                    .map(Number::longValue)
-                    .orElseGet(System::nanoTime);
-            putMdc(DURATION, valueOf((nanoTime() - requestStartTime) / 1_000_000));
+            putMdc(DURATION, valueOf(state.getElapsedMillis()));
 
             if (getBodyConfiguration(REQUEST).logs(LoggedBody.LogType.MDC)) {
-                putMdc(REQUEST_BODY, (String) requestContext.getProperty(REQUEST_BODY_PROPERTY));
+                putMdc(REQUEST_BODY, getState().getRequestBody());
             }
 
             String status = getMdc(RESPONSE_STATUS);
@@ -863,23 +756,24 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * Gets the body logging configuration for the given target (request or response) of the resource
      * method matched by the current request, delegating resolution and caching to {@link #resolver} the
      * first time it is asked for and reusing that result for the rest of the request afterwards (see
-     * {@link #BODY_CONFIGURATION_PROPERTY}).
+     * {@link LoggedRequestState#getBodyConfiguration()}).
      *
      * @param target The target for which to find the body logging configuration
      * @return The body logging configuration, never {@code null}
      */
     protected LoggedBodyConfiguration getBodyConfiguration(Direction target) {
-        BodyConfiguration configuration = (BodyConfiguration) requestContext.getProperty(BODY_CONFIGURATION_PROPERTY);
+        LoggedRequestState state = getState();
+        BodyConfiguration configuration = state.getBodyConfiguration();
         if (configuration == null) {
             configuration = resolver.getBodyConfiguration(resourceInfo);
-            requestContext.setProperty(BODY_CONFIGURATION_PROPERTY, configuration);
+            state.setBodyConfiguration(configuration);
         }
         return configuration.of(target);
     }
 
     /**
      * Closes every {@link MDC.MDCCloseable} obtained through {@link #putMdc(String, String)} for the
-     * current request (see {@link #MDC_CLOSEABLES_PROPERTY}), which covers every entry put by this
+     * current request (see {@link LoggedRequestState#getMdcCloseables()}), which covers every entry put by this
      * provider itself as well as any subclass following the same convention.
      * <p>
      * Also sweeps, through {@link #resetMdc()}, the fixed set of fields in {@link #mdcFields} as a safety
