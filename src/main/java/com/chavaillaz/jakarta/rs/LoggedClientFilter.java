@@ -59,9 +59,9 @@ import org.slf4j.event.Level;
  * available if/when the calling code actually reads the response entity (see
  * {@link #captureResponseBody(ReaderInterceptorContext)}, mirroring the equivalent, well-known limitation
  * on {@link LoggedFilter#aroundReadFrom} for the request body), which can happen after - or not at all
- * after - the "Called ..." line above already logged, so
- * there is no single point at which both the status line and the body are guaranteed to be available
- * together to merge into one line the way the server-side filter does.
+ * after - the "Called ..." line above already logged, so there is no single point at which both the
+ * status line and the body are guaranteed to be available together to merge into one line the way the
+ * server-side filter does.
  * <p>
  * Only {@link com.chavaillaz.jakarta.rs.LoggedBody.LogType#LOG} is supported (a separate log line), not
  * {@link com.chavaillaz.jakarta.rs.LoggedBody.LogType#MDC}: the server-side filter can attach the body to
