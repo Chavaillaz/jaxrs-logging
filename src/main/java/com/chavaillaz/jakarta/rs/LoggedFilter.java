@@ -14,7 +14,7 @@ import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
 import static com.chavaillaz.jakarta.rs.LoggedField.getDefaultFields;
-import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
+import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
 import static jakarta.ws.rs.RuntimeType.SERVER;
 import static java.lang.String.join;
 import static java.lang.String.valueOf;
@@ -151,6 +151,40 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             "x-access-token",
             "x-csrf-token",
             "x-xsrf-token");
+
+    /**
+     * Query parameters whose value must never be written to the logs, for the same reason as
+     * {@link #SENSITIVE_HEADERS}, and with more urgency: unlike a header, a query parameter is logged
+     * by default, without anything having to be configured, as part of {@link LoggedField#REQUEST_PARAMETERS}.
+     * <p>
+     * Passing a credential in a query string is bad practice and well known as such, yet it is exactly
+     * what OAuth's implicit and authorization-code-in-URL flows, presigned URLs and countless internal
+     * APIs do, so an application has no say in whether its callers do it. Reaching a value here is not a
+     * decision by the developer the way an explicitly named {@link LoggedMapping} is, so, unlike a header,
+     * this applies whether or not any mapping is involved: the value is replaced by
+     * {@link MaskingBodyFilter#DEFAULT_MASK} while the parameter name stays visible, which is the part
+     * that is useful for troubleshooting anyway.
+     * <p>
+     * Compared in lower case, see {@link #isSensitive}. Override that method to add whatever else an
+     * application's callers put in a query string ({@code code} for an OAuth authorization code, a
+     * signed-URL token, ...), left out here as they are too commonly ordinary parameter names to mask
+     * for everyone by default.
+     */
+    protected static final Set<String> SENSITIVE_PARAMETERS = Set.of(
+            "password",
+            "passwd",
+            "pwd",
+            "secret",
+            "client_secret",
+            "token",
+            "access_token",
+            "refresh_token",
+            "id_token",
+            "api_key",
+            "apikey",
+            "auth",
+            "authorization",
+            "signature");
 
     /**
      * Name of the property stored in container context to compute the duration time.
@@ -369,17 +403,35 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Indicates whether the given parameter must never be copied into MDC by an automatic mapping.
+     * Indicates whether the value of the given parameter must be kept out of the logs.
      * <p>
-     * Override to extend (or restrict) the default set of credential-carrying headers, for example to
-     * also exclude a query parameter carrying a signed URL token.
+     * Two things honour this: an automatic {@link LoggedMapping}, which skips the parameter entirely
+     * rather than copying it into MDC, and {@link #getQueryParameters(ContainerRequestContext)}, which
+     * masks the value while keeping the parameter name. An explicit mapping naming a parameter is a
+     * deliberate decision by the developer and is left alone by both.
+     * <p>
+     * Override to extend (or restrict) the defaults, for example to also mask a query parameter carrying
+     * a signed URL token:
+     * <pre>{@code
+     * @Override
+     * protected boolean isSensitive(MappingType type, String name) {
+     *     return super.isSensitive(type, name)
+     *             || (type == QUERY && "url-signature".equalsIgnoreCase(name));
+     * }
+     * }</pre>
      *
-     * @param type The type of parameter being mapped
-     * @param name The name of the parameter being mapped
-     * @return {@code true} if the parameter must be skipped, {@code false} otherwise
+     * @param type The type of parameter being logged
+     * @param name The name of the parameter being logged
+     * @return {@code true} if the value must be kept out of the logs, {@code false} otherwise
      */
     protected boolean isSensitive(MappingType type, String name) {
-        return type == HEADER && SENSITIVE_HEADERS.contains(name.toLowerCase(Locale.ROOT));
+        return switch (type) {
+            case HEADER -> SENSITIVE_HEADERS.contains(name.toLowerCase(Locale.ROOT));
+            case QUERY -> SENSITIVE_PARAMETERS.contains(name.toLowerCase(Locale.ROOT));
+            // Path parameter names are chosen by the application itself, not by whoever calls it, so
+            // there is no equivalent list of names that "just happen" to carry a credential
+            case PATH -> false;
+        };
     }
 
     /**
@@ -562,7 +614,11 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Renders the query parameters of the given request as a single, deterministically ordered string.
+     * Renders the query parameters of the given request as a single, deterministically ordered string,
+     * masking the value of those {@link #isSensitive(MappingType, String)} reports as credential-carrying.
+     * <p>
+     * The parameter name is kept even when its value is masked, as the name is what is useful for
+     * troubleshooting (knowing an {@code access_token} was supplied at all) and is not itself the secret.
      *
      * @param requestContext The context of the request received
      * @return The rendered query parameters, empty if the request has none
@@ -577,7 +633,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         return parameters.entrySet()
                 .stream()
                 .sorted(comparingByKey())
-                .map(entry -> entry.getKey() + "=" + join(",", entry.getValue()))
+                .map(entry -> entry.getKey() + "=" + (isSensitive(QUERY, entry.getKey())
+                        ? MaskingBodyFilter.DEFAULT_MASK
+                        : join(",", entry.getValue())))
                 .collect(joining("&"));
     }
 

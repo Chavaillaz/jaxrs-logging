@@ -522,6 +522,46 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check a credential-carrying query parameter is masked in the logged parameters")
+    void checkSensitiveQueryParameterIsMasked() throws Exception {
+        // Unlike a header, a query parameter is logged by default, with nothing to configure. Passing a
+        // credential in a query string is bad practice, but OAuth flows, presigned URLs and plenty of
+        // internal APIs do it, and the application has no say in what its callers send.
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
+                MockHttpRequest.create("GET", "example.company.com/service?topic=news&access_token=secret-token"));
+
+        // When
+        loggingFilter.filter(requestContext);
+
+        // Then: the name stays visible, as knowing a token was supplied is the useful part
+        String parameters = getMdc(REQUEST_PARAMETERS);
+        assertNotNull(parameters);
+        assertFalse(parameters.contains("secret-token"));
+        assertTrue(parameters.contains("access_token=***"));
+        assertTrue(parameters.contains("topic=news"));
+    }
+
+    @Test
+    @DisplayName("Check automatic query mapping skips credential-carrying parameters")
+    void checkAutoMappingSkipsSensitiveQueryParameters() throws Exception {
+        setupTest(AnnotatedResource.class, "autoMappedQueryParameters");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
+                MockHttpRequest.create("GET", "example.company.com/service?topic=news&password=hunter2"));
+
+        // When
+        loggingFilter.filter(requestContext);
+
+        // Then
+        assertNull(MDC.get("password"));
+        assertEquals("news", MDC.get("topic"));
+    }
+
+    @Test
     @DisplayName("Check a request without query parameters does not create an empty MDC entry")
     void checkNoEmptyParametersMdcEntry() throws Exception {
         setupTest(AnnotatedResource.class, "noBodyLogging");

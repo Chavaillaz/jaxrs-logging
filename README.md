@@ -203,6 +203,35 @@ is [LoggedFilter#SENSITIVE_HEADERS](src/main/java/com/chavaillaz/jakarta/rs/Logg
 restrict it by overriding `isSensitive(MappingType, String)`. An explicit mapping naming a header is a
 deliberate decision and is left alone.
 
+## Credentials in query parameters
+
+Query parameters are logged by default as `request-parameters`, with nothing to configure, so a caller
+passing a credential in the query string puts it in the logs of every service it reaches. That is bad
+practice and well known as such, and it is also what OAuth's implicit and authorization-code-in-URL flows,
+presigned URLs and plenty of internal APIs do - the application has no say in what its callers send.
+
+The value of a parameter whose name is a well-known credential name (`access_token`, `password`,
+`client_secret`, ... see
+[LoggedFilter#SENSITIVE_PARAMETERS](src/main/java/com/chavaillaz/jakarta/rs/LoggedFilter.java)) is
+therefore replaced with `***`, while the name stays visible - knowing a token was supplied at all is the
+useful part for troubleshooting, and the name is not the secret:
+
+```
+request-parameters: access_token=***&topic=news
+```
+
+Automatic `QUERY` mapping skips those parameters entirely, the way it does for headers. Names too commonly
+used for ordinary things to mask for everyone (`code`, for instance) are not in the list; add whatever
+your callers actually send by overriding `isSensitive(MappingType, String)`:
+
+```java
+@Override
+protected boolean isSensitive(MappingType type, String name) {
+    return super.isSensitive(type, name)
+            || (type == QUERY && "url-signature".equalsIgnoreCase(name));
+}
+```
+
 ## Body filters
 
 A body filter rewrites a captured body before it is logged, which is how a value that must never reach the
