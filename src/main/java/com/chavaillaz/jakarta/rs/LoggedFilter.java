@@ -45,6 +45,7 @@ import java.util.regex.Pattern;
 
 import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
 import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
+import com.chavaillaz.jakarta.rs.LoggedResolver.BodyConfiguration;
 import jakarta.annotation.Priority;
 import jakarta.ws.rs.ConstrainedTo;
 import jakarta.ws.rs.Priorities;
@@ -244,6 +245,23 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * necessarily the one that started it, so entries can be added and closed from different threads.
      */
     protected static final String MDC_CLOSEABLES_PROPERTY = LoggedFilter.class.getName() + ".mdcCloseables";
+
+    /**
+     * Name of the property stored in container context to hold the body logging configuration resolved
+     * for the current request, so the seven or so callbacks asking for it over the life of a request
+     * share one resolution instead of repeating it.
+     * <p>
+     * The resolver already caches per resource method, so what this avoids is not the annotation
+     * reflection but everything around it: two calls into {@link #resourceInfo} - a request-scoped
+     * object the container usually hands out as a proxy resolving through a thread-local - plus a key
+     * allocation and a map lookup, on the hot path of every request the application serves.
+     * <p>
+     * Keeping it on the request rather than on the thread also means the configuration is still the one
+     * belonging to this request when a later callback runs somewhere the container did not bind a
+     * resource to, which is where reading {@link #resourceInfo} again would quietly resolve to nothing
+     * and turn body logging off for a request that had asked for it.
+     */
+    protected static final String BODY_CONFIGURATION_PROPERTY = LoggedFilter.class.getName() + ".bodyConfiguration";
 
     /**
      * Name of the property stored in container context to guard {@link #logResponse(String)} against
@@ -863,13 +881,20 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     /**
      * Gets the body logging configuration for the given target (request or response) of the resource
-     * method matched by the current request, delegating resolution and caching to {@link #resolver}.
+     * method matched by the current request, delegating resolution and caching to {@link #resolver} the
+     * first time it is asked for and reusing that result for the rest of the request afterwards (see
+     * {@link #BODY_CONFIGURATION_PROPERTY}).
      *
      * @param target The target for which to find the body logging configuration
      * @return The body logging configuration, never {@code null}
      */
     protected LoggedBodyConfiguration getBodyConfiguration(Direction target) {
-        return resolver.getBodyConfiguration(resourceInfo, target);
+        BodyConfiguration configuration = (BodyConfiguration) requestContext.getProperty(BODY_CONFIGURATION_PROPERTY);
+        if (configuration == null) {
+            configuration = resolver.getBodyConfiguration(resourceInfo);
+            requestContext.setProperty(BODY_CONFIGURATION_PROPERTY, configuration);
+        }
+        return configuration.of(target);
     }
 
     /**

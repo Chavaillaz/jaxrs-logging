@@ -333,6 +333,28 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check the body configuration resolved for a request survives losing the matched resource")
+    void checkBodyConfigurationSurvivesUnresolvableResource() throws Exception {
+        // Resolution reads the resource class and method from ResourceInfo, a request-scoped object the
+        // container usually hands out as a proxy resolving through a thread-local. A callback running
+        // where no resource is bound would resolve to nothing and silently turn body logging off for a
+        // request that had asked for it, so the configuration is kept on the request instead.
+        setupTest(AnnotatedResource.class, "bodyAsMdc");
+
+        // Given
+        loggingFilter.filter(getRequestContext());
+
+        // When: a later callback sees no matched resource at all (stubbed leniently, as the whole point
+        // is that the calls below no longer reach ResourceInfo)
+        lenient().doReturn(null).when(resourceInfo).getResourceClass();
+        lenient().doReturn(null).when(resourceInfo).getResourceMethod();
+
+        // Then
+        assertTrue(loggingFilter.getBodyConfiguration(REQUEST).isActive());
+        assertTrue(loggingFilter.getBodyConfiguration(RESPONSE).isActive());
+    }
+
+    @Test
     @DisplayName("Check merged mappings are resolved once per resource method and cached")
     void checkMergedMappingsCaching() throws Exception {
         setupTest(AnnotatedResource.class, "autoMappedQueryParameters");

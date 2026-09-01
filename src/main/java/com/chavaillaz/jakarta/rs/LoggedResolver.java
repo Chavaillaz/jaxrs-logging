@@ -71,13 +71,30 @@ public class LoggedResolver {
 
     /**
      * Body logging configuration resolved for both directions of a given resource method.
+     * <p>
+     * Both directions travel together so a caller needing them repeatedly (as a filter does, several
+     * times per request) can hold on to a single, already resolved value rather than asking for one
+     * direction at a time.
      *
      * @param request  The body logging configuration applicable to the request
      * @param response The body logging configuration applicable to the response
      */
-    protected record BodyConfiguration(LoggedBodyConfiguration request, LoggedBodyConfiguration response) {
+    public record BodyConfiguration(LoggedBodyConfiguration request, LoggedBodyConfiguration response) {
 
-        static final BodyConfiguration NONE = new BodyConfiguration(LoggedBodyConfiguration.NONE, LoggedBodyConfiguration.NONE);
+        /**
+         * Configuration logging nothing in either direction, used whenever no {@link LoggedBody} applies.
+         */
+        public static final BodyConfiguration NONE = new BodyConfiguration(LoggedBodyConfiguration.NONE, LoggedBodyConfiguration.NONE);
+
+        /**
+         * Gets the configuration applicable to the given direction.
+         *
+         * @param target The direction to get the configuration of
+         * @return The body logging configuration, never {@code null}
+         */
+        public LoggedBodyConfiguration of(Direction target) {
+            return target == REQUEST ? request : response;
+        }
 
     }
 
@@ -142,13 +159,28 @@ public class LoggedResolver {
      * @return The body logging configuration, or {@link LoggedBodyConfiguration#NONE} if none applies
      */
     public LoggedBodyConfiguration getBodyConfiguration(ResourceInfo resourceInfo, Direction target) {
+        return getBodyConfiguration(resourceInfo).of(target);
+    }
+
+    /**
+     * Gets the body logging configuration for both directions of the resource method matched by the
+     * given resource, resolving and caching them together the first time either is requested.
+     * <p>
+     * Preferred by a caller needing the configuration more than once for the same request: obtaining
+     * both directions in one call means one lookup keyed on the resource - and therefore one pair of
+     * calls into the (usually proxied, request-scoped) {@link ResourceInfo} - instead of one per
+     * direction per callback.
+     *
+     * @param resourceInfo The instance to access resource class and method
+     * @return The body logging configuration of both directions, never {@code null}
+     */
+    public BodyConfiguration getBodyConfiguration(ResourceInfo resourceInfo) {
         ResourceKey key = ResourceKey.of(resourceInfo);
-        BodyConfiguration configuration = key == null
+        return key == null
                 ? BodyConfiguration.NONE
                 : bodyConfigurationCache.computeIfAbsent(key, ignored -> new BodyConfiguration(
                         resolve(resourceInfo, REQUEST),
                         resolve(resourceInfo, RESPONSE)));
-        return target == REQUEST ? configuration.request() : configuration.response();
     }
 
     /**
