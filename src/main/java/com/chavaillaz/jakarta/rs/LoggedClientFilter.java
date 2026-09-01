@@ -22,6 +22,8 @@ import jakarta.ws.rs.client.ClientRequestContext;
 import jakarta.ws.rs.client.ClientRequestFilter;
 import jakarta.ws.rs.client.ClientResponseContext;
 import jakarta.ws.rs.client.ClientResponseFilter;
+import jakarta.ws.rs.core.Feature;
+import jakarta.ws.rs.core.FeatureContext;
 import jakarta.ws.rs.ext.Provider;
 import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
@@ -67,7 +69,7 @@ import org.slf4j.MDC;
 @Provider
 @ConstrainedTo(CLIENT)
 @Priority(Priorities.HEADER_DECORATOR)
-public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFilter, ReaderInterceptor, WriterInterceptor {
+public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFilter, Feature {
 
     protected static final Logger log = LoggerFactory.getLogger(LoggedClientFilter.class);
 
@@ -254,13 +256,16 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     }
 
     /**
-     * {@inheritDoc}
+     * Captures and logs the request body while the entity is being written.
      * <p>
      * Note that this is only invoked when the request actually has an entity to write, which is the
      * common case for a client call built with an entity (e.g. {@code target.request().post(entity)}).
+     *
+     * @param context The context of the entity being written
+     * @throws IOException             if an IO error arises while writing the entity
+     * @throws WebApplicationException if the entity cannot be written
      */
-    @Override
-    public void aroundWriteTo(WriterInterceptorContext context) throws IOException, WebApplicationException {
+    protected void captureRequestBody(WriterInterceptorContext context) throws IOException, WebApplicationException {
         if (!logRequestBody || !isLoggingEnabled()) {
             context.proceed();
             return;
@@ -310,15 +315,19 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     }
 
     /**
-     * {@inheritDoc}
+     * Captures and logs the response body while the entity is being read.
      * <p>
      * Note that this is only invoked when the calling code actually reads the response entity (e.g.
      * {@code response.readEntity(MyType.class)}), which can happen after - or not at all after - the
      * "Called ..." line has already been logged by {@link #filter(ClientRequestContext, ClientResponseContext)}.
      * If the entity is never read, the response body is never logged, even if activated.
+     *
+     * @param context The context of the entity being read
+     * @return The entity read
+     * @throws IOException             if an IO error arises while reading the entity
+     * @throws WebApplicationException if the entity cannot be read
      */
-    @Override
-    public Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
+    protected Object captureResponseBody(ReaderInterceptorContext context) throws IOException, WebApplicationException {
         if (!logResponseBody || !isLoggingEnabled()) {
             return context.proceed();
         }
@@ -338,6 +347,64 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
                         body);
             }
         }
+    }
+
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Registering this provider also registers {@link BodyInterceptor}, so a single
+     * {@code client.register(...)} keeps covering bodies. The two cannot be the same provider because
+     * they need different priorities: the filters above must run early on the request and late on the
+     * response, which places them outside any entity coder, while capturing a body requires running
+     * inside it (see {@link BodyInterceptor}).
+     */
+    @Override
+    public boolean configure(FeatureContext context) {
+        context.register(new BodyInterceptor(this));
+        return true;
+    }
+
+    /**
+     * Captures the bodies logged by the {@link LoggedClientFilter} that registered it, from a position in
+     * the interceptor chain where they are readable.
+     * <p>
+     * Interceptors are invoked in ascending priority order and each one wraps the stream for those that
+     * run after it, so the first to run sits closest to the network and an entity coder
+     * ({@link Priorities#ENTITY_CODER}) registered after it compresses on the way out and decompresses on
+     * the way in, between that interceptor and the entity itself. Capturing from the enclosing filter's
+     * own priority therefore captured the compressed bytes: a {@code Content-Encoding: gzip} request or
+     * response was logged as gzip noise rather than as the payload the application actually sent or read.
+     * <p>
+     * Running after the entity coder instead, what is captured is the entity's own representation,
+     * whatever transfer encoding was applied around it. Every decision about it stays on the enclosing
+     * filter, which this interceptor calls back into, so a subclass overriding
+     * {@link #createBodyCapture(int)} or either capture method stays in control.
+     */
+    @ConstrainedTo(CLIENT)
+    @Priority(Priorities.ENTITY_CODER + 100)
+    public static class BodyInterceptor implements ReaderInterceptor, WriterInterceptor {
+
+        protected final LoggedClientFilter filter;
+
+        /**
+         * Creates the interceptor capturing bodies for the given filter.
+         *
+         * @param filter The filter to hand the captured bodies back to
+         */
+        public BodyInterceptor(LoggedClientFilter filter) {
+            this.filter = filter;
+        }
+
+        @Override
+        public void aroundWriteTo(WriterInterceptorContext context) throws IOException, WebApplicationException {
+            filter.captureRequestBody(context);
+        }
+
+        @Override
+        public Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
+            return filter.captureResponseBody(context);
+        }
+
     }
 
     /**

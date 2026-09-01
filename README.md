@@ -84,6 +84,13 @@ UTF-8 text, to avoid filling logs with replacement characters for binary payload
 Nothing is captured at all when the logger is configured above `INFO`, so an application that turns this
 logging off does not pay for buffering and filtering bodies it will never write.
 
+Bodies are captured by a second provider,
+[LoggedBodyInterceptor](src/main/java/com/chavaillaz/jakarta/rs/LoggedBodyInterceptor.java), which runs after
+any entity coder so that what is logged is the entity itself rather than its transfer encoding - a
+`Content-Encoding: gzip` request or response is logged as the payload, not as gzip noise. It is discovered
+like any other `@Provider`; if you register providers explicitly, register it alongside `LoggedFilter`
+(without it you only lose the bodies, not the log lines).
+
 ## Example
 
 Given an endpoint on which users can create new articles, annotated with `@Logged`

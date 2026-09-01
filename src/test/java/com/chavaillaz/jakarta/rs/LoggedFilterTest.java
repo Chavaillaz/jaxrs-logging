@@ -32,6 +32,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -42,13 +43,19 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
 
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ResourceInfo;
+import jakarta.ws.rs.ext.InterceptorContext;
+import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
+import jakarta.ws.rs.ext.WriterInterceptor;
 import jakarta.ws.rs.ext.WriterInterceptorContext;
 import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.core.LogEvent;
@@ -61,6 +68,7 @@ import org.jboss.resteasy.specimpl.BuiltResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.api.function.ThrowingConsumer;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -116,6 +124,17 @@ class LoggedFilterTest extends AbstractFilterTest {
     @InjectMocks
     LoggedFilter loggingFilter;
 
+    /**
+     * Second half of the provider pair under test: the container registers it alongside the filter, at a
+     * priority placing it after any entity coder, and it hands every body it captures back to the filter.
+     */
+    final LoggedBodyInterceptor bodyInterceptor = new LoggedBodyInterceptor();
+
+    /**
+     * Property map shared by every context mock of a test, see {@link #stubProperties(InterceptorContext)}.
+     */
+    final Map<String, Object> contextProperties = new HashMap<>();
+
     static Stream<Arguments> arguments() {
         return Stream.of(
                 Arguments.of(AnnotatedResource.class, "inherit", ALL_LOGGING, ALL_LOGGING, SENSITIVE_FILTERING),
@@ -140,14 +159,119 @@ class LoggedFilterTest extends AbstractFilterTest {
         // ContainerRequestContext each test passes as a method argument (which is what a real
         // JAX-RS container would give it as the very same object): back it with a real map so
         // properties set through the field (e.g. by cleanupMdc's callers) can be read back
-        Map<String, Object> contextProperty = new HashMap<>();
         lenient().doAnswer(invocation ->
-                contextProperty.get(invocation.getArgument(0, String.class))
+                contextProperties.get(invocation.getArgument(0, String.class))
         ).when(containerRequestContext).getProperty(any());
         lenient().doAnswer(invocation -> {
-            contextProperty.put(invocation.getArgument(0, String.class), invocation.getArgument(1, Object.class));
+            contextProperties.put(invocation.getArgument(0, String.class), invocation.getArgument(1, Object.class));
             return null;
         }).when(containerRequestContext).setProperty(any(), any());
+    }
+
+    /**
+     * Stubs the property accessors of an interceptor context onto {@link #contextProperties}, the one
+     * map every context mock of a test shares, as a real container shares a single property map for the
+     * whole request across its filters and interceptors.
+     *
+     * @param context The interceptor context to stub
+     */
+    void stubProperties(InterceptorContext context) {
+        lenient().doAnswer(invocation ->
+                contextProperties.get(invocation.getArgument(0, String.class))
+        ).when(context).getProperty(any());
+        lenient().doAnswer(invocation -> {
+            contextProperties.put(invocation.getArgument(0, String.class), invocation.getArgument(1, Object.class));
+            return null;
+        }).when(context).setProperty(any(), any());
+    }
+
+    /**
+     * Builds a reader interceptor context driving the same two-provider chain a container would: the
+     * first {@code proceed()}, made by {@link LoggedFilter} at its own priority, hands over to
+     * {@link LoggedBodyInterceptor} (which the container places after the entity coder), and the second,
+     * made by the capture the latter delegates back, runs the given read as the message body reader would.
+     *
+     * @param entity The entity stream the chain starts from
+     * @param read   The read performed once the whole chain has wrapped the stream
+     * @return The stubbed context
+     * @throws IOException never, the stubbed proceed() only declares it
+     */
+    ReaderInterceptorContext readerContext(InputStream entity, ThrowingConsumer<InputStream> read) throws IOException {
+        return readerContext(entity, read, bodyInterceptor);
+    }
+
+    /**
+     * Builds a reader interceptor context driving the given interceptor chain, in the order a container
+     * would invoke it, before performing the given read as the message body reader would.
+     *
+     * @param entity The entity stream the chain starts from
+     * @param read   The read performed once the whole chain has wrapped the stream
+     * @param chain  The interceptors to invoke, from the lowest to the highest priority
+     * @return The stubbed context
+     * @throws IOException never, the stubbed proceed() only declares it
+     */
+    ReaderInterceptorContext readerContext(InputStream entity, ThrowingConsumer<InputStream> read, ReaderInterceptor... chain) throws IOException {
+        ReaderInterceptorContext context = mock(ReaderInterceptorContext.class);
+        AtomicReference<InputStream> stream = new AtomicReference<>(entity);
+        AtomicInteger depth = new AtomicInteger();
+        lenient().doAnswer(invocation -> stream.get()).when(context).getInputStream();
+        lenient().doAnswer(invocation -> {
+            stream.set(invocation.getArgument(0, InputStream.class));
+            return null;
+        }).when(context).setInputStream(any());
+        lenient().doAnswer(invocation -> {
+            int position = depth.getAndIncrement();
+            if (position < chain.length) {
+                return chain[position].aroundReadFrom(context);
+            }
+            read.accept(stream.get());
+            return null;
+        }).when(context).proceed();
+        stubProperties(context);
+        return context;
+    }
+
+    /**
+     * Builds a writer interceptor context driving the same chain as {@link #readerContext}, in the
+     * other direction.
+     *
+     * @param write The write performed once the whole chain has wrapped the stream
+     * @return The stubbed context
+     * @throws IOException never, the stubbed proceed() only declares it
+     */
+    WriterInterceptorContext writerContext(ThrowingConsumer<OutputStream> write) throws IOException {
+        return writerContext(write, bodyInterceptor);
+    }
+
+    /**
+     * Builds a writer interceptor context driving the given chain, as {@link #readerContext} does in the
+     * other direction.
+     *
+     * @param write The write performed once the whole chain has wrapped the stream
+     * @param chain The interceptors to invoke, from the lowest to the highest priority
+     * @return The stubbed context
+     * @throws IOException never, the stubbed proceed() only declares it
+     */
+    WriterInterceptorContext writerContext(ThrowingConsumer<OutputStream> write, WriterInterceptor... chain) throws IOException {
+        WriterInterceptorContext context = mock(WriterInterceptorContext.class);
+        AtomicReference<OutputStream> stream = new AtomicReference<>(new ByteArrayOutputStream());
+        AtomicInteger depth = new AtomicInteger();
+        lenient().doAnswer(invocation -> stream.get()).when(context).getOutputStream();
+        lenient().doAnswer(invocation -> {
+            stream.set(invocation.getArgument(0, OutputStream.class));
+            return null;
+        }).when(context).setOutputStream(any());
+        lenient().doAnswer(invocation -> {
+            int position = depth.getAndIncrement();
+            if (position < chain.length) {
+                chain[position].aroundWriteTo(context);
+            } else {
+                write.accept(stream.get());
+            }
+            return null;
+        }).when(context).proceed();
+        stubProperties(context);
+        return context;
     }
 
     @ParameterizedTest(name = "{1}")
@@ -157,57 +281,11 @@ class LoggedFilterTest extends AbstractFilterTest {
         setupTest(type, method);
 
         // Given
-        Map<String, Object> properties = new HashMap<>();
-
         PreMatchContainerRequestContext requestContext = getRequestContext();
-        ReaderInterceptorContext requestInterceptorContext = mock(ReaderInterceptorContext.class);
-        if (expectedRequestLogging.length > 0) {
-            AtomicReference<InputStream> inputStream = new AtomicReference<>(requestContext.getEntityStream());
-            doAnswer(invocation ->
-                    inputStream.get()
-            ).when(requestInterceptorContext).getInputStream();
-            doAnswer(invocation -> {
-                inputStream.set(invocation.getArgument(0, InputStream.class));
-                return null;
-            }).when(requestInterceptorContext).setInputStream(any());
-            doAnswer(invocation -> {
-                inputStream.get().readAllBytes();
-                return null;
-            }).when(requestInterceptorContext).proceed();
-
-            lenient().doAnswer(invocation ->
-                    properties.get(invocation.getArgument(0, String.class))
-            ).when(requestInterceptorContext).getProperty(any());
-            lenient().doAnswer(invocation -> {
-                properties.put(invocation.getArgument(0, String.class), invocation.getArgument(1, Object.class));
-                return null;
-            }).when(requestInterceptorContext).setProperty(any(), any());
-        }
+        ReaderInterceptorContext requestInterceptorContext = readerContext(requestContext.getEntityStream(), InputStream::readAllBytes);
 
         ContainerResponseContextImpl responseContext = getResponseContext(requestContext);
-        WriterInterceptorContext responseInterceptorContext = mock(WriterInterceptorContext.class);
-        if (expectedResponseLogging.length > 0) {
-            AtomicReference<OutputStream> output = new AtomicReference<>(new ByteArrayOutputStream());
-            doAnswer(invocation ->
-                    output.get()
-            ).when(responseInterceptorContext).getOutputStream();
-            doAnswer(invocation -> {
-                output.set(invocation.getArgument(0, OutputStream.class));
-                return null;
-            }).when(responseInterceptorContext).setOutputStream(any());
-            doAnswer(invocation -> {
-                output.get().write(OUTPUT.getBytes());
-                return null;
-            }).when(responseInterceptorContext).proceed();
-
-            lenient().doAnswer(invocation ->
-                    properties.get(invocation.getArgument(0, String.class))
-            ).when(responseInterceptorContext).getProperty(any());
-            lenient().doAnswer(invocation -> {
-                properties.put(invocation.getArgument(0, String.class), invocation.getArgument(1, Object.class));
-                return null;
-            }).when(responseInterceptorContext).setProperty(any(), any());
-        }
+        WriterInterceptorContext responseInterceptorContext = writerContext(output -> output.write(OUTPUT.getBytes(UTF_8)));
 
         // When
         loggingFilter.filter(requestContext);
@@ -268,23 +346,79 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check the request body is captured after an entity coder decoded it")
+    void checkRequestBodyCapturedAfterEntityCoder() throws Exception {
+        // Interceptors run in ascending priority and each wraps the stream for the next, so capturing
+        // from LoggedFilter's own (deliberately low) priority captured the bytes as they arrive on the
+        // wire - gzip noise for a Content-Encoding: gzip request. LoggedBodyInterceptor runs after the
+        // coder instead, and must therefore see the decoded entity.
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+
+        // Given: the request as it arrives on the wire, with a coder decoding it between the two
+        ReaderInterceptor decoder = context -> {
+            context.setInputStream(new GZIPInputStream(context.getInputStream()));
+            return context.proceed();
+        };
+        ReaderInterceptorContext requestInterceptorContext = readerContext(
+                new ByteArrayInputStream(gzip(INPUT)), InputStream::readAllBytes, decoder, bodyInterceptor);
+
+        // When
+        loggingFilter.filter(getRequestContext());
+        loggingFilter.aroundReadFrom(requestInterceptorContext);
+
+        // Then
+        LogEvent event = listAppender.findFirstMessage("Received");
+        assertNotNull(event);
+        assertTrue(event.getMessage().getFormattedMessage().contains(INPUT));
+    }
+
+    @Test
+    @DisplayName("Check the response body is captured before an entity coder encoded it")
+    void checkResponseBodyCapturedBeforeEntityCoder() throws Exception {
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+
+        // Given: a coder compressing the entity between the two, so only an interceptor running after
+        // it still sees what the message body writer actually produced
+        WriterInterceptor encoder = context -> {
+            GZIPOutputStream compressed = new GZIPOutputStream(context.getOutputStream());
+            context.setOutputStream(compressed);
+            context.proceed();
+            compressed.finish();
+        };
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        WriterInterceptorContext responseInterceptorContext = writerContext(
+                output -> output.write(OUTPUT.getBytes(UTF_8)), encoder, bodyInterceptor);
+
+        // When
+        loggingFilter.filter(requestContext);
+        loggingFilter.filter(requestContext, getResponseContext(requestContext));
+        loggingFilter.aroundWriteTo(responseInterceptorContext);
+
+        // Then
+        LogEvent event = listAppender.findFirstMessage("Processed");
+        assertNotNull(event);
+        assertTrue(event.getMessage().getFormattedMessage().contains(OUTPUT));
+    }
+
+    static byte[] gzip(String content) throws IOException {
+        ByteArrayOutputStream compressed = new ByteArrayOutputStream();
+        try (GZIPOutputStream stream = new GZIPOutputStream(compressed)) {
+            stream.write(content.getBytes(UTF_8));
+        }
+        return compressed.toByteArray();
+    }
+
+    @Test
     @DisplayName("Check request body is still logged when reading the entity fails")
     void checkRequestBodyLoggedOnReadFailure() throws Exception {
         setupTest(AnnotatedResource.class, "bodyAsLog");
 
         // Given
         PreMatchContainerRequestContext requestContext = getRequestContext();
-        ReaderInterceptorContext requestInterceptorContext = mock(ReaderInterceptorContext.class);
-        AtomicReference<InputStream> inputStream = new AtomicReference<>(requestContext.getEntityStream());
-        doAnswer(invocation -> inputStream.get()).when(requestInterceptorContext).getInputStream();
-        doAnswer(invocation -> {
-            inputStream.set(invocation.getArgument(0, InputStream.class));
-            return null;
-        }).when(requestInterceptorContext).setInputStream(any());
-        doAnswer(invocation -> {
-            inputStream.get().readAllBytes();
+        ReaderInterceptorContext requestInterceptorContext = readerContext(requestContext.getEntityStream(), stream -> {
+            stream.readAllBytes();
             throw new IOException("Malformed payload");
-        }).when(requestInterceptorContext).proceed();
+        });
 
         loggingFilter.filter(requestContext);
 
@@ -329,24 +463,7 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         // Given
         PreMatchContainerRequestContext requestContext = getRequestContext();
-        ReaderInterceptorContext requestInterceptorContext = mock(ReaderInterceptorContext.class);
-        AtomicReference<InputStream> inputStream = new AtomicReference<>(requestContext.getEntityStream());
-        doAnswer(invocation -> inputStream.get()).when(requestInterceptorContext).getInputStream();
-        doAnswer(invocation -> {
-            inputStream.set(invocation.getArgument(0, InputStream.class));
-            return null;
-        }).when(requestInterceptorContext).setInputStream(any());
-        doAnswer(invocation -> {
-            inputStream.get().readAllBytes();
-            return null;
-        }).when(requestInterceptorContext).proceed();
-        Map<String, Object> properties = new HashMap<>();
-        lenient().doAnswer(invocation -> properties.get(invocation.getArgument(0, String.class)))
-                .when(requestInterceptorContext).getProperty(any());
-        lenient().doAnswer(invocation -> {
-            properties.put(invocation.getArgument(0, String.class), invocation.getArgument(1, Object.class));
-            return null;
-        }).when(requestInterceptorContext).setProperty(any(), any());
+        ReaderInterceptorContext requestInterceptorContext = readerContext(requestContext.getEntityStream(), InputStream::readAllBytes);
         ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext);
 
         // When
@@ -524,9 +641,9 @@ class LoggedFilterTest extends AbstractFilterTest {
         // Given
         PreMatchContainerRequestContext requestContext = getRequestContext();
         ContainerResponseContextImpl responseContext = getResponseContext(requestContext);
-        WriterInterceptorContext responseInterceptorContext = mock(WriterInterceptorContext.class);
-        doReturn(new ByteArrayOutputStream()).when(responseInterceptorContext).getOutputStream();
-        doThrow(new IOException("Client disconnected")).when(responseInterceptorContext).proceed();
+        WriterInterceptorContext responseInterceptorContext = writerContext(output -> {
+            throw new IOException("Client disconnected");
+        });
 
         loggingFilter.filter(requestContext);
         loggingFilter.filter(requestContext, responseContext);
@@ -553,17 +670,10 @@ class LoggedFilterTest extends AbstractFilterTest {
         // Given
         PreMatchContainerRequestContext requestContext = getRequestContext();
         ContainerResponseContextImpl responseContext = getResponseContext(requestContext);
-        WriterInterceptorContext responseInterceptorContext = mock(WriterInterceptorContext.class);
-        AtomicReference<OutputStream> output = new AtomicReference<>(new ByteArrayOutputStream());
-        doAnswer(invocation -> output.get()).when(responseInterceptorContext).getOutputStream();
-        doAnswer(invocation -> {
-            output.set(invocation.getArgument(0, OutputStream.class));
-            return null;
-        }).when(responseInterceptorContext).setOutputStream(any());
-        doAnswer(invocation -> {
-            output.get().write("partial content".getBytes(UTF_8));
+        WriterInterceptorContext responseInterceptorContext = writerContext(output -> {
+            output.write("partial content".getBytes(UTF_8));
             throw new IOException("Client disconnected");
-        }).when(responseInterceptorContext).proceed();
+        });
 
         loggingFilter.filter(requestContext);
         loggingFilter.filter(requestContext, responseContext);

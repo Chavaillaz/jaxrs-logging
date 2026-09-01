@@ -98,6 +98,11 @@ import org.slf4j.MDC;
  * method, URI, ...) unavailable to another filter/interceptor that runs before it, or have another
  * provider observe a request/response body already altered by this one's stream wrapping (or vice versa).
  * A subclass can override this by declaring its own {@link Priority}.
+ * <p>
+ * That low priority is the right one for the filters but the wrong one for capturing bodies, as it places
+ * this provider's interceptors outside any entity coder and therefore in front of the compressed bytes
+ * rather than the entity itself. Capture is consequently delegated to {@link LoggedBodyInterceptor},
+ * which runs after the coder and hands what it captures back here; see that class for the details.
  */
 @Logged
 @Provider
@@ -160,6 +165,23 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * context property, while the other is a user-facing, renamable MDC key.
      */
     protected static final String REQUEST_BODY_PROPERTY = LoggedFilter.class.getName() + ".requestBody";
+
+    /**
+     * Name of the property stored in container context to retrieve the response body once it has been
+     * written, for the same reason as {@link #REQUEST_BODY_PROPERTY}.
+     */
+    protected static final String RESPONSE_BODY_PROPERTY = LoggedFilter.class.getName() + ".responseBody";
+
+    /**
+     * Name of the property stored in container context to hand the instance handling the current request
+     * to {@link LoggedBodyInterceptor}, which captures the bodies from a later position in the
+     * interceptor chain but delegates every decision about them back to this provider.
+     * <p>
+     * The instance is passed through the request rather than injected there, so the capture is handed
+     * back to the exact instance - a subclass, possibly one of several registered, with its own
+     * {@code createBodyCapture} or MDC field names - that is handling this particular request.
+     */
+    protected static final String PROVIDER_PROPERTY = LoggedFilter.class.getName() + ".provider";
 
     /**
      * Name of the property stored in container context to keep track of every {@link MDC.MDCCloseable}
@@ -430,7 +452,11 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     @Override
     public void filter(ContainerRequestContext requestContext) {
         resetMdc();
-        requestContext.setProperty(REQUEST_TIME_PROPERTY, nanoTime());
+        // Set through the injected context rather than the argument (the very same object in a
+        // container) so every property this provider writes is written where all of them are read back:
+        // the interceptor callbacks and logResponse only ever see the injected one
+        this.requestContext.setProperty(REQUEST_TIME_PROPERTY, nanoTime());
+        this.requestContext.setProperty(PROVIDER_PROPERTY, this);
         putMdc(REQUEST_ID, sanitize(getRequestId(requestContext)));
         putMdc(REQUEST_URI, sanitize(requestContext.getUriInfo().getPath()));
         putMdc(REQUEST_PARAMETERS, sanitize(getQueryParameters(requestContext)));
@@ -508,6 +534,33 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      */
     @Override
     public Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
+        try {
+            return context.proceed();
+        } finally {
+            // Logs whatever was captured even if reading the entity failed (e.g. malformed payload),
+            // so a deserialization error does not leave the request entirely unlogged
+            String body = (String) requestContext.getProperty(REQUEST_BODY_PROPERTY);
+            if (isNotBlank(body) && getBodyConfiguration(REQUEST).logs(LOG)) {
+                logRequest(body);
+            }
+        }
+    }
+
+    /**
+     * Captures the request body while the entity is being read, storing it as
+     * {@link #REQUEST_BODY_PROPERTY} for {@link #aroundReadFrom(ReaderInterceptorContext)} and
+     * {@link #logResponse(String)} to log.
+     * <p>
+     * Called by {@link LoggedBodyInterceptor} rather than from this provider's own interceptor position,
+     * so what is captured is the entity's own representation rather than the transfer-encoded bytes on
+     * the wire (see that class for why the two positions differ).
+     *
+     * @param context The context of the entity being read
+     * @return The entity read
+     * @throws IOException              if an IO error arises while reading the entity
+     * @throws WebApplicationException  if the entity cannot be read
+     */
+    protected Object captureRequestBody(ReaderInterceptorContext context) throws IOException, WebApplicationException {
         LoggedBodyConfiguration configuration = getBodyConfiguration(REQUEST);
         if (!configuration.isActive() || !isLoggingEnabled()) {
             return context.proceed();
@@ -518,15 +571,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         try {
             return context.proceed();
         } finally {
-            // Logs whatever was captured even if reading the entity failed (e.g. malformed payload),
-            // so a deserialization error does not leave the request entirely unlogged
-            String body = capture.content(configuration.filters(), context.getMediaType());
-            if (configuration.logs(LOG) && isNotBlank(body)) {
-                logRequest(body);
-            }
-            if (configuration.logs(LoggedBody.LogType.MDC)) {
-                requestContext.setProperty(REQUEST_BODY_PROPERTY, body);
-            }
+            requestContext.setProperty(REQUEST_BODY_PROPERTY, capture.content(configuration.filters(), context.getMediaType()));
         }
     }
 
@@ -584,34 +629,45 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     @Override
     public void aroundWriteTo(WriterInterceptorContext context) throws IOException, WebApplicationException {
-        String responseBody = null;
-        LoggedBodyConfiguration configuration = getBodyConfiguration(RESPONSE);
         try {
-            if (!configuration.isActive() || !isLoggingEnabled()) {
-                context.proceed();
-                return;
-            }
-
-            LoggedBodyCapture capture = createBodyCapture(configuration.limit());
-            context.setOutputStream(new TeeOutputStream(context.getOutputStream(), capture.sink()));
-            try {
-                context.proceed();
-            } finally {
-                // Logs/stores whatever was captured even if writing the entity failed (e.g. client
-                // disconnection, serialization error), so such a failure does not leave the response
-                // entirely unlogged, mirroring aroundReadFrom's handling of the request body
-                String body = capture.content(configuration.filters(), context.getMediaType());
-                if (configuration.logs(LoggedBody.LogType.MDC)) {
-                    putMdc(RESPONSE_BODY, body);
-                }
-                if (configuration.logs(LOG)) {
-                    responseBody = body;
-                }
-            }
+            context.proceed();
         } finally {
-            // Always log and clean up MDC, even if writing the response body fails
-            // (e.g. client disconnection), to avoid leaking context fields onto a pooled thread
-            logResponse(requireNonNullElse(responseBody, EMPTY));
+            // Always log and clean up MDC, even if writing the response body fails (e.g. client
+            // disconnection, serialization error), to avoid leaking context fields onto a pooled thread
+            // and to avoid leaving the response entirely unlogged
+            LoggedBodyConfiguration configuration = getBodyConfiguration(RESPONSE);
+            String body = (String) requestContext.getProperty(RESPONSE_BODY_PROPERTY);
+            if (configuration.logs(LoggedBody.LogType.MDC)) {
+                putMdc(RESPONSE_BODY, body);
+            }
+            logResponse(configuration.logs(LOG) ? requireNonNullElse(body, EMPTY) : EMPTY);
+        }
+    }
+
+    /**
+     * Captures the response body while the entity is being written, storing it as
+     * {@link #RESPONSE_BODY_PROPERTY} for {@link #aroundWriteTo(WriterInterceptorContext)} to log.
+     * <p>
+     * Called by {@link LoggedBodyInterceptor}, for the same reason as
+     * {@link #captureRequestBody(ReaderInterceptorContext)}.
+     *
+     * @param context The context of the entity being written
+     * @throws IOException              if an IO error arises while writing the entity
+     * @throws WebApplicationException  if the entity cannot be written
+     */
+    protected void captureResponseBody(WriterInterceptorContext context) throws IOException, WebApplicationException {
+        LoggedBodyConfiguration configuration = getBodyConfiguration(RESPONSE);
+        if (!configuration.isActive() || !isLoggingEnabled()) {
+            context.proceed();
+            return;
+        }
+
+        LoggedBodyCapture capture = createBodyCapture(configuration.limit());
+        context.setOutputStream(new TeeOutputStream(context.getOutputStream(), capture.sink()));
+        try {
+            context.proceed();
+        } finally {
+            requestContext.setProperty(RESPONSE_BODY_PROPERTY, capture.content(configuration.filters(), context.getMediaType()));
         }
     }
 

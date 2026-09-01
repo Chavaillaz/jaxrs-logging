@@ -162,7 +162,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         WriterInterceptorContext context = mock(WriterInterceptorContext.class);
 
         // When
-        filter.aroundWriteTo(context);
+        filter.captureRequestBody(context);
 
         // Then
         assertNull(listAppender.findFirstMessage("Request body"));
@@ -177,7 +177,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         WriterInterceptorContext context = writerContext(properties, "Hello, world!");
 
         // When
-        bodyLoggingFilter.aroundWriteTo(context);
+        bodyLoggingFilter.captureRequestBody(context);
 
         // Then
         LogEvent event = listAppender.findFirstMessage("Request body");
@@ -197,7 +197,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         WriterInterceptorContext context = writerContext(properties, "{\"secret-code\": \"1234-ABCD\"}");
 
         // When
-        bodyLoggingFilter.aroundWriteTo(context);
+        bodyLoggingFilter.captureRequestBody(context);
 
         // Then
         LogEvent event = listAppender.findFirstMessage("Request body");
@@ -218,7 +218,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         WriterInterceptorContext context = writerContext(properties, "body");
 
         // When
-        bodyLoggingFilter.aroundWriteTo(context);
+        bodyLoggingFilter.captureRequestBody(context);
 
         // Then
         LogEvent event = listAppender.findFirstMessage("Request body");
@@ -265,7 +265,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
                 .when(context).getProperty(any());
 
         // When
-        assertThrows(IOException.class, () -> bodyLoggingFilter.aroundWriteTo(context));
+        assertThrows(IOException.class, () -> bodyLoggingFilter.captureRequestBody(context));
 
         // Then
         LogEvent event = listAppender.findFirstMessage("Request body");
@@ -281,7 +281,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         ReaderInterceptorContext context = readerContext("Received content");
 
         // When
-        Object result = bodyLoggingFilter.aroundReadFrom(context);
+        Object result = bodyLoggingFilter.captureResponseBody(context);
 
         // Then
         assertEquals("read", result);
