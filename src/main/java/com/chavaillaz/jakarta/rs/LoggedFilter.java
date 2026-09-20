@@ -32,6 +32,7 @@ import java.io.IOException;
 import java.lang.reflect.Method;
 import java.util.EnumMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -364,13 +365,19 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * mapping - in particular an automatic one, which is sorted last for exactly this reason - can map
      * them. Claiming the names is therefore done whether or not anything is then written, and a mapping
      * whose names another has already claimed does nothing at all.
+     * <p>
+     * The names are collected in the order they are declared, and a name declared twice is simply the
+     * same name: {@code Set.of} rejected a repeated one with an {@link IllegalArgumentException}, which
+     * turned a typo in an annotation into a {@code 500} on every request to that resource, and ordered
+     * its content by a per-JVM salt, which made "the first of the parameters" mean a different one from
+     * one restart of the application to the next whenever several of them were present.
      *
      * @param parameters The parameters to be mapped
      * @param mapping    The mapping to be applied
      * @param exclusion  The parameter names already mapped or explicitly excluded
      */
     protected void putMdcFromNamedParameters(Map<String, List<String>> parameters, LoggedMapping mapping, Set<String> exclusion) {
-        Set<String> paramNames = Set.of(mapping.paramNames());
+        Set<String> paramNames = new LinkedHashSet<>(List.of(mapping.paramNames()));
         if (paramNames.stream().anyMatch(exclusion::contains)) {
             return;
         }

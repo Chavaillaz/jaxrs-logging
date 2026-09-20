@@ -1195,6 +1195,46 @@ class LoggedFilterTest extends AbstractFilterTest {
         @LoggedMapping(type = HEADER, auto = true, mdcPrefix = "header-")
         void autoMappedHeaders();
 
+        @Logged
+        @LoggedMapping(type = QUERY, mdcKey = "trace", paramNames = {"trace-id", "trace-id", "correlation-id"})
+        void duplicatedParameterNames();
+
+    }
+
+    @Test
+    @DisplayName("Check a mapping repeating a parameter name does not fail the request")
+    void checkDuplicatedParameterNamesAreTolerated() throws Exception {
+        // A repeated name in an annotation is a typo, not a reason to answer every request to that
+        // resource with a 500
+        setupTest(AnnotatedResource.class, "duplicatedParameterNames");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
+                MockHttpRequest.create("GET", "example.company.com/service?trace-id=abc"));
+
+        // When
+        assertDoesNotThrow(() -> loggingFilter.filter(requestContext));
+
+        // Then
+        assertEquals("abc", MDC.get("trace"));
+    }
+
+    @Test
+    @DisplayName("Check a named mapping reads its parameters in the order they are declared")
+    void checkNamedMappingFollowsDeclarationOrder() throws Exception {
+        // Set.of randomizes its iteration order per JVM run, which used to make the parameter picked
+        // among several present differ from one restart of the application to the next
+        setupTest(AnnotatedResource.class, "duplicatedParameterNames");
+
+        // Given: both declared parameters are present, the first declared one must win
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
+                MockHttpRequest.create("GET", "example.company.com/service?correlation-id=second&trace-id=first"));
+
+        // When
+        loggingFilter.filter(requestContext);
+
+        // Then
+        assertEquals("first", MDC.get("trace"));
     }
 
     /**
