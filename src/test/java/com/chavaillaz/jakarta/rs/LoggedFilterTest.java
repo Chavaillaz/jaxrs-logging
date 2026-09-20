@@ -1208,6 +1208,33 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check a request whose description cannot be read is still served")
+    void checkFailureDescribingTheRequestDoesNotFailIt() throws Exception {
+        // The request filter runs before the resource method does, so anything it lets out does not
+        // merely lose the "Received ..." line, it answers a perfectly serviceable request with an error
+        // having nothing to do with it
+        // Given: a context failing to describe the request it carries, standing in for whatever can go
+        // wrong while this provider reads one (a container returning the unexpected, a subclass
+        // overriding one of these methods, an appender that ran out of disk, ...)
+        doAnswer(invocation ->
+                contextProperties.get(invocation.getArgument(0, String.class))
+        ).when(containerRequestContext).getProperty(any());
+        doAnswer(invocation -> {
+            contextProperties.put(invocation.getArgument(0, String.class), invocation.getArgument(1, Object.class));
+            return null;
+        }).when(containerRequestContext).setProperty(any(), any());
+
+        ContainerRequestContext failing = mock(ContainerRequestContext.class);
+        doThrow(new IllegalStateException("Cannot describe the request")).when(failing).getUriInfo();
+
+        // When
+        assertDoesNotThrow(() -> loggingFilter.filter(failing));
+
+        // Then: the request is served, and its completion still finds the state this filter attached
+        assertNotNull(loggingFilter.findState());
+    }
+
+    @Test
     @DisplayName("Check a header claimed by a named mapping is not mapped again by an automatic one sent in another casing")
     void checkAutoMappingHonoursNamedExclusionWhateverTheHeaderCasing() throws Exception {
         // HTTP header names are case-insensitive and HTTP/2 sends them lower cased, so the casing a

@@ -501,13 +501,21 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         // instance as the one handling it, for LoggedBodyInterceptor to hand its captures back to
         getState();
 
-        putMdcFromRequest(requestContext);
-        putMdcFromMappings(requestContext);
+        // Guarded the way every other callback of this provider is (see LoggedSupport#safely). This one
+        // was the exception, and the only one whose failure costs more than a log line: it runs before
+        // the resource method does, so a subclass overriding one of the methods below, a container
+        // returning an unexpected null from the request it describes, or an appender that ran out of
+        // disk did not merely lose the "Received ..." line, it answered a perfectly serviceable request
+        // with an error having nothing to do with it.
+        safely(() -> {
+            putMdcFromRequest(requestContext);
+            putMdcFromMappings(requestContext);
 
-        // Logs directly from filter in case no request body is expected as aroundReadFrom will not be called
-        if (getBodyConfiguration(REQUEST).logs(LOG) && !(requestContext.hasEntity() && requestContext.getLength() != 0)) {
-            logRequest(EMPTY);
-        }
+            // Logs directly from filter in case no request body is expected as aroundReadFrom will not be called
+            if (getBodyConfiguration(REQUEST).logs(LOG) && !(requestContext.hasEntity() && requestContext.getLength() != 0)) {
+                logRequest(EMPTY);
+            }
+        });
     }
 
     /**
