@@ -14,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 
@@ -310,6 +311,25 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         LogEvent event = listAppender.findFirstMessage("Response body");
         assertNotNull(event);
         assertTrue(event.getMessage().getFormattedMessage().contains("Received content"));
+    }
+
+    @Test
+    @DisplayName("Check a call this provider cannot describe is still made")
+    void checkFailureDescribingTheCallDoesNotFailIt() {
+        // Given: a context failing to describe the request it carries, standing in for whatever can go
+        // wrong while this provider reads one (a Client implementation returning the unexpected, a
+        // subclass overriding one of these methods, an appender that ran out of disk, ...)
+        doThrow(new IllegalStateException("Cannot describe the request")).when(requestContext).getUri();
+        ClientResponseContext responseContext = mock(ClientResponseContext.class);
+        lenient().doReturn(200).when(responseContext).getStatus();
+
+        // When
+        assertDoesNotThrow(() -> filter.filter(requestContext));
+        assertDoesNotThrow(() -> filter.filter(requestContext, responseContext));
+
+        // Then: the call went out, only without the lines describing it
+        assertNull(listAppender.findFirstMessage("Calling"));
+        assertNull(listAppender.findFirstMessage("Called"));
     }
 
     @Test

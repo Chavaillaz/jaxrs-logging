@@ -266,21 +266,32 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
 
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Guarded like everything else this provider does (see {@link LoggedSupport#safely}): a call is not
+     * worth failing over the line announcing it, over the identifier correlating it with the service it
+     * reaches, or over a {@code Client} implementation returning something unexpected about the request
+     * it is about to send. A call this provider could not describe is a call still made, only logged
+     * with less.
+     */
     @Override
     public void filter(ClientRequestContext requestContext) {
-        requestContext.setProperty(REQUEST_TIME_PROPERTY, nanoTime());
-        requestContext.setProperty(REQUEST_METHOD_PROPERTY, requestContext.getMethod());
-        requestContext.setProperty(REQUEST_URI_PROPERTY, requestContext.getUri().toString());
+        safely(() -> {
+            requestContext.setProperty(REQUEST_TIME_PROPERTY, nanoTime());
+            requestContext.setProperty(REQUEST_METHOD_PROPERTY, requestContext.getMethod());
+            requestContext.setProperty(REQUEST_URI_PROPERTY, requestContext.getUri().toString());
 
-        // HTTP header names are case-insensitive, but the client-side header map is not guaranteed to be
-        // (it is a plain MultivaluedMap in the JAX-RS Client API), so a caller having already set the
-        // header under a different casing would otherwise get it sent twice with two different values
-        if (requestContext.getHeaders().keySet().stream().noneMatch(REQUEST_ID_HEADER::equalsIgnoreCase)) {
-            String correlationId = requireNonNullElseGet(MDC.get(correlationIdMdcKey), () -> randomUUID().toString());
-            requestContext.getHeaders().putSingle(REQUEST_ID_HEADER, correlationId);
-        }
+            // HTTP header names are case-insensitive, but the client-side header map is not guaranteed to be
+            // (it is a plain MultivaluedMap in the JAX-RS Client API), so a caller having already set the
+            // header under a different casing would otherwise get it sent twice with two different values
+            if (requestContext.getHeaders().keySet().stream().noneMatch(REQUEST_ID_HEADER::equalsIgnoreCase)) {
+                String correlationId = requireNonNullElseGet(MDC.get(correlationIdMdcKey), () -> randomUUID().toString());
+                requestContext.getHeaders().putSingle(REQUEST_ID_HEADER, correlationId);
+            }
 
-        log.info("Calling {} {}", requestContext.getMethod(), requestContext.getUri());
+            log.info("Calling {} {}", requestContext.getMethod(), requestContext.getUri());
+        });
     }
 
     /**
@@ -332,21 +343,27 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      * request with {@link ClientRequestContext#abortWith(jakarta.ws.rs.core.Response)}: response filters
      * still run for an aborted request, but {@link #filter(ClientRequestContext)} above, where this
      * provider would otherwise have recorded the start time, never does.
+     * <p>
+     * Guarded like everything else this provider does (see {@link LoggedSupport#safely}): a response
+     * already received is not worth turning into a failed call because the line reporting it could not
+     * be written.
      */
     @Override
     public void filter(ClientRequestContext requestContext, ClientResponseContext responseContext) {
-        long requestStartTime = Optional.ofNullable(requestContext.getProperty(REQUEST_TIME_PROPERTY))
-                .map(Number.class::cast)
-                .map(Number::longValue)
-                .orElseGet(System::nanoTime);
-        long duration = (nanoTime() - requestStartTime) / 1_000_000;
+        safely(() -> {
+            long requestStartTime = Optional.ofNullable(requestContext.getProperty(REQUEST_TIME_PROPERTY))
+                    .map(Number.class::cast)
+                    .map(Number::longValue)
+                    .orElseGet(System::nanoTime);
+            long duration = (nanoTime() - requestStartTime) / 1_000_000;
 
-        log.atLevel(getResponseLevel(responseContext.getStatus()))
-                .log("Called {} {} with status {} in {}ms",
-                        requestContext.getMethod(),
-                        requestContext.getUri(),
-                        responseContext.getStatus(),
-                        duration);
+            log.atLevel(getResponseLevel(responseContext.getStatus()))
+                    .log("Called {} {} with status {} in {}ms",
+                            requestContext.getMethod(),
+                            requestContext.getUri(),
+                            responseContext.getStatus(),
+                            duration);
+        });
     }
 
     /**
