@@ -940,6 +940,31 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check a request aborted before this provider's request filter still describes the request")
+    void checkAbortedRequestStillDescribesTheRequest() throws Exception {
+        // An authentication filter sits at Priorities.AUTHENTICATION, well below this provider's own
+        // priority, so aborting there skips the rest of the request filter chain - including this
+        // provider's - while the container still runs every response filter. The completion line of a 401
+        // an application rejects that way used to carry none of the fields describing the request
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext, 401);
+
+        // When: only the response filter runs, filter(ContainerRequestContext) never did
+        loggingFilter.filter(requestContext, responseContext);
+
+        // Then
+        assertNotNull(listAppender.findFirstMessage("Processed"));
+        assertNotNull(getMdcLogged(REQUEST_ID));
+        assertEquals(requestContext.getMethod(), getMdcLogged(REQUEST_METHOD));
+        assertEquals(requestContext.getUriInfo().getPath(), getMdcLogged(REQUEST_URI));
+        assertEquals("401", getMdcLogged(RESPONSE_STATUS));
+        assertNull(MDC.get(getMdcField(REQUEST_ID)));
+    }
+
+    @Test
     @DisplayName("Check a body capture that cannot be created neither breaks the request nor skips the entity")
     void checkFailingBodyCaptureDoesNotBreakRequest() throws Exception {
         // Putting the capture in place is the one piece of logging work happening before proceed() rather

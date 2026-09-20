@@ -194,6 +194,20 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
+     * Gets what this provider already remembers about the request being processed, without starting to
+     * remember anything about one it does not.
+     * <p>
+     * Read through the injected {@link #requestContext}, as {@link #getState()} is. Its absence means
+     * this provider's request filter never ran for this request, which is how a request aborted by a
+     * filter running before it is recognized.
+     *
+     * @return The state of the current request, or {@code null} if it has none yet
+     */
+    protected LoggedRequestState findState() {
+        return LoggedRequestState.find(requestContext);
+    }
+
+    /**
      * Gets the mutable, request-scoped list of {@link MDC.MDCCloseable} obtained so far for the current
      * request through {@link #putMdc(String, String)}.
      *
@@ -690,6 +704,18 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     @Override
     public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext) {
+        // Fallback for a request this provider never saw the start of: a filter running earlier - an
+        // authentication one sits at Priorities.AUTHENTICATION, well below this provider's priority - can
+        // abort the request, which skips the rest of the request filter chain while the container still
+        // runs every response filter. Every 401 or 403 an application rejects that way was consequently
+        // logged with none of the fields describing the request it answers, and with whatever a previous
+        // request left behind on this (pooled) thread rather than with nothing at all. Establishing the
+        // context here is the same work, only late: the duration starts counting from this point, as
+        // there is nothing left to say when the request actually arrived.
+        if (findState() == null) {
+            filter(requestContext);
+        }
+
         // Fallback for a request that has a body but whose resource method never reads it: neither the
         // immediate path in filter(ContainerRequestContext) nor aroundReadFrom logged the request in that
         // case (see LoggedRequestState#isRequestLogged), so without this the "Received ..." line would never
