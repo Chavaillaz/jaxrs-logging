@@ -17,6 +17,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -25,10 +26,12 @@ import java.io.OutputStream;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 
 import jakarta.ws.rs.client.ClientRequestContext;
 import jakarta.ws.rs.client.ClientResponseContext;
+import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
@@ -330,6 +333,101 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         // Then: the call went out, only without the lines describing it
         assertNull(listAppender.findFirstMessage("Calling"));
         assertNull(listAppender.findFirstMessage("Called"));
+    }
+
+    @Test
+    @DisplayName("Check a capture is released once what it collected has been logged")
+    void checkCaptureReleasedOnceLogged() throws Exception {
+        // A capture holding more than memory - one spilling a large body to a temporary file - has
+        // nowhere to give it back other than close()
+        filter.filter(requestContext);
+        ReleasingBodyCapture capture = new ReleasingBodyCapture();
+        LoggedClientFilter bodyLoggingFilter = capturingFilter(capture);
+
+        // When
+        bodyLoggingFilter.captureRequestBody(writerContext(properties, "Hello, world!"));
+
+        // Then: the body was read from the capture, and the capture released afterwards
+        assertNotNull(listAppender.findFirstMessage("Request body"));
+        assertTrue(capture.closed);
+    }
+
+    @Test
+    @DisplayName("Check a capture is released even when what it collected cannot be read")
+    void checkCaptureReleasedWhenContentFails() throws Exception {
+        // Rendering a captured body is exactly the step that fails on a payload nobody expected, which
+        // is precisely when a temporary file must not be left behind
+        filter.filter(requestContext);
+        ReleasingBodyCapture capture = new ReleasingBodyCapture() {
+
+            @Override
+            public String content(Set<LoggedBodyFilter> filters, MediaType mediaType) {
+                throw new IllegalStateException("Unreadable body");
+            }
+
+        };
+
+        // When
+        assertDoesNotThrow(() -> capturingFilter(capture).captureRequestBody(writerContext(properties, "Hello, world!")));
+
+        // Then
+        assertNull(listAppender.findFirstMessage("Request body"));
+        assertTrue(capture.closed);
+    }
+
+    @Test
+    @DisplayName("Check a capture that could not be wired into the entity stream is released")
+    void checkCaptureReleasedWhenItCannotBeWiredIn() throws Exception {
+        // The capture exists by then, holding whatever it reserved, and nothing downstream ever sees it
+        // again: releasing it is only possible where it was created
+        filter.filter(requestContext);
+        ReleasingBodyCapture capture = new ReleasingBodyCapture();
+        WriterInterceptorContext context = mock(WriterInterceptorContext.class);
+        doThrow(new IllegalStateException("Cannot wrap the entity stream")).when(context).getOutputStream();
+
+        // When
+        assertDoesNotThrow(() -> capturingFilter(capture).captureRequestBody(context));
+
+        // Then: the entity was written as if nothing had been asked of it, and nothing was left held
+        verify(context).proceed();
+        assertTrue(capture.closed);
+    }
+
+    /**
+     * Builds a filter logging request bodies through the given capture, standing in for whatever
+     * {@code createBodyCapture} an application plugs in.
+     *
+     * @param capture The capture the filter must use
+     * @return The filter created
+     */
+    LoggedClientFilter capturingFilter(LoggedBodyCapture capture) {
+        return new LoggedClientFilter(LoggedClientFilter.builder().logRequestBody()) {
+
+            @Override
+            protected LoggedBodyCapture createBodyCapture(int limit) {
+                return capture;
+            }
+
+        };
+    }
+
+    /**
+     * Capture standing in for one holding more than memory (a temporary file, a pooled buffer, ...),
+     * recording whether it was given the chance to hand it back.
+     */
+    static class ReleasingBodyCapture extends BoundedLoggedBodyCapture {
+
+        boolean closed = false;
+
+        ReleasingBodyCapture() {
+            super(BoundedOutputStream.NO_LIMIT);
+        }
+
+        @Override
+        public void close() {
+            closed = true;
+        }
+
     }
 
     @Test

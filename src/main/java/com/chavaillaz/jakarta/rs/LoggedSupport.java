@@ -1,5 +1,6 @@
 package com.chavaillaz.jakarta.rs;
 
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import org.slf4j.Logger;
@@ -73,11 +74,22 @@ public final class LoggedSupport {
         try {
             action.run();
         } catch (Exception e) {
-            try {
-                log.error(message, e);
-            } catch (Exception ignored) {
-                // Nothing left to report it with: reporting must not be the thing that breaks the exchange
-            }
+            report(log, message, e);
+        }
+    }
+
+    /**
+     * Reports the given failure on the given logger, swallowing a logger that cannot even do that.
+     *
+     * @param log     The logger to report the failure on
+     * @param message The message to report the failure with
+     * @param failure The failure to report
+     */
+    private static void report(Logger log, String message, Exception failure) {
+        try {
+            log.error(message, failure);
+        } catch (Exception ignored) {
+            // Nothing left to report it with: reporting must not be the thing that breaks the exchange
         }
     }
 
@@ -96,22 +108,72 @@ public final class LoggedSupport {
      * mechanics of capture - spilling to a temporary file, for instance, which fails the way file system
      * access does - and the default capture itself rejects a {@link LoggedBody#limit()} below {@code -1},
      * which would otherwise turn a typo in an annotation into a 500 on every request to that resource.
+     * <p>
+     * Creating the capture and wrapping the entity stream with it are taken as two steps rather than as
+     * one block precisely because of that extension point: a capture that was created and could then not
+     * be wired in is a capture holding whatever it reserved - the temporary file above - with nobody left
+     * to hand it back to, as {@link #endCapture} only ever sees one that was successfully put in place.
+     * Keeping the two apart is what lets this release it.
      *
      * @param log     The logger to report a failure on
      * @param message The message to report a failure with
-     * @param setup   The setup creating the capture and wrapping the entity stream with it
+     * @param factory The creation of the capture
+     * @param wiring  The wrapping of the entity stream with the created capture
      * @return The capture put in place, or {@code null} if it could not be
      */
-    public static LoggedBodyCapture startCapture(Logger log, String message, Supplier<LoggedBodyCapture> setup) {
+    public static LoggedBodyCapture startCapture(Logger log, String message, Supplier<LoggedBodyCapture> factory, Consumer<LoggedBodyCapture> wiring) {
+        LoggedBodyCapture capture = null;
         try {
-            return setup.get();
+            capture = factory.get();
+            wiring.accept(capture);
+            return capture;
         } catch (Exception e) {
-            try {
-                log.error(message, e);
-            } catch (Exception ignored) {
-                // Nothing left to report it with: reporting must not be the thing that breaks the exchange
-            }
+            release(capture);
+            report(log, message, e);
             return null;
+        }
+    }
+
+    /**
+     * Runs the given action reading what a capture collected, then releases that capture, reporting
+     * anything either of them throws on the given logger and swallowing it.
+     * <p>
+     * The counterpart of {@link #startCapture}: whatever a capture was given to hold the body with, it
+     * gets back here, once and whether or not reading what it collected worked. Rendering a captured
+     * body is exactly the step that fails on a payload nobody expected (see
+     * {@link BoundedLoggedBodyCapture}), so releasing it anywhere but a {@code finally} would leak a
+     * temporary file on precisely the bodies an application most wants to look at.
+     *
+     * @param log     The logger to report a failure on
+     * @param message The message to report a failure with
+     * @param capture The capture to read from and release, never {@code null}
+     * @param action  The action reading what the capture collected
+     */
+    public static void endCapture(Logger log, String message, LoggedBodyCapture capture, Runnable action) {
+        safely(log, message, () -> {
+            try {
+                action.run();
+            } finally {
+                capture.close();
+            }
+        });
+    }
+
+    /**
+     * Releases the given capture, if there is one, swallowing anything it throws.
+     * <p>
+     * Used on the path where putting a capture in place failed: something has already gone wrong and has
+     * already been reported, so a capture that cannot even be released adds nothing worth a second line.
+     *
+     * @param capture The capture to release, possibly {@code null}
+     */
+    private static void release(LoggedBodyCapture capture) {
+        try {
+            if (capture != null) {
+                capture.close();
+            }
+        } catch (Exception ignored) {
+            // Best effort: the failure that led here is the one being reported
         }
     }
 

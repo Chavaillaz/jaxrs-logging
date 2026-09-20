@@ -14,6 +14,7 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 import jakarta.annotation.Priority;
@@ -310,18 +311,16 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
             return;
         }
 
-        LoggedBodyCapture capture = startCapture(() -> {
-            LoggedBodyCapture started = createBodyCapture(requestBodyLimit);
-            context.setOutputStream(new TeeOutputStream(context.getOutputStream(), started.sink()));
-            return started;
-        });
+        LoggedBodyCapture capture = startCapture(
+                () -> createBodyCapture(requestBodyLimit),
+                started -> context.setOutputStream(new TeeOutputStream(context.getOutputStream(), started.sink())));
         try {
             context.proceed();
         } finally {
             // Logs whatever was captured even if writing the entity failed (e.g. connection reset before
             // the body was fully sent), mirroring aroundReadFrom's handling of the response body below
             if (capture != null) {
-                safely(() -> {
+                endCapture(capture, () -> {
                     String body = capture.content(getBodyFilters(), context.getMediaType());
                     if (isNotBlank(body)) {
                         log.info("Request body {} {}{}{}",
@@ -395,16 +394,14 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
             return context.proceed();
         }
 
-        LoggedBodyCapture capture = startCapture(() -> {
-            LoggedBodyCapture started = createBodyCapture(responseBodyLimit);
-            context.setInputStream(new TeeInputStream(context.getInputStream(), started.sink()));
-            return started;
-        });
+        LoggedBodyCapture capture = startCapture(
+                () -> createBodyCapture(responseBodyLimit),
+                started -> context.setInputStream(new TeeInputStream(context.getInputStream(), started.sink())));
         try {
             return context.proceed();
         } finally {
             if (capture != null) {
-                safely(() -> {
+                endCapture(capture, () -> {
                     String body = capture.content(getBodyFilters(), context.getMediaType());
                     if (isNotBlank(body)) {
                         log.info("Response body {} {}{}{}",
@@ -489,14 +486,27 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     /**
      * Runs the given body capture setup, returning {@code null} rather than letting a failure out, so a
      * body that cannot be captured is left out of the logs instead of failing the call. See
-     * {@link LoggedSupport#startCapture(Logger, String, Supplier)} for why this one piece of logging work
-     * needs a guard of its own.
+     * {@link LoggedSupport#startCapture(Logger, String, Supplier, Consumer)} for why this one piece of
+     * logging work needs a guard of its own.
      *
-     * @param setup The setup creating the capture and wrapping the entity stream with it
+     * @param factory The creation of the capture
+     * @param wiring  The wrapping of the entity stream with the created capture
      * @return The capture put in place, or {@code null} if it could not be
      */
-    protected LoggedBodyCapture startCapture(Supplier<LoggedBodyCapture> setup) {
-        return LoggedSupport.startCapture(log, "Unable to capture the body, it is left out of the logs, the call itself is left unaffected", setup);
+    protected LoggedBodyCapture startCapture(Supplier<LoggedBodyCapture> factory, Consumer<LoggedBodyCapture> wiring) {
+        return LoggedSupport.startCapture(log, "Unable to capture the body, it is left out of the logs, the call itself is left unaffected", factory, wiring);
+    }
+
+    /**
+     * Runs the given action reading what a capture collected and releases that capture afterwards,
+     * swallowing anything either of them throws. See
+     * {@link LoggedSupport#endCapture(Logger, String, LoggedBodyCapture, Runnable)}.
+     *
+     * @param capture The capture to read from and release
+     * @param action  The action reading what the capture collected
+     */
+    protected void endCapture(LoggedBodyCapture capture, Runnable action) {
+        LoggedSupport.endCapture(log, "Unable to log the captured body or to release the capture, the call itself is left unaffected", capture, action);
     }
 
     /**

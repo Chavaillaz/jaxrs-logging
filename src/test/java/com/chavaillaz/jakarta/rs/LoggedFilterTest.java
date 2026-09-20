@@ -44,6 +44,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
@@ -1014,6 +1015,85 @@ class LoggedFilterTest extends AbstractFilterTest {
         assertEquals(OUTPUT, written.toString(UTF_8));
         assertNotNull(listAppender.findFirstMessage("Processed"));
         assertNull(MDC.get(getMdcField(REQUEST_ID)));
+    }
+
+    @Test
+    @DisplayName("Check a capture is released once what it collected has been read")
+    void checkCaptureReleasedOnceRead() throws Exception {
+        // A capture holding more than memory - one spilling a large body to a temporary file - has
+        // nowhere to give it back other than close()
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+
+        // Given
+        AtomicBoolean closed = new AtomicBoolean();
+        LoggedFilter capturingFilter = capturingFilter(closed);
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ReaderInterceptorContext requestInterceptorContext = readerContext(
+                requestContext.getEntityStream(),
+                InputStream::readAllBytes);
+
+        capturingFilter.filter(requestContext);
+
+        // When
+        capturingFilter.aroundReadFrom(requestInterceptorContext);
+
+        // Then: the body was read from the capture, and the capture released afterwards
+        assertNotNull(listAppender.findFirstMessage("Received"));
+        assertTrue(closed.get());
+    }
+
+    @Test
+    @DisplayName("Check a capture that could not be wired into the entity stream is released")
+    void checkCaptureReleasedWhenItCannotBeWiredIn() throws Exception {
+        // The capture exists by then, holding whatever it reserved, and nothing downstream ever sees it
+        // again: releasing it is only possible where it was created
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+
+        // Given
+        AtomicBoolean closed = new AtomicBoolean();
+        LoggedFilter capturingFilter = capturingFilter(closed);
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ReaderInterceptorContext requestInterceptorContext = readerContext(
+                requestContext.getEntityStream(),
+                InputStream::readAllBytes);
+        doThrow(new IllegalStateException("Cannot wrap the entity stream"))
+                .when(requestInterceptorContext).setInputStream(any());
+
+        capturingFilter.filter(requestContext);
+
+        // When
+        assertDoesNotThrow(() -> capturingFilter.aroundReadFrom(requestInterceptorContext));
+
+        // Then
+        assertTrue(closed.get());
+    }
+
+    /**
+     * Builds a filter capturing bodies with a capture standing in for one holding more than memory (a
+     * temporary file, a pooled buffer, ...), recording whether it was given the chance to hand it back.
+     *
+     * @param closed The flag the capture raises once released
+     * @return The filter created
+     */
+    LoggedFilter capturingFilter(AtomicBoolean closed) {
+        LoggedFilter capturingFilter = new LoggedFilter() {
+
+            @Override
+            protected LoggedBodyCapture createBodyCapture(int limit) {
+                return new BoundedLoggedBodyCapture(limit) {
+
+                    @Override
+                    public void close() {
+                        closed.set(true);
+                    }
+
+                };
+            }
+
+        };
+        capturingFilter.resourceInfo = resourceInfo;
+        capturingFilter.requestContext = containerRequestContext;
+        return capturingFilter;
     }
 
     /**

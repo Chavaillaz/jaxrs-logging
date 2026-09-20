@@ -39,6 +39,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
@@ -461,14 +462,27 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     /**
      * Runs the given body capture setup, returning {@code null} rather than letting a failure out, so a
      * body that cannot be captured is left out of the logs instead of failing the request. See
-     * {@link LoggedSupport#startCapture(Logger, String, Supplier)} for why this one piece of logging work
-     * needs a guard of its own.
+     * {@link LoggedSupport#startCapture(Logger, String, Supplier, Consumer)} for why this one piece of
+     * logging work needs a guard of its own.
      *
-     * @param setup The setup creating the capture and wrapping the entity stream with it
+     * @param factory The creation of the capture
+     * @param wiring  The wrapping of the entity stream with the created capture
      * @return The capture put in place, or {@code null} if it could not be
      */
-    protected LoggedBodyCapture startCapture(Supplier<LoggedBodyCapture> setup) {
-        return LoggedSupport.startCapture(log, "Unable to capture the body, it is left out of the logs, the exchange itself is left unaffected", setup);
+    protected LoggedBodyCapture startCapture(Supplier<LoggedBodyCapture> factory, Consumer<LoggedBodyCapture> wiring) {
+        return LoggedSupport.startCapture(log, "Unable to capture the body, it is left out of the logs, the exchange itself is left unaffected", factory, wiring);
+    }
+
+    /**
+     * Runs the given action reading what a capture collected and releases that capture afterwards,
+     * swallowing anything either of them throws. See
+     * {@link LoggedSupport#endCapture(Logger, String, LoggedBodyCapture, Runnable)}.
+     *
+     * @param capture The capture to read from and release
+     * @param action  The action reading what the capture collected
+     */
+    protected void endCapture(LoggedBodyCapture capture, Runnable action) {
+        LoggedSupport.endCapture(log, "Unable to log the captured body or to release the capture, the exchange itself is left unaffected", capture, action);
     }
 
     /**
@@ -691,16 +705,14 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             return context.proceed();
         }
 
-        LoggedBodyCapture capture = startCapture(() -> {
-            LoggedBodyCapture started = createBodyCapture(configuration.limit());
-            context.setInputStream(new TeeInputStream(context.getInputStream(), started.sink()));
-            return started;
-        });
+        LoggedBodyCapture capture = startCapture(
+                () -> createBodyCapture(configuration.limit()),
+                started -> context.setInputStream(new TeeInputStream(context.getInputStream(), started.sink())));
         try {
             return context.proceed();
         } finally {
             if (capture != null) {
-                safely(() -> getState().setRequestBody(
+                endCapture(capture, () -> getState().setRequestBody(
                         capture.content(configuration.filters(), context.getMediaType())));
             }
         }
@@ -841,16 +853,14 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             return;
         }
 
-        LoggedBodyCapture capture = startCapture(() -> {
-            LoggedBodyCapture started = createBodyCapture(configuration.limit());
-            context.setOutputStream(new TeeOutputStream(context.getOutputStream(), started.sink()));
-            return started;
-        });
+        LoggedBodyCapture capture = startCapture(
+                () -> createBodyCapture(configuration.limit()),
+                started -> context.setOutputStream(new TeeOutputStream(context.getOutputStream(), started.sink())));
         try {
             context.proceed();
         } finally {
             if (capture != null) {
-                safely(() -> getState().setResponseBody(
+                endCapture(capture, () -> getState().setResponseBody(
                         capture.content(configuration.filters(), context.getMediaType())));
             }
         }
