@@ -940,6 +940,78 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check a body capture that cannot be created neither breaks the request nor skips the entity")
+    void checkFailingBodyCaptureDoesNotBreakRequest() throws Exception {
+        // Putting the capture in place is the one piece of logging work happening before proceed() rather
+        // than in a finally block after it, so a failure there does not merely lose a log line: the entity
+        // is never read at all and the request fails with an error having nothing to do with it
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+
+        // Given: what a createBodyCapture spilling to a temporary file does when it cannot create one
+        LoggedFilter failingCaptureFilter = failingCaptureFilter();
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        AtomicReference<String> entityRead = new AtomicReference<>();
+        ReaderInterceptorContext requestInterceptorContext = readerContext(
+                requestContext.getEntityStream(),
+                stream -> entityRead.set(new String(stream.readAllBytes(), UTF_8)));
+
+        failingCaptureFilter.filter(requestContext);
+
+        // When
+        assertDoesNotThrow(() -> failingCaptureFilter.aroundReadFrom(requestInterceptorContext));
+
+        // Then: the entity was read as if nothing had been asked of it, only without a body in the logs
+        assertEquals(INPUT, entityRead.get());
+    }
+
+    @Test
+    @DisplayName("Check a body capture that cannot be created neither breaks the response nor skips the entity")
+    void checkFailingBodyCaptureDoesNotBreakResponse() throws Exception {
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+
+        // Given
+        LoggedFilter failingCaptureFilter = failingCaptureFilter();
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ContainerResponseContextImpl responseContext = getResponseContext(requestContext);
+        ByteArrayOutputStream written = new ByteArrayOutputStream();
+        WriterInterceptorContext responseInterceptorContext = writerContext(output -> {
+            output.write(OUTPUT.getBytes(UTF_8));
+            written.write(OUTPUT.getBytes(UTF_8));
+        });
+
+        failingCaptureFilter.filter(requestContext);
+        failingCaptureFilter.filter(requestContext, responseContext);
+
+        // When
+        assertDoesNotThrow(() -> failingCaptureFilter.aroundWriteTo(responseInterceptorContext));
+
+        // Then: the entity was written, and the request still completed (logged and MDC cleaned up)
+        assertEquals(OUTPUT, written.toString(UTF_8));
+        assertNotNull(listAppender.findFirstMessage("Processed"));
+        assertNull(MDC.get(getMdcField(REQUEST_ID)));
+    }
+
+    /**
+     * Builds a filter whose body capture cannot be created, sharing the mocks the container would inject
+     * into {@link #loggingFilter} as {@code @InjectMocks} does for it.
+     *
+     * @return The filter created
+     */
+    LoggedFilter failingCaptureFilter() {
+        LoggedFilter failingCaptureFilter = new LoggedFilter() {
+
+            @Override
+            protected LoggedBodyCapture createBodyCapture(int limit) {
+                throw new IllegalStateException("No room left to capture anything");
+            }
+
+        };
+        failingCaptureFilter.resourceInfo = resourceInfo;
+        failingCaptureFilter.requestContext = containerRequestContext;
+        return failingCaptureFilter;
+    }
+
+    @Test
     @DisplayName("Check putMdc(String, String) tracks the key so cleanupMdc removes it")
     void checkPutMdcTracksKeyForCleanup() throws Exception {
         setupTest(AnnotatedResource.class, "noBodyLogging");

@@ -3,6 +3,7 @@ package com.chavaillaz.jakarta.rs;
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static jakarta.ws.rs.HttpMethod.POST;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -309,6 +310,39 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         LogEvent event = listAppender.findFirstMessage("Response body");
         assertNotNull(event);
         assertTrue(event.getMessage().getFormattedMessage().contains("Received content"));
+    }
+
+    @Test
+    @DisplayName("Check a body capture that cannot be created neither breaks the call nor skips the entity")
+    void checkFailingBodyCaptureDoesNotBreakCall() throws Exception {
+        // Putting the capture in place is the one piece of logging work happening before proceed() rather
+        // than in a finally block after it, so a failure there does not merely lose a log line: the entity
+        // is never written at all and the call fails with an error having nothing to do with it
+        filter.filter(requestContext);
+        ByteArrayOutputStream written = new ByteArrayOutputStream();
+        LoggedClientFilter bodyLoggingFilter = new LoggedClientFilter(LoggedClientFilter.builder().logRequestBody()) {
+
+            @Override
+            protected LoggedBodyCapture createBodyCapture(int limit) {
+                throw new IllegalStateException("No room left to capture anything");
+            }
+
+        };
+
+        // Given
+        WriterInterceptorContext context = mock(WriterInterceptorContext.class);
+        doReturn(written).when(context).getOutputStream();
+        doAnswer(invocation -> {
+            context.getOutputStream().write("Hello, world!".getBytes(UTF_8));
+            return null;
+        }).when(context).proceed();
+
+        // When
+        assertDoesNotThrow(() -> bodyLoggingFilter.captureRequestBody(context));
+
+        // Then: the entity was written as if nothing had been asked of it, only without a body in the logs
+        assertEquals("Hello, world!", written.toString(UTF_8));
+        assertNull(listAppender.findFirstMessage("Request body"));
     }
 
     private WriterInterceptorContext writerContext(Map<String, Object> sharedProperties, String body) throws IOException {

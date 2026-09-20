@@ -14,6 +14,7 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 
 import jakarta.annotation.Priority;
 import jakarta.ws.rs.ConstrainedTo;
@@ -298,24 +299,28 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
             return;
         }
 
-        LoggedBodyCapture capture = createBodyCapture(requestBodyLimit);
-        TeeOutputStream teeOutputStream = new TeeOutputStream(context.getOutputStream(), capture.sink());
-        context.setOutputStream(teeOutputStream);
+        LoggedBodyCapture capture = startCapture(() -> {
+            LoggedBodyCapture started = createBodyCapture(requestBodyLimit);
+            context.setOutputStream(new TeeOutputStream(context.getOutputStream(), started.sink()));
+            return started;
+        });
         try {
             context.proceed();
         } finally {
             // Logs whatever was captured even if writing the entity failed (e.g. connection reset before
             // the body was fully sent), mirroring aroundReadFrom's handling of the response body below
-            safely(() -> {
-                String body = capture.content(getBodyFilters(), context.getMediaType());
-                if (isNotBlank(body)) {
-                    log.info("Request body {} {}{}{}",
-                            context.getProperty(REQUEST_METHOD_PROPERTY),
-                            context.getProperty(REQUEST_URI_PROPERTY),
-                            LF,
-                            body);
-                }
-            });
+            if (capture != null) {
+                safely(() -> {
+                    String body = capture.content(getBodyFilters(), context.getMediaType());
+                    if (isNotBlank(body)) {
+                        log.info("Request body {} {}{}{}",
+                                context.getProperty(REQUEST_METHOD_PROPERTY),
+                                context.getProperty(REQUEST_URI_PROPERTY),
+                                LF,
+                                body);
+                    }
+                });
+            }
         }
     }
 
@@ -373,22 +378,26 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
             return context.proceed();
         }
 
-        LoggedBodyCapture capture = createBodyCapture(responseBodyLimit);
-        TeeInputStream teeInputStream = new TeeInputStream(context.getInputStream(), capture.sink());
-        context.setInputStream(teeInputStream);
+        LoggedBodyCapture capture = startCapture(() -> {
+            LoggedBodyCapture started = createBodyCapture(responseBodyLimit);
+            context.setInputStream(new TeeInputStream(context.getInputStream(), started.sink()));
+            return started;
+        });
         try {
             return context.proceed();
         } finally {
-            safely(() -> {
-                String body = capture.content(getBodyFilters(), context.getMediaType());
-                if (isNotBlank(body)) {
-                    log.info("Response body {} {}{}{}",
-                            context.getProperty(REQUEST_METHOD_PROPERTY),
-                            context.getProperty(REQUEST_URI_PROPERTY),
-                            LF,
-                            body);
-                }
-            });
+            if (capture != null) {
+                safely(() -> {
+                    String body = capture.content(getBodyFilters(), context.getMediaType());
+                    if (isNotBlank(body)) {
+                        log.info("Response body {} {}{}{}",
+                                context.getProperty(REQUEST_METHOD_PROPERTY),
+                                context.getProperty(REQUEST_URI_PROPERTY),
+                                LF,
+                                body);
+                    }
+                });
+            }
         }
     }
 
@@ -458,6 +467,19 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      */
     protected void safely(Runnable action) {
         LoggedSupport.safely(log, "Unable to log the client call, the call itself is left unaffected", action);
+    }
+
+    /**
+     * Runs the given body capture setup, returning {@code null} rather than letting a failure out, so a
+     * body that cannot be captured is left out of the logs instead of failing the call. See
+     * {@link LoggedSupport#startCapture(Logger, String, Supplier)} for why this one piece of logging work
+     * needs a guard of its own.
+     *
+     * @param setup The setup creating the capture and wrapping the entity stream with it
+     * @return The capture put in place, or {@code null} if it could not be
+     */
+    protected LoggedBodyCapture startCapture(Supplier<LoggedBodyCapture> setup) {
+        return LoggedSupport.startCapture(log, "Unable to capture the body, it is left out of the logs, the call itself is left unaffected", setup);
     }
 
     /**

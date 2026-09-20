@@ -37,6 +37,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
 import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
@@ -436,6 +437,19 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
+     * Runs the given body capture setup, returning {@code null} rather than letting a failure out, so a
+     * body that cannot be captured is left out of the logs instead of failing the request. See
+     * {@link LoggedSupport#startCapture(Logger, String, Supplier)} for why this one piece of logging work
+     * needs a guard of its own.
+     *
+     * @param setup The setup creating the capture and wrapping the entity stream with it
+     * @return The capture put in place, or {@code null} if it could not be
+     */
+    protected LoggedBodyCapture startCapture(Supplier<LoggedBodyCapture> setup) {
+        return LoggedSupport.startCapture(log, "Unable to capture the body, it is left out of the logs, the exchange itself is left unaffected", setup);
+    }
+
+    /**
      * Removes any MDC entry owned by this provider still present on the current thread.
      * <p>
      * Called at the very start of every request as a safety net, not as the normal cleanup path (which is
@@ -630,13 +644,18 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             return context.proceed();
         }
 
-        LoggedBodyCapture capture = createBodyCapture(configuration.limit());
-        context.setInputStream(new TeeInputStream(context.getInputStream(), capture.sink()));
+        LoggedBodyCapture capture = startCapture(() -> {
+            LoggedBodyCapture started = createBodyCapture(configuration.limit());
+            context.setInputStream(new TeeInputStream(context.getInputStream(), started.sink()));
+            return started;
+        });
         try {
             return context.proceed();
         } finally {
-            safely(() -> getState().setRequestBody(
-                    capture.content(configuration.filters(), context.getMediaType())));
+            if (capture != null) {
+                safely(() -> getState().setRequestBody(
+                        capture.content(configuration.filters(), context.getMediaType())));
+            }
         }
     }
 
@@ -763,13 +782,18 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             return;
         }
 
-        LoggedBodyCapture capture = createBodyCapture(configuration.limit());
-        context.setOutputStream(new TeeOutputStream(context.getOutputStream(), capture.sink()));
+        LoggedBodyCapture capture = startCapture(() -> {
+            LoggedBodyCapture started = createBodyCapture(configuration.limit());
+            context.setOutputStream(new TeeOutputStream(context.getOutputStream(), started.sink()));
+            return started;
+        });
         try {
             context.proceed();
         } finally {
-            safely(() -> getState().setResponseBody(
-                    capture.content(configuration.filters(), context.getMediaType())));
+            if (capture != null) {
+                safely(() -> getState().setResponseBody(
+                        capture.content(configuration.filters(), context.getMediaType())));
+            }
         }
     }
 

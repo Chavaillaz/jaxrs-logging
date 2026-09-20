@@ -1,5 +1,7 @@
 package com.chavaillaz.jakarta.rs;
 
+import java.util.function.Supplier;
+
 import org.slf4j.Logger;
 import org.slf4j.event.Level;
 
@@ -76,6 +78,40 @@ public final class LoggedSupport {
             } catch (Exception ignored) {
                 // Nothing left to report it with: reporting must not be the thing that breaks the exchange
             }
+        }
+    }
+
+    /**
+     * Runs the given body capture setup, reporting anything it throws on the given logger and returning
+     * {@code null} instead, so the body is left out of the logs rather than the exchange failing.
+     * <p>
+     * The counterpart of {@link #safely(Logger, String, Runnable)} for the one piece of logging work both
+     * providers do <em>before</em> {@code proceed()} rather than in a {@code finally} block after it, and
+     * the position is exactly what makes it worth guarding separately: something going wrong while a
+     * captured body is rendered for the logs costs a log line, whereas something going wrong while the
+     * capture is being wired up means {@code proceed()} is never reached at all, so the entity is never
+     * read or written and the exchange fails with an error having nothing to do with it.
+     * <p>
+     * That is not hypothetical. {@code createBodyCapture} is the documented extension point for the
+     * mechanics of capture - spilling to a temporary file, for instance, which fails the way file system
+     * access does - and the default capture itself rejects a {@link LoggedBody#limit()} below {@code -1},
+     * which would otherwise turn a typo in an annotation into a 500 on every request to that resource.
+     *
+     * @param log     The logger to report a failure on
+     * @param message The message to report a failure with
+     * @param setup   The setup creating the capture and wrapping the entity stream with it
+     * @return The capture put in place, or {@code null} if it could not be
+     */
+    public static LoggedBodyCapture startCapture(Logger log, String message, Supplier<LoggedBodyCapture> setup) {
+        try {
+            return setup.get();
+        } catch (Exception e) {
+            try {
+                log.error(message, e);
+            } catch (Exception ignored) {
+                // Nothing left to report it with: reporting must not be the thing that breaks the exchange
+            }
+            return null;
         }
     }
 
