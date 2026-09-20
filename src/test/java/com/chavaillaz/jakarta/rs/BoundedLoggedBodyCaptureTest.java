@@ -8,6 +8,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -33,6 +34,19 @@ class BoundedLoggedBodyCaptureTest {
 
         // Then
         assertEquals(text, result);
+    }
+
+    @Test
+    @DisplayName("Check an invalid limit is rejected with the message naming what has to be fixed")
+    void checkInvalidLimitRejectedWithUsefulMessage() {
+        // Sizing the buffer on the limit used to reject it first, with a message about an initial size
+        // nobody can trace back to the LoggedBody#limit that actually has to be changed - and, now that
+        // a capture failing to be created no longer fails the exchange, that message is all there is
+        IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
+                () -> new BoundedLoggedBodyCapture(-2));
+
+        // Then
+        assertTrue(thrown.getMessage().contains("Limit must be -1 (unlimited) or a positive value"));
     }
 
     @Test

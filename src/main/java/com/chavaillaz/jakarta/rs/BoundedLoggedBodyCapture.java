@@ -84,7 +84,10 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
      * @param limit The maximum number of bytes to capture, or {@link BoundedOutputStream#NO_LIMIT} for no limit
      */
     public BoundedLoggedBodyCapture(int limit) {
-        this.buffer = new ByteArrayOutputStream(limit == NO_LIMIT ? INITIAL_BUFFER_SIZE : min(limit, INITIAL_BUFFER_SIZE));
+        // Every negative limit, not only NO_LIMIT, sizes the buffer the default way, so that validating
+        // the limit is left entirely to the sink below: sizing on a limit of -2 otherwise rejected it
+        // first, with a "Negative initial size" nobody can trace back to the annotation to fix
+        this.buffer = new ByteArrayOutputStream(limit < 0 ? INITIAL_BUFFER_SIZE : min(limit, INITIAL_BUFFER_SIZE));
         this.sink = new BoundedOutputStream(buffer, limit);
     }
 
