@@ -1196,9 +1196,39 @@ class LoggedFilterTest extends AbstractFilterTest {
         void autoMappedHeaders();
 
         @Logged
+        @LoggedMapping(type = HEADER, paramNames = "X-Internal-Secret")
+        @LoggedMapping(type = HEADER, mdcKey = "agent", paramNames = "User-Agent")
+        @LoggedMapping(type = HEADER, auto = true, mdcPrefix = "header-")
+        void namedAndAutoMappedHeaders();
+
+        @Logged
         @LoggedMapping(type = QUERY, mdcKey = "trace", paramNames = {"trace-id", "trace-id", "correlation-id"})
         void duplicatedParameterNames();
 
+    }
+
+    @Test
+    @DisplayName("Check a header claimed by a named mapping is not mapped again by an automatic one sent in another casing")
+    void checkAutoMappingHonoursNamedExclusionWhateverTheHeaderCasing() throws Exception {
+        // HTTP header names are case-insensitive and HTTP/2 sends them lower cased, so the casing a
+        // mapping declares is not the casing the client uses
+        setupTest(AnnotatedResource.class, "namedAndAutoMappedHeaders");
+
+        // Given
+        MockHttpRequest request = MockHttpRequest.create("GET", "example.company.com/service");
+        request.header("user-agent", "JUnit");
+        request.header("x-internal-secret", "secret-value");
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(request);
+
+        // When
+        loggingFilter.filter(requestContext);
+
+        // Then: the named mapping keeps its key, and the exclusion keeps the secret out of MDC entirely
+        assertEquals("JUnit", MDC.get("agent"));
+        assertNull(MDC.get("header-user-agent"));
+        assertNull(MDC.get("header-User-Agent"));
+        assertNull(MDC.get("header-x-internal-secret"));
+        assertNull(MDC.get("header-X-Internal-Secret"));
     }
 
     @Test

@@ -38,6 +38,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
@@ -554,7 +555,24 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 .forEach(mapping -> putMdcFromParameters(
                         getParameters(requestContext, mapping.type()),
                         mapping,
-                        exclusion.computeIfAbsent(mapping.type(), type -> new HashSet<>())));
+                        exclusion.computeIfAbsent(mapping.type(), LoggedFilter::newExclusion)));
+    }
+
+    /**
+     * Creates the set recording the parameter names consumed by the mappings of the given type.
+     * <p>
+     * Header names are compared without regard to case, as HTTP defines them that way and nothing makes
+     * a client spell one the way the annotation naming it does - HTTP/2 and HTTP/3 send every header
+     * name lower cased, whatever the application wrote. A case-sensitive set therefore let an automatic
+     * mapping map again, under its own key, a header a named mapping had already claimed, and - worse -
+     * let it map the value of a header a mapping had explicitly excluded precisely to keep it out of the
+     * logs. Path and query parameter names are case-sensitive and are matched as written.
+     *
+     * @param type The type of parameter the mappings read
+     * @return The (empty) set to record consumed names in
+     */
+    protected static Set<String> newExclusion(MappingType type) {
+        return type == MappingType.HEADER ? new TreeSet<>(String.CASE_INSENSITIVE_ORDER) : new HashSet<>();
     }
 
     /**
