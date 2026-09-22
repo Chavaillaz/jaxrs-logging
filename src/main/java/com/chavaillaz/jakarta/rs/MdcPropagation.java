@@ -373,6 +373,19 @@ public final class MdcPropagation {
             return delegate.awaitTermination(timeout, unit);
         }
 
+        /**
+         * Delegated rather than left to the default {@link ExecutorService#close()}, which shuts the
+         * executor down and waits for it to terminate through the methods above: an executor overriding
+         * {@code close()} does so because that default does not suit it. The common
+         * {@link java.util.concurrent.ForkJoinPool} is the extreme case - it cannot be shut down, so its
+         * own {@code close()} does nothing, while the default waits forever for it to terminate, spinning
+         * a whole core on the thread closing it.
+         */
+        @Override
+        public void close() {
+            delegate.close();
+        }
+
     }
 
     /**

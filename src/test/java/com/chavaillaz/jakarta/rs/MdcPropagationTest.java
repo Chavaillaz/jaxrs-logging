@@ -3,8 +3,10 @@ package com.chavaillaz.jakarta.rs;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
@@ -13,6 +15,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -182,6 +185,18 @@ class MdcPropagationTest {
         assertTrue(executor.isShutdown());
         assertTrue(executor.isTerminated());
         assertTrue(rawExecutor.isShutdown());
+    }
+
+    @Test
+    @DisplayName("Check closing a wrapped ExecutorService closes the underlying executor its own way")
+    void checkWrappedExecutorServiceDelegatesClose() {
+        // Given: the common pool cannot be shut down, so its own close() does nothing, while the default
+        // close() the wrapper used to inherit waits for it to terminate forever - as a try-with-resources
+        // block or a dependency injection container closing its beans on shutdown would
+        ExecutorService executor = MdcPropagation.wrap(ForkJoinPool.commonPool());
+
+        // When / Then
+        assertTimeoutPreemptively(Duration.ofSeconds(5), executor::close);
     }
 
     @Test
