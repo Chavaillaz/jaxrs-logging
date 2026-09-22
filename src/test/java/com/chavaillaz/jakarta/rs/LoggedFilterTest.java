@@ -18,6 +18,7 @@ import static jakarta.ws.rs.core.HttpHeaders.CONTENT_TYPE;
 import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN_TYPE;
 import static java.lang.Integer.parseInt;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.apache.commons.lang3.StringUtils.LF;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -41,6 +42,7 @@ import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.net.URISyntaxException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -502,6 +504,58 @@ class LoggedFilterTest extends AbstractFilterTest {
         assertEquals(1, listAppender.getMessages().stream()
                 .filter(event -> event.getMessage().getFormattedMessage().startsWith("Received"))
                 .count());
+    }
+
+    @Test
+    @DisplayName("Check a request whose entity is read twice is only logged once")
+    void checkRequestLoggedOnceWhenEntityReadTwice() throws Exception {
+        // A buffered entity can be read more than once - by a filter validating its signature, then by the
+        // resource method - and every read goes through the interceptors again
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        loggingFilter.filter(requestContext);
+
+        // When
+        loggingFilter.aroundReadFrom(readerContext(IOUtils.toInputStream(INPUT, UTF_8), InputStream::readAllBytes));
+        loggingFilter.aroundReadFrom(readerContext(IOUtils.toInputStream(INPUT, UTF_8), InputStream::readAllBytes));
+
+        // Then
+        assertEquals(List.of("Received POST /service" + LF + INPUT), getReceivedMessages());
+    }
+
+    @Test
+    @DisplayName("Check a body read after the request was logged without one is still logged")
+    void checkBodyLoggedAfterRequestLoggedWithoutOne() throws Exception {
+        // Whether a request has a body is decided before it is read, by some containers from its
+        // Content-Type header alone: a body sent without one is announced as absent at once, then read by
+        // the resource method after all, and that body is precisely what the first line lacked
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+
+        // Given
+        MockHttpRequest request = MockHttpRequest.create("POST", "example.company.com/service");
+        request.setInputStream(IOUtils.toInputStream(INPUT, UTF_8));
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(request);
+        loggingFilter.filter(requestContext);
+
+        // When
+        loggingFilter.aroundReadFrom(readerContext(requestContext.getEntityStream(), InputStream::readAllBytes));
+
+        // Then
+        assertEquals(List.of("Received POST /service", "Received POST /service" + LF + INPUT), getReceivedMessages());
+    }
+
+    /**
+     * Gets the {@code "Received ..."} lines logged so far, in the order they were logged.
+     *
+     * @return The formatted messages of those lines
+     */
+    List<String> getReceivedMessages() {
+        return listAppender.getMessages().stream()
+                .map(event -> event.getMessage().getFormattedMessage())
+                .filter(message -> message.startsWith("Received"))
+                .toList();
     }
 
     @Test

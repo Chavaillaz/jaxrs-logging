@@ -735,11 +735,17 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     /**
      * Logs the request received by the server.
      * Note that the request method and URI must have been stored in MDC before calling this method.
+     * <p>
+     * Several callbacks can reach this for the same request, so a line repeating one already logged is
+     * skipped (see {@link LoggedRequestState#markRequestLogged(boolean)}): a request whose entity was read
+     * twice used to be logged twice, body included.
      *
      * @param requestBody The request body to be logged
      */
     protected void logRequest(String requestBody) {
-        getState().markRequestLogged();
+        if (!getState().markRequestLogged(isNotBlank(requestBody))) {
+            return;
+        }
         log.info("Received {} {}{}{}",
                 getMdc(REQUEST_METHOD),
                 getMdc(REQUEST_URI),

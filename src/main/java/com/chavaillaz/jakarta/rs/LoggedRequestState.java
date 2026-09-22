@@ -86,6 +86,20 @@ public class LoggedRequestState {
     private final AtomicBoolean requestLogged = new AtomicBoolean();
 
     /**
+     * Whether the {@code "Received ..."} line has already been logged with the request body, see
+     * {@link #markRequestLogged(boolean)}.
+     * <p>
+     * Tracked apart from {@link #requestLogged}, as the two do not repeat each other. The entity of a
+     * request can be read more than once - a buffered entity read by a filter validating its signature,
+     * then by the resource method - and every read goes through the interceptors again, so only a body
+     * already logged makes a line carrying it a repetition. A body read after the line announcing the
+     * request without one, on the other hand, is precisely what that line lacked: whether a request has a
+     * body is decided before it is read, by some containers from its {@code Content-Type} header alone, so
+     * a body sent without one is announced as absent before the resource method reads it after all.
+     */
+    private final AtomicBoolean requestBodyLogged = new AtomicBoolean();
+
+    /**
      * Whether the request has already been completed, guarding {@link LoggedFilter#logResponse(String)}
      * against running more than once.
      * <p>
@@ -208,12 +222,19 @@ public class LoggedRequestState {
     }
 
     /**
-     * Records that the {@code "Received ..."} line has been logged for this request.
+     * Records that the {@code "Received ..."} line is being logged for this request, with or without its
+     * body, and tells whether that line says anything the ones logged before it did not.
+     * <p>
+     * A line without a body is new for a request not logged at all yet, and a line with a body for a
+     * request whose body has not been logged yet, whatever was logged without it (see
+     * {@link #requestBodyLogged}).
      *
-     * @return {@code true} if this call was the one that recorded it, {@code false} if it already was
+     * @param withBody Whether the line carries the request body
+     * @return {@code true} if the line is new and must be logged, {@code false} if it would repeat one
      */
-    public boolean markRequestLogged() {
-        return requestLogged.compareAndSet(false, true);
+    public boolean markRequestLogged(boolean withBody) {
+        boolean first = !requestLogged.getAndSet(true);
+        return withBody ? requestBodyLogged.compareAndSet(false, true) : first;
     }
 
     /**
