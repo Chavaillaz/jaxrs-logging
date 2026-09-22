@@ -71,6 +71,21 @@ class MaskingBodyFilterTest {
         }
 
         @Test
+        @DisplayName("Check a value cut short by the body limit is masked too")
+        void checkTruncatedValueMasked() {
+            // The body a filter receives ends wherever the limit fell, possibly in the middle of a secret,
+            // which then lacks its closing quote: the part before the cut must not reach the logs either
+            assertEquals("{\"user\":\"jane\",\"password\":\"***\"",
+                    filter(filter, "{\"user\":\"jane\",\"password\":\"hun"));
+        }
+
+        @Test
+        @DisplayName("Check a value cut short in the middle of an escape sequence is masked too")
+        void checkValueTruncatedWithinEscapeMasked() {
+            assertEquals("{\"password\":\"***\"", filter(filter, "{\"password\":\"hun\\"));
+        }
+
+        @Test
         @DisplayName("Check whitespace around the separator is tolerated")
         void checkWhitespaceTolerated() {
             assertEquals("""

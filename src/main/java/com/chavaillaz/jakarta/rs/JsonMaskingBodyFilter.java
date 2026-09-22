@@ -22,6 +22,10 @@ import java.util.regex.Pattern;
  * matching balanced braces is beyond what a regular expression can do reliably (see
  * {@link MaskingBodyFilter} for why the body is not parsed); mask the scalar properties inside it
  * instead, or use {@link LoggedBody#limit()} to keep it out of the logs altogether.
+ * <p>
+ * A string value cut short by {@link LoggedBody#limit()} is masked too. The body a filter receives ends
+ * wherever the limit fell, so a secret straddling that point lacks the closing quote a complete string
+ * ends with; requiring one left the part of the secret before the cut in the logs, in the clear.
  */
 public class JsonMaskingBodyFilter extends MaskingBodyFilter {
 
@@ -36,8 +40,12 @@ public class JsonMaskingBodyFilter extends MaskingBodyFilter {
      * {@link Exception}, escaped every guard between this filter and the exchange it was only observing.
      * A run of plain characters is matched iteratively, which leaves one level of recursion per escape
      * sequence rather than per character.
+     * <p>
+     * A string also ends at the very end of the body, possibly right after the backslash of an escape
+     * sequence cut in half, so a value truncated by the body limit is masked as well (see the class
+     * documentation).
      */
-    private static final String SCALAR = "\"[^\"\\\\]*(?:\\\\.[^\"\\\\]*)*\"|-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?|true|false|null";
+    private static final String SCALAR = "\"[^\"\\\\]*(?:\\\\.[^\"\\\\]*)*(?:\"|\\\\?\\z)|-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?|true|false|null";
 
     /**
      * Creates a filter masking the given properties with {@link #DEFAULT_MASK}.
