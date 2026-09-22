@@ -210,6 +210,22 @@ class BoundedLoggedBodyCaptureTest {
     }
 
     @Test
+    @DisplayName("Check a filter overflowing the stack neither breaks the exchange nor leaks the body")
+    void checkFilterOverflowingTheStackDropsBody() throws IOException {
+        // Given: a pattern java.util.regex recurses through once per character, as an application's own
+        // RegexMaskingBodyFilter easily can, run on a payload long enough to exhaust the stack
+        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
+        capture.sink().write(("secret=" + "ab".repeat(100_000)).getBytes(UTF_8));
+        LoggedBodyFilter filter = new RegexMaskingBodyFilter("secret=((?:a|b)*)", 1);
+
+        // When: a StackOverflowError is not an Exception, and used to escape every guard on its way out
+        String result = assertDoesNotThrow(() -> capture.content(Set.of(filter)));
+
+        // Then
+        assertEquals(BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER, result);
+    }
+
+    @Test
     @DisplayName("Check content(Set) without a media type keeps the historical always-UTF-8 behavior")
     void checkSingleArgContentIgnoresMediaType() throws IOException {
         // Given

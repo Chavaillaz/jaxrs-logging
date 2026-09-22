@@ -28,7 +28,8 @@ import org.slf4j.LoggerFactory;
  * whole content is replaced with {@link #FILTERING_FAILURE_MARKER}, as the only thing known for certain
  * at that point is that the redaction the application asked for did not happen. Nor is it allowed to
  * break the exchange, which is why the failure is logged and swallowed rather than propagated back into
- * the entity stream this capture is teeing.
+ * the entity stream this capture is teeing - including a {@link StackOverflowError}, the way a regular
+ * expression gives up on a payload too large for it.
  * <p>
  * When the limit actually dropped bytes, the rendered content ends with {@link #TRUNCATION_MARKER}: a
  * body silently cut at the limit otherwise reads, in the logs, as a complete (and often syntactically
@@ -122,7 +123,11 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
             StringBuilder bodyBuilder = new StringBuilder(body);
             try {
                 filters.forEach(filter -> filter.filter(bodyBuilder));
-            } catch (Exception e) {
+            } catch (Exception | StackOverflowError e) {
+                // StackOverflowError is the one Error caught: it is how java.util.regex fails on a payload
+                // large enough for the pattern it runs, filters are regular expressions more often than not,
+                // and nothing is left behind once it has unwound. Letting it out instead would fail the
+                // exchange this capture is only observing, which no Exception thrown here is allowed to do.
                 log.error("A body filter failed, the body is dropped rather than logged unfiltered", e);
                 return FILTERING_FAILURE_MARKER;
             }
