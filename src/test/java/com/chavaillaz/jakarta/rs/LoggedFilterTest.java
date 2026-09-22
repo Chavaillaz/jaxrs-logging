@@ -53,6 +53,7 @@ import java.util.zip.GZIPOutputStream;
 
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
 import jakarta.ws.rs.container.ContainerRequestContext;
+import jakarta.ws.rs.container.ContainerResponseContext;
 import jakarta.ws.rs.container.ResourceInfo;
 import jakarta.ws.rs.ext.InterceptorContext;
 import jakarta.ws.rs.ext.ReaderInterceptor;
@@ -1312,6 +1313,38 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         // Then: the request is served, and its completion still finds the state this filter attached
         assertNotNull(loggingFilter.findState());
+    }
+
+    @Test
+    @DisplayName("Check a response whose description fails is still served and completed")
+    void checkFailureDescribingTheResponseDoesNotFailIt() throws Exception {
+        // The resource method has already run by the time the response filter does, so anything it lets
+        // out answers with a 500 a request the application served successfully
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given: a subclass failing to return the identifier, standing in for whatever can go wrong while
+        // this provider describes a response (a container returning the unexpected, an appender that ran
+        // out of disk, ...)
+        LoggedFilter failingFilter = new LoggedFilter() {
+
+            @Override
+            protected void addRequestId(ContainerResponseContext responseContext) {
+                throw new IllegalStateException("Cannot describe the response");
+            }
+
+        };
+        failingFilter.resourceInfo = resourceInfo;
+        failingFilter.requestContext = containerRequestContext;
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext);
+        failingFilter.filter(requestContext);
+
+        // When
+        assertDoesNotThrow(() -> failingFilter.filter(requestContext, responseContext));
+
+        // Then: the request is still completed, the response logged and its MDC cleaned up
+        assertNotNull(listAppender.findFirstMessage("Processed"));
+        assertNull(MDC.get(getMdcField(REQUEST_ID)));
     }
 
     @Test

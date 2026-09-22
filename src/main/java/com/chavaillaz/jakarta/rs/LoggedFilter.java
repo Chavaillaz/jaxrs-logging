@@ -749,38 +749,48 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     @Override
     public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext) {
-        // Fallback for a request this provider never saw the start of: a filter running earlier - an
-        // authentication one sits at Priorities.AUTHENTICATION, well below this provider's priority - can
-        // abort the request, which skips the rest of the request filter chain while the container still
-        // runs every response filter. Every 401 or 403 an application rejects that way was consequently
-        // logged with none of the fields describing the request it answers, and with whatever a previous
-        // request left behind on this (pooled) thread rather than with nothing at all. Establishing the
-        // context here is the same work, only late: the duration starts counting from this point, as
-        // there is nothing left to say when the request actually arrived.
-        if (findState() == null) {
-            filter(requestContext);
-        }
+        // Guarded the way every other callback of this provider is (see LoggedSupport#safely). The resource
+        // method has already run by the time this one does, so anything escaping it - a subclass overriding
+        // one of the methods below, the appender the lines are written to, a body configuration that cannot
+        // be resolved - does not merely lose a log line: it answers with a 500 a request the application
+        // served successfully, which a client is then free to retry, repeating whatever the request did.
+        safely(() -> {
+            try {
+                // Fallback for a request this provider never saw the start of: a filter running earlier - an
+                // authentication one sits at Priorities.AUTHENTICATION, well below this provider's priority -
+                // can abort the request, which skips the rest of the request filter chain while the container
+                // still runs every response filter. Every 401 or 403 an application rejects that way was
+                // consequently logged with none of the fields describing the request it answers, and with
+                // whatever a previous request left behind on this (pooled) thread rather than with nothing at
+                // all. Establishing the context here is the same work, only late: the duration starts counting
+                // from this point, as there is nothing left to say when the request actually arrived.
+                if (findState() == null) {
+                    filter(requestContext);
+                }
 
-        // Fallback for a request that has a body but whose resource method never reads it: neither the
-        // immediate path in filter(ContainerRequestContext) nor aroundReadFrom logged the request in that
-        // case (see LoggedRequestState#isRequestLogged), so without this the "Received ..." line would never
-        // appear even though LogType.LOG is configured
-        if (getBodyConfiguration(REQUEST).logs(LOG) && !getState().isRequestLogged()) {
-            logRequest(EMPTY);
-        }
+                // Fallback for a request that has a body but whose resource method never reads it: neither
+                // the immediate path in filter(ContainerRequestContext) nor aroundReadFrom logged the request
+                // in that case (see LoggedRequestState#isRequestLogged), so without this the "Received ..."
+                // line would never appear even though LogType.LOG is configured
+                if (getBodyConfiguration(REQUEST).logs(LOG) && !getState().isRequestLogged()) {
+                    logRequest(EMPTY);
+                }
 
-        putMdc(RESPONSE_STATUS, valueOf(responseContext.getStatus()));
-        addRequestId(responseContext);
-
-        // Logs directly from filter in case no response body is present, as aroundWriteTo will not be
-        // called by the container in that case (e.g. 204 No Content, HEAD requests). This must happen
-        // unconditionally (not just when body logging is configured), as this is also where the MDC
-        // context for the request is cleaned up; skipping it here would silently drop the "Processed"
-        // log line and leak MDC fields onto the thread (which is normally pooled and reused) for as
-        // long as it takes another request handled by that same thread to overwrite them.
-        if (!responseContext.hasEntity()) {
-            logResponse(EMPTY);
-        }
+                putMdc(RESPONSE_STATUS, valueOf(responseContext.getStatus()));
+                addRequestId(responseContext);
+            } finally {
+                // Logs directly from filter in case no response body is present, as aroundWriteTo will not
+                // be called by the container in that case (e.g. 204 No Content, HEAD requests). This must
+                // happen unconditionally (not just when body logging is configured, nor only when describing
+                // the response above worked), as this is also where the MDC context for the request is
+                // cleaned up; skipping it here would silently drop the "Processed" log line and leak MDC
+                // fields onto the thread (which is normally pooled and reused) for as long as it takes
+                // another request handled by that same thread to overwrite them.
+                if (!responseContext.hasEntity()) {
+                    logResponse(EMPTY);
+                }
+            }
+        });
     }
 
     /**
