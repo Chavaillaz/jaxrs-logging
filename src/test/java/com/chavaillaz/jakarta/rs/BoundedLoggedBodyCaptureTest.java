@@ -4,6 +4,8 @@ import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON_TYPE;
 import static jakarta.ws.rs.core.MediaType.APPLICATION_OCTET_STREAM_TYPE;
 import static jakarta.ws.rs.core.MediaType.APPLICATION_XML_TYPE;
 import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN_TYPE;
+import static java.nio.charset.StandardCharsets.ISO_8859_1;
+import static java.nio.charset.StandardCharsets.UTF_16BE;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -120,6 +122,63 @@ class BoundedLoggedBodyCaptureTest {
 
         // Then
         assertEquals("Café", result);
+    }
+
+    @Test
+    @DisplayName("Check content decodes a text body with the charset its media type declares")
+    void checkContentDecodesDeclaredCharset() throws IOException {
+        // Given
+        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
+        capture.sink().write("Café".getBytes(ISO_8859_1));
+
+        // When
+        String result = capture.content(Set.of(), TEXT_PLAIN_TYPE.withCharset("ISO-8859-1"));
+
+        // Then: decoded as UTF-8, the é used to be logged as a replacement character
+        assertEquals("Café", result);
+    }
+
+    @Test
+    @DisplayName("Check content decodes as UTF-8 a body whose declared charset is not supported")
+    void checkContentFallsBackToUtf8ForUnsupportedCharset() throws IOException {
+        // Given
+        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
+        capture.sink().write("Café".getBytes(UTF_8));
+
+        // When
+        String result = capture.content(Set.of(), TEXT_PLAIN_TYPE.withCharset("no-such-charset"));
+
+        // Then
+        assertEquals("Café", result);
+    }
+
+    @Test
+    @DisplayName("Check content trims a character the limit cut in half in a multi-byte charset other than UTF-8")
+    void checkContentTrimsTruncatedCharacterOfDeclaredCharset() throws IOException {
+        // Given: "Café" in UTF-16 (8 bytes) captured through a sink limited to 7 bytes, cutting the é in half
+        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(7);
+        capture.sink().write("Café".getBytes(UTF_16BE));
+
+        // When
+        String result = capture.content(Set.of(), TEXT_PLAIN_TYPE.withCharset("UTF-16BE"));
+
+        // Then
+        assertEquals("Caf" + BoundedLoggedBodyCapture.TRUNCATION_MARKER, result);
+    }
+
+    @Test
+    @DisplayName("Check content keeps the last character of a truncated body in a single-byte charset")
+    void checkContentKeepsLastCharacterOfSingleByteCharset() throws IOException {
+        // Given: "Café!" in ISO-8859-1 (5 bytes) captured through a sink limited to 4 bytes, ending with the
+        // byte of the é, which read as UTF-8 is the start of a longer sequence the limit would have cut
+        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(4);
+        capture.sink().write("Café!".getBytes(ISO_8859_1));
+
+        // When
+        String result = capture.content(Set.of(), TEXT_PLAIN_TYPE.withCharset("ISO-8859-1"));
+
+        // Then: a single-byte charset has no character to cut in half, so the é is complete and kept
+        assertEquals("Café" + BoundedLoggedBodyCapture.TRUNCATION_MARKER, result);
     }
 
     @Test

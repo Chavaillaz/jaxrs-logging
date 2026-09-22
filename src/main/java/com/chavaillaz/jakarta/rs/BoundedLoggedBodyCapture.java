@@ -1,12 +1,16 @@
 package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.BoundedOutputStream.NO_LIMIT;
-import static com.chavaillaz.jakarta.rs.BoundedOutputStream.trimIncompleteTrailingCharacter;
 import static java.lang.Math.min;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.CharBuffer;
+import java.nio.charset.Charset;
+import java.nio.charset.CharsetDecoder;
+import java.nio.charset.CodingErrorAction;
 import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Set;
@@ -20,9 +24,14 @@ import org.slf4j.LoggerFactory;
  * memory.
  * <p>
  * A body whose {@link MediaType} is not text-based (see {@link #isBinary(MediaType)}) is rendered as a
- * lowercase hexadecimal string instead of being decoded as UTF-8 text: an arbitrary binary payload (an
- * uploaded image, a protobuf message, ...) has no reason to be valid UTF-8, so decoding it as such would
- * produce a log line full of replacement characters instead of anything usable for troubleshooting.
+ * lowercase hexadecimal string instead of being decoded as text: an arbitrary binary payload (an
+ * uploaded image, a protobuf message, ...) has no reason to be valid text in any charset, so decoding it
+ * as such would produce a log line full of replacement characters instead of anything usable for
+ * troubleshooting.
+ * <p>
+ * A text body is decoded with the charset its media type declares, and as UTF-8 when it declares none
+ * (see {@link #charsetOf(MediaType)}): decoding every body as UTF-8 logged a body sent as ISO-8859-1 or
+ * Shift_JIS with each of its characters outside ASCII turned into a replacement character.
  * <p>
  * A {@link LoggedBodyFilter} that throws is not allowed to leak the body it was meant to redact: the
  * whole content is replaced with {@link #FILTERING_FAILURE_MARKER}, as the only thing known for certain
@@ -112,11 +121,10 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
         if (isBinary(mediaType)) {
             body = HexFormat.of().formatHex(bytes);
         } else {
-            if (truncated) {
-                // A limit reached mid-character would otherwise decode to a trailing replacement character
-                bytes = trimIncompleteTrailingCharacter(bytes);
-            }
-            body = new String(bytes, UTF_8);
+            Charset charset = charsetOf(mediaType);
+            // A limit reached mid-character would otherwise decode to a trailing replacement character
+            int end = truncated ? completeLength(bytes, charset) : bytes.length;
+            body = new String(bytes, 0, end, charset);
         }
 
         if (!filters.isEmpty()) {
@@ -140,8 +148,48 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
     }
 
     /**
+     * Gets the charset a text body of the given media type is encoded with: the one its {@code charset}
+     * parameter declares, or UTF-8 - the default of JAX-RS itself - when it declares none, or one this JVM
+     * does not support.
+     *
+     * @param mediaType The media type of the captured body, or {@code null} if unknown
+     * @return The charset to decode the body with
+     */
+    protected static Charset charsetOf(MediaType mediaType) {
+        String name = mediaType == null ? null : mediaType.getParameters().get(MediaType.CHARSET_PARAMETER);
+        return name == null ? UTF_8 : Charset.forName(name, UTF_8);
+    }
+
+    /**
+     * Gets how many of the given bytes form complete characters in the given charset, so that a character
+     * the limit cut in the middle of can be left out rather than decoded to a replacement character.
+     * <p>
+     * Decoding as if more input were to follow is what makes a decoder stop in front of an incomplete
+     * sequence instead of reporting it as malformed, which answers the question for any charset: a UTF-8
+     * sequence, a UTF-16 surrogate pair or a Shift_JIS double byte alike. A single-byte charset has nothing
+     * to cut, so every byte counts, which a rule written for UTF-8 alone got wrong by reading the last
+     * byte of an ISO-8859-1 {@code é} as the start of a longer sequence and dropping it.
+     *
+     * @param bytes   The bytes captured, possibly cut in the middle of a character
+     * @param charset The charset the bytes are encoded with
+     * @return The number of leading bytes forming complete characters
+     */
+    protected static int completeLength(byte[] bytes, Charset charset) {
+        ByteBuffer input = ByteBuffer.wrap(bytes);
+        CharsetDecoder decoder = charset.newDecoder()
+                .onMalformedInput(CodingErrorAction.REPLACE)
+                .onUnmappableCharacter(CodingErrorAction.REPLACE);
+        // Only how far the decoder gets matters here, not the characters it decodes along the way
+        CharBuffer discarded = CharBuffer.allocate(INITIAL_BUFFER_SIZE);
+        while (decoder.decode(input, discarded, false).isOverflow()) {
+            discarded.clear();
+        }
+        return input.position();
+    }
+
+    /**
      * Indicates whether a body of the given media type should be treated as binary (and thus rendered
-     * as hexadecimal rather than decoded as UTF-8 text).
+     * as hexadecimal rather than decoded as text).
      * <p>
      * Textual: any {@code text/*} type, and the {@code application} subtypes commonly used for
      * structured or form text ({@code json}, {@code xml}, {@code javascript}, {@code x-www-form-urlencoded},

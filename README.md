@@ -98,7 +98,9 @@ payload is never mistaken for what the application actually sent or received.
 
 A body whose content type is not text-based (for example `application/octet-stream`, `application/pdf` or
 an `image/*`/`multipart/*` type) is logged as a lowercase hexadecimal string instead of being decoded as
-UTF-8 text, to avoid filling logs with replacement characters for binary payloads such as file uploads.
+text, to avoid filling logs with replacement characters for binary payloads such as file uploads. A text
+body is decoded with the charset its content type declares (`text/plain; charset=ISO-8859-1`, for
+example), and as UTF-8 when it declares none.
 
 Nothing is captured at all when the logger is configured above `INFO`, so an application that turns this
 logging off does not pay for buffering and filtering bodies it will never write.
