@@ -28,8 +28,16 @@ public class JsonMaskingBodyFilter extends MaskingBodyFilter {
     /**
      * Matches a JSON scalar: a string with its escapes, a number in any of the forms the grammar allows,
      * or one of the three literals.
+     * <p>
+     * A string is matched as runs of plain characters separated by escapes, rather than as a repetition
+     * of "one plain character or one escape": {@link java.util.regex} recurses once per repetition of a
+     * group like the latter, which overflowed the stack on a value a few thousand characters long - a JWT
+     * carrying a handful of claims, for instance - with a {@link StackOverflowError} that, not being an
+     * {@link Exception}, escaped every guard between this filter and the exchange it was only observing.
+     * A run of plain characters is matched iteratively, which leaves one level of recursion per escape
+     * sequence rather than per character.
      */
-    private static final String SCALAR = "\"(?:\\\\.|[^\"\\\\])*\"|-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?|true|false|null";
+    private static final String SCALAR = "\"[^\"\\\\]*(?:\\\\.[^\"\\\\]*)*\"|-?\\d+(?:\\.\\d+)?(?:[eE][+-]?\\d+)?|true|false|null";
 
     /**
      * Creates a filter masking the given properties with {@link #DEFAULT_MASK}.

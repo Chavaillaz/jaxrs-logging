@@ -60,6 +60,17 @@ class MaskingBodyFilterTest {
         }
 
         @Test
+        @DisplayName("Check a long value is masked without overflowing the stack")
+        void checkLongValueMasked() {
+            // A JWT carrying a handful of claims is easily several thousand characters long, which used to
+            // be enough for the regular expression to recurse its way through the whole stack
+            String token = "a".repeat(100_000);
+            assertEquals("""
+                    {"token":"***","user":"jane"}""", filter(filter, """
+                    {"token":"%s","user":"jane"}""".formatted(token)));
+        }
+
+        @Test
         @DisplayName("Check whitespace around the separator is tolerated")
         void checkWhitespaceTolerated() {
             assertEquals("""
