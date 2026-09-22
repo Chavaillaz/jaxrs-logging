@@ -1,8 +1,10 @@
 package com.chavaillaz.jakarta.rs;
 
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Set;
 
@@ -84,10 +86,25 @@ class LoggedBodyFilterFactoryTest {
         LoggedBodyFilter first = factory.getInstance(type);
         LoggedBodyFilter second = factory.getInstance(type);
 
-        // Then: the same no-op sentinel is returned both times, from a single cache entry,
+        // Then: the same sentinel is returned both times, from a single cache entry,
         // instead of reflection (and the accompanying error log) being retried on every call
         assertSame(first, second);
         assertEquals(1, factory.cache.size());
+    }
+
+    @Test
+    @DisplayName("Check a body filter failing to instantiate drops the body rather than letting it through unfiltered")
+    void checkFailedInstantiationDropsTheBody() throws IOException {
+        // A filter is a "this must never reach the logs" instruction, and one that could not even be
+        // created has redacted nothing: passing the body through untouched logged it in the clear
+        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
+        capture.sink().write("{\"password\":\"hunter2\"}".getBytes(UTF_8));
+
+        // When
+        String result = capture.content(factory.getInstances(List.of(UninstantiableBodyFilter.class)));
+
+        // Then
+        assertEquals(BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER, result);
     }
 
     static class UninstantiableBodyFilter implements LoggedBodyFilter {

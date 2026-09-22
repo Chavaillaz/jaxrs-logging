@@ -26,8 +26,15 @@ public class LoggedBodyFilterFactory {
     protected static final Logger log = LoggerFactory.getLogger(LoggedBodyFilterFactory.class);
 
     /**
-     * No-op filter cached for a body filter class that failed to be instantiated, so that failure is
-     * remembered instead of being retried (and re-logged) on every single request referencing it.
+     * Filter cached for a body filter class that failed to be instantiated, so that failure is remembered
+     * instead of being retried (and re-logged) on every single request referencing it.
+     * <p>
+     * It drops the body it is given, writing {@link BoundedLoggedBodyCapture#FILTERING_FAILURE_MARKER} in
+     * its place, rather than leaving it untouched: a filter is a "this must never reach the logs"
+     * instruction, and one that could not even be created has redacted nothing, which is the same reason a
+     * filter throwing on a body has that body dropped. Leaving it untouched turned a mistake as small as a
+     * constructor that is not public into every payload the filter was declared to protect being logged in
+     * the clear, with a single error, logged the first time the filter was needed, to show for it.
      * <p>
      * A plain {@code null} cannot be used for that purpose: {@link ConcurrentHashMap#computeIfAbsent}
      * does not record a mapping when the function returns {@code null} (see its Javadoc), so returning
@@ -35,7 +42,8 @@ public class LoggedBodyFilterFactory {
      * to be repeated on every request instead of once.
      */
     protected static final LoggedBodyFilter FAILED_BODY_FILTER = body -> {
-        // No-op: the class could not be instantiated, see the error logged once at that time
+        body.setLength(0);
+        body.append(BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER);
     };
 
     /**
@@ -86,7 +94,7 @@ public class LoggedBodyFilterFactory {
             try {
                 return type.getConstructor().newInstance();
             } catch (Exception e) {
-                log.error("Unable to instantiate body filter {}, it will be skipped for every subsequent request", type, e);
+                log.error("Unable to instantiate body filter {}, the bodies it applies to are dropped rather than logged unfiltered", type, e);
                 return FAILED_BODY_FILTER;
             }
         });

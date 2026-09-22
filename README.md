@@ -299,7 +299,10 @@ parser would reject both.
 A filter that throws never reaches the application: the body is dropped and logged as
 `[body dropped: a filter failed]`, and the failure is reported on the library's own logger. Dropping it
 rather than falling back to the captured text is deliberate - a filter that threw has by definition not
-finished redacting, so what it was working on is exactly what must not be written. More generally, nothing
+finished redacting, so what it was working on is exactly what must not be written. The same goes for a
+filter class that cannot be instantiated (a constructor or class that is not `public`, an inner class that
+is not `static`, ...): the failure is reported once, and every body it was declared for is dropped rather
+than logged unredacted. More generally, nothing
 this library does while logging is allowed to fail a request: capture, filtering and log writing all run
 inside a `finally` block, where a thrown exception would otherwise replace the exception the exchange
 actually failed with (or turn a good response into a 500).
