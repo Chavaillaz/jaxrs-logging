@@ -19,19 +19,24 @@ import java.util.function.Function;
 import jakarta.ws.rs.container.ResourceInfo;
 
 /**
- * Utility class for logging providers.
+ * Reads the annotations configuring this library from the resource method matched by a request, the
+ * interfaces of its class and the class itself, most specific first (see {@link #declarationSites}).
+ * <p>
+ * Stateless and uncached: {@link LoggedResolver} caches what is read here, once per resource method.
  */
-public class LoggedUtils {
+public final class LoggedUtils {
 
     private LoggedUtils() {
         // Utility class
     }
 
     /**
-     * Merges the different LoggedMapping annotations from any LoggedMappings within the class or its interfaces.
+     * Merges the {@link LoggedMapping} annotations declared on every declaration site of the matched resource
+     * method (see {@link #declarationSites}), a mapping competing for a parameter with one declared on a more
+     * specific site being left out (see {@link #mergeMappings}).
      *
      * @param resourceInfo The instance to access resource class and method
-     * @return The set of merged LoggedMapping annotations
+     * @return The merged mappings, in the order of their declaration sites
      */
     public static Set<LoggedMapping> getMergedMappings(ResourceInfo resourceInfo) {
         Class<?> resourceClass = resourceInfo.getResourceClass();
@@ -213,11 +218,12 @@ public class LoggedUtils {
     }
 
     /**
-     * Checks if two methods are equal.
+     * Indicates whether two methods have the same signature - name and parameter types - which is how a
+     * method of an interface is recognized as the one a resource method implements.
      *
      * @param method1 The first method
      * @param method2 The second method
-     * @return {@code true} if the methods are equal, {@code false} otherwise
+     * @return {@code true} if both methods are present and have the same signature, {@code false} otherwise
      */
     public static boolean areMethodsEqual(Method method1, Method method2) {
         return method1 != null && method2 != null

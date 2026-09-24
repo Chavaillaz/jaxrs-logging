@@ -72,23 +72,27 @@ import org.slf4j.MDC;
 import org.slf4j.event.Level;
 
 /**
- * Provider adding the following request information to {@link MDC}:
+ * Provider adding the following request information to {@link MDC} (see {@link LoggedField}):
  * <ul>
- *     <li>Request identifier (see {@link java.util.UUID})</li>
+ *     <li>Request identifier (from the {@value #REQUEST_ID_HEADER} header, or a random UUID)</li>
  *     <li>Request method (see {@link jakarta.ws.rs.HttpMethod})</li>
  *     <li>Request URI path relative to the base URI</li>
+ *     <li>Request query parameters, credentials masked (see {@link #isSensitive(MappingType, String)})</li>
  *     <li>Resource class matched by the current request</li>
  *     <li>Resource method matched by the current request</li>
+ *     <li>Whatever the {@link LoggedMapping} annotations of the resource ask for</li>
  * </ul>
- * Once the response computed, the request will be logged using the format
- * <code>Processed [method] [URI] with status [status] in [duration]ms</code>
- * with the following {@link MDC}:
+ * Once the response is computed, the request will be logged using the format
+ * <code>Processed [method] [URI] with status [status] in [duration]ms</code>, at a level derived from the
+ * status (see {@link #getResponseLevel(String)}), with the following {@link MDC}:
  * <ul>
  *     <li>Response status (see {@link jakarta.ws.rs.core.Response.Status})</li>
  *     <li>Response duration in milliseconds</li>
  *     <li>Request and response body (if activated in annotation)</li>
  * </ul>
- * This provider can be activated using the annotation {@link Logged} on resources.
+ * This provider can be activated using the annotation {@link Logged} on resources. It captures bodies
+ * through {@link LoggedBodyInterceptor}, which an application registering its providers explicitly must
+ * register along with it.
  * <p>
  * Resolved annotation configurations are delegated to {@link #resolver}, and body filter instances to
  * {@link #bodyFilterFactory}: both cache their results per resource / filter class and never evict them.
