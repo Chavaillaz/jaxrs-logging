@@ -9,6 +9,7 @@ import static java.util.stream.Collectors.toUnmodifiableSet;
 import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -103,9 +104,9 @@ public class LoggedResolver {
     }
 
     /**
-     * Cache of the merged {@link LoggedMapping} definitions resolved for each resource.
+     * Cache of the {@link LoggedMapping} definitions resolved for each resource, in the order they apply in.
      */
-    protected final Map<ResourceKey, Set<LoggedMapping>> mappingsCache = new ConcurrentHashMap<>();
+    protected final Map<ResourceKey, List<LoggedMapping>> mappingsCache = new ConcurrentHashMap<>();
 
     /**
      * Cache of the body logging configuration resolved for each resource.
@@ -135,18 +136,24 @@ public class LoggedResolver {
     }
 
     /**
-     * Gets the merged {@link LoggedMapping} definitions applicable to the resource method matched by
-     * the given resource, resolving and caching them once per resource.
+     * Gets the {@link LoggedMapping} definitions applicable to the resource method matched by the given
+     * resource, resolving and caching them once per resource.
+     * <p>
+     * The mappings declared on the several declaration sites of the method are merged (see
+     * {@link LoggedUtils#getMergedMappings(ResourceInfo)}), then sorted in the order they apply in: the
+     * explicit ones before the automatic ones, and on their MDC key within each, which puts the exclusions
+     * - declaring none - first. Sorting is part of the resolution, as it only depends on the annotations
+     * as well: done on each request, it cost every request to a mapped resource a sort of its mappings.
      *
      * @param resourceInfo The instance to access resource class and method
-     * @return The set of merged mappings applicable to the resource method
+     * @return The mappings applicable to the resource method, in the order they apply in
      */
-    public Set<LoggedMapping> getMergedMappings(ResourceInfo resourceInfo) {
+    public List<LoggedMapping> getMappings(ResourceInfo resourceInfo) {
         ResourceKey key = ResourceKey.of(resourceInfo);
         if (key == null) {
-            return Set.of();
+            return List.of();
         }
-        return mappingsCache.computeIfAbsent(key, ignored -> LoggedUtils.getMergedMappings(resourceInfo));
+        return mappingsCache.computeIfAbsent(key, ignored -> MappingApplier.inApplicationOrder(LoggedUtils.getMergedMappings(resourceInfo)));
     }
 
     /**

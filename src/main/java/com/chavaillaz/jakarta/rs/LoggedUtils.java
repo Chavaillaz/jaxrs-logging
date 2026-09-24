@@ -78,11 +78,10 @@ public final class LoggedUtils {
      * Indicates whether the two given mappings compete for the same parameters, so that only one of them
      * can apply.
      * <p>
-     * Header names are compared without regard to case, as HTTP defines them that way, and the way the
-     * filter matches them against the request (see {@link LoggedFilter#newExclusion}). Compared as
-     * written, a header a method maps as {@code User-Agent} and its class as {@code user-agent} was kept
-     * twice, and the mapping applied was then whichever sorted first rather than the one declared closest
-     * to the resource method.
+     * Header names are compared without regard to case, as HTTP defines them that way, and as they are
+     * matched against the request (see {@link MappingApplier}). Compared as written, a header a method maps
+     * as {@code User-Agent} and its class as {@code user-agent} was kept twice, and the mapping applied was
+     * then whichever sorted first rather than the one declared closest to the resource method.
      *
      * @param first  The first mapping
      * @param second The second mapping

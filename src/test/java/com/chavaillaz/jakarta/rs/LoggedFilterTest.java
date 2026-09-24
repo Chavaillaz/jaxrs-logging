@@ -358,12 +358,11 @@ class LoggedFilterTest extends AbstractFilterTest {
     void checkMergedMappingsCaching() throws Exception {
         setupTest(AnnotatedResource.class, "autoMappedQueryParameters");
 
-        // When
-        Set<LoggedMapping> first = loggingFilter.getCachedMergedMappings();
-        Set<LoggedMapping> second = loggingFilter.getCachedMergedMappings();
+        // When: two requests to the same resource method
+        loggingFilter.filter(getRequestContext());
+        loggingFilter.filter(getRequestContext());
 
         // Then
-        assertEquals(first, second);
         assertEquals(1, loggingFilter.resolver.mappingsCache.size());
     }
 

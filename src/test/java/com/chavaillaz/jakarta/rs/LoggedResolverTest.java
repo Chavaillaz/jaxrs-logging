@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doReturn;
 
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -57,6 +58,12 @@ class LoggedResolverTest {
         @Logged
         @LoggedMapping(type = QUERY, mdcKey = "topic", paramNames = "topic")
         void mappedMethod();
+
+        @Logged
+        @LoggedMapping(type = QUERY, auto = true)
+        @LoggedMapping(type = QUERY, mdcKey = "topic", paramNames = "topic")
+        @LoggedMapping(type = QUERY, paramNames = "secret")
+        void unorderedMappingsMethod();
 
         @LoggedBody(value = LOG, targets = {REQUEST, REQUEST})
         void repeatedTargetMethod();
@@ -198,7 +205,7 @@ class LoggedResolverTest {
     void checkMergedMappings() throws Exception {
         setup("mappedMethod");
 
-        Set<LoggedMapping> mappings = resolver.getMergedMappings(resourceInfo);
+        List<LoggedMapping> mappings = resolver.getMappings(resourceInfo);
 
         assertEquals(1, mappings.size());
         assertEquals("topic", mappings.iterator().next().mdcKey());
@@ -209,11 +216,24 @@ class LoggedResolverTest {
     void checkMergedMappingsCaching() throws Exception {
         setup("mappedMethod");
 
-        Set<LoggedMapping> first = resolver.getMergedMappings(resourceInfo);
-        Set<LoggedMapping> second = resolver.getMergedMappings(resourceInfo);
+        List<LoggedMapping> first = resolver.getMappings(resourceInfo);
+        List<LoggedMapping> second = resolver.getMappings(resourceInfo);
 
         assertEquals(first, second);
         assertEquals(1, resolver.mappingsCache.size());
+    }
+
+    @Test
+    @DisplayName("Check mappings are resolved in the order they apply in, whatever the order they are declared in")
+    void checkMappingsInApplicationOrder() throws Exception {
+        setup("unorderedMappingsMethod");
+
+        List<LoggedMapping> mappings = resolver.getMappings(resourceInfo);
+
+        // The exclusion first, so no other mapping maps what it excludes, and the automatic mapping last,
+        // so it only maps what no explicit one claimed
+        assertEquals(List.of("", "topic", ""), mappings.stream().map(LoggedMapping::mdcKey).toList());
+        assertEquals(List.of(false, false, true), mappings.stream().map(LoggedMapping::auto).toList());
     }
 
     @Test
@@ -235,7 +255,7 @@ class LoggedResolverTest {
         doReturn(Resource.class).when(resourceInfo).getResourceClass();
         doReturn(null).when(resourceInfo).getResourceMethod();
 
-        Set<LoggedMapping> mappings = resolver.getMergedMappings(resourceInfo);
+        List<LoggedMapping> mappings = resolver.getMappings(resourceInfo);
 
         // The interface declares its mappings on methods only, so nothing applies without one, but the
         // class is still a valid cache key: only a resource with neither a class nor a method is skipped
