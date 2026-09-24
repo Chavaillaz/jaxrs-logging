@@ -7,8 +7,8 @@ import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import java.lang.reflect.Method;
-import java.util.Arrays;
-import java.util.List;
+import java.util.Collections;
+import java.util.EnumSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -153,7 +153,8 @@ public class LoggedResolver {
      * Gets the body logging configuration for the given target (request or response) of the resource
      * method matched by the given resource.
      * If multiple configurations are defined, the one specifically targeting the given target is used.
-     * Otherwise, the configuration targeting both request and response is used if present.
+     * Otherwise, the configuration targeting both request and response is used if present. Among several
+     * as specific as one another, the first one declared is used (see {@link #findAnnotation}).
      * <p>
      * Both directions are resolved and cached together the first time either is requested for a given
      * resource, as reflection-based annotation lookups are expensive to repeat on every request.
@@ -228,6 +229,11 @@ public class LoggedResolver {
     /**
      * Finds the most specific {@link LoggedBody} annotation for the given target (request or response)
      * by walking the annotations present on the resource class/method matched by the given resource.
+     * <p>
+     * An annotation targeting the given direction alone wins over one targeting both, and among several
+     * as specific as one another, the first one declared wins. The directions an annotation targets are
+     * read as a set: counted instead, one naming its direction twice applied to neither, and the last
+     * annotation targeting both directions won where the first one targeting a single direction did.
      *
      * @param resourceInfo The instance to access resource class and method
      * @param target       The target for which to find the body logging configuration
@@ -236,11 +242,11 @@ public class LoggedResolver {
     protected Optional<LoggedBody> findAnnotation(ResourceInfo resourceInfo, Direction target) {
         LoggedBody both = null;
         for (LoggedBody logging : getAnnotation(resourceInfo, LoggedBody.class, Logged.class, Logged::value)) {
-            List<Direction> targets = Arrays.asList(logging.targets());
-            if (targets.size() == 1 && targets.getFirst() == target) {
+            Set<Direction> targets = EnumSet.noneOf(Direction.class);
+            Collections.addAll(targets, logging.targets());
+            if (targets.equals(EnumSet.of(target))) {
                 return Optional.of(logging);
-            }
-            if (targets.size() == 2 && targets.contains(REQUEST) && targets.contains(RESPONSE)) {
+            } else if (both == null && targets.equals(EnumSet.allOf(Direction.class))) {
                 both = logging;
             }
         }

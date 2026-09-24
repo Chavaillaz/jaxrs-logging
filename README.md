@@ -91,6 +91,9 @@ By default, `@LoggedBody` applies to both the request and the response. Repeat t
 @LoggedBody(value = LOG, targets = RESPONSE)
 ```
 
+A configuration targeting a single direction wins over one targeting both, and among several as specific as
+one another, the first one declared wins.
+
 Be careful when activating any body logging, as it may produce performance or memory issues if the body size
 is not limited: the captured body is buffered in memory, so an endpoint accepting large (or client-controlled)
 payloads should always set a `limit`. A body cut short by that limit ends with `...[truncated]`, so a partial

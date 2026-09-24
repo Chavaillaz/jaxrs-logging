@@ -20,6 +20,8 @@ import jakarta.ws.rs.container.ResourceInfo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -54,6 +56,15 @@ class LoggedResolverTest {
         @Logged
         @LoggedMapping(type = QUERY, mdcKey = "topic", paramNames = "topic")
         void mappedMethod();
+
+        @LoggedBody(value = LOG, targets = {REQUEST, REQUEST})
+        void repeatedTargetMethod();
+
+        @Logged({@LoggedBody(LOG), @LoggedBody(MDC)})
+        void competingMethod();
+
+        @Logged({@LoggedBody(value = LOG, targets = REQUEST), @LoggedBody(value = MDC, targets = REQUEST)})
+        void competingRequestOnlyMethod();
 
     }
 
@@ -96,6 +107,32 @@ class LoggedResolverTest {
 
         assertFalse(request.isActive());
         assertEquals(Set.of(LOG), response.types());
+    }
+
+    @Test
+    @DisplayName("Check a configuration naming its direction twice still applies to that direction")
+    void checkRepeatedTargetConfiguration() throws Exception {
+        // Recognized by the number of directions it listed, it applied to neither, without a word
+        setup("repeatedTargetMethod");
+
+        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo, REQUEST);
+        LoggedBodyConfiguration response = resolver.getBodyConfiguration(resourceInfo, RESPONSE);
+
+        assertEquals(Set.of(LOG), request.types());
+        assertFalse(response.isActive());
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {"competingMethod", "competingRequestOnlyMethod"})
+    @DisplayName("Check the first of several configurations competing for a direction is the one applied")
+    void checkFirstCompetingConfigurationApplied(String methodName) throws Exception {
+        // The first one used to win among those targeting a single direction, and the last one among those
+        // targeting both
+        setup(methodName);
+
+        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo, REQUEST);
+
+        assertEquals(Set.of(LOG), request.types());
     }
 
     @Test
