@@ -39,7 +39,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.regex.Pattern;
@@ -153,30 +152,6 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     private static final String CAPTURE_FAILURE = "Unable to capture the body, it is left out of the logs, the exchange itself is left unaffected";
 
     /**
-     * Keys of the MDC entries the current thread carries for a request, bound to that request's own set
-     * (see {@link LoggedRequestState#getMdcKeys()}) from the moment the request starts on this thread, so
-     * that {@link #putMdc(String, String)} records what it puts against the right request without having
-     * to be told which one it is.
-     * <p>
-     * It is also what lets {@link #resetMdc()} sweep every key a previous request left behind, and not
-     * just the fixed {@link #mdcFields}. A request completed elsewhere - a {@code @Suspended} response
-     * resumed from a worker, a reactive resource method, a container never reaching this provider's
-     * completion callbacks at all - leaves its entries on the thread that set them. Sweeping
-     * {@link #mdcFields} alone was enough for {@code request-id} and its siblings, whose names are known up
-     * front, but not for the keys whose names are only known at runtime: an automatic {@link LoggedMapping}
-     * derives them from the parameters the client sent, and a subclass can put anything it likes through
-     * {@link #putMdc(String, String)}. Those stayed attached to the (pooled) thread and mislabelled every
-     * log line of the unrelated requests it went on to serve, with no request ever overwriting them because
-     * the next client sends different headers.
-     * <p>
-     * Bound to the thread precisely because it is the thread, not the request, that outlives the leak.
-     * Removed rather than cleared once swept, so a thread pool outliving the application does not keep a
-     * now-useless entry alive in each of its threads - and holding a plain set of strings, never anything
-     * of this library's own, so the entries it does keep cannot pin the application's class loader.
-     */
-    private static final ThreadLocal<Set<String>> threadMdcKeys = new ThreadLocal<>();
-
-    /**
      * Names of MDC fields to be used for all logged fields, by {@link LoggedField} name.
      * <p>
      * Allows changes from children classes: mapping a field to another name renames it, and removing it
@@ -186,6 +161,11 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * at the end of every request as well.
      */
     protected final Map<String, String> mdcFields = getDefaultFields();
+
+    /**
+     * The MDC entries of the requests this provider logs, named after {@link #mdcFields}.
+     */
+    private final RequestMdc mdc = new RequestMdc(mdcFields);
 
     /**
      * Instantiates and caches {@link LoggedBodyFilter} instances by class.
@@ -206,8 +186,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     /**
      * Puts a diagnostic context value identified by the given key into the current thread's context map,
-     * recording the key against the request whose entries this thread carries (see {@link #threadMdcKeys})
-     * so {@link #cleanupMdc(LoggedRequestState)} removes it once that request has been fully processed.
+     * recording the key against the request whose entries this thread carries, so it is removed once that
+     * request has been fully processed (see {@link RequestMdc}).
      * <p>
      * Every MDC entry set by this provider, or a subclass extending it, should go through this method
      * (or the {@link #putMdc(LoggedField, String)} overload) rather than {@link MDC#put(String, String)}
@@ -217,61 +197,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param value The value to be associated with the given key, ignored if {@code null} or blank
      */
     protected void putMdc(String key, String value) {
-        // Blank values are dropped rather than stored as an empty entry: an always-present, always-empty
-        // field (a request with no query parameter, a header sent with no value) is pure noise in every
-        // structured log line of the application, and is indistinguishable from a legitimately empty one
-        if (isNotBlank(value)) {
-            MDC.put(key, value);
-            recordMdcKey(key);
-        }
-    }
-
-    /**
-     * Records the given key as put in MDC for the request the current thread carries, see
-     * {@link #threadMdcKeys}.
-     *
-     * @param key The MDC key just put on the current thread
-     */
-    private static void recordMdcKey(String key) {
-        Set<String> keys = threadMdcKeys.get();
-        if (keys == null) {
-            // Put while no request of this provider is bound to the thread: recorded all the same, so the
-            // next request starting on this thread still sweeps it
-            keys = ConcurrentHashMap.newKeySet();
-            threadMdcKeys.set(keys);
-        }
-        keys.add(key);
-    }
-
-    /**
-     * Runs the given action on behalf of the given request, so the MDC entries it puts are recorded as that
-     * request's (see {@link #threadMdcKeys}) whichever thread it runs on, and are therefore removed along
-     * with that request's other entries once it completes.
-     * <p>
-     * Needed wherever a callback can run on another thread than the one the request started on - the
-     * response filter and the entity write of a {@code @Suspended} response resumed from a worker - or in
-     * the middle of another request, as when a request handler resumes the response of a request suspended
-     * earlier: recorded against whatever that thread carries, those entries would be removed with the
-     * wrong request, or never.
-     * <p>
-     * The thread is handed back carrying what it did before, unless that was this very request and the
-     * action completed it, in which case there is nothing left for the thread to carry.
-     *
-     * @param state  The state of the request to act on behalf of
-     * @param action The action to run
-     */
-    private static void onBehalfOf(LoggedRequestState state, Runnable action) {
-        Set<String> previous = threadMdcKeys.get();
-        threadMdcKeys.set(state.getMdcKeys());
-        try {
-            action.run();
-        } finally {
-            if (previous == null || (previous == state.getMdcKeys() && state.isCompleted())) {
-                threadMdcKeys.remove();
-            } else {
-                threadMdcKeys.set(previous);
-            }
-        }
+        mdc.put(key, value);
     }
 
     /**
@@ -282,20 +208,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param value The value to be associated with the given field
      */
     protected void putMdc(LoggedField field, String value) {
-        String key = mdcFields.get(field.name());
-        if (key != null) {
-            putMdc(key, value);
-        }
-    }
-
-    /**
-     * Removes the fields of {@link #mdcFields} from the current thread's context map, skipping those
-     * unmapped to leave them out, which MDC would reject as a {@code null} key.
-     */
-    private void removeMdcFields() {
-        mdcFields.values().stream()
-                .filter(Objects::nonNull)
-                .forEach(MDC::remove);
+        mdc.put(field, value);
     }
 
     /**
@@ -446,8 +359,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * {@link #mdcFields} to leave it out
      */
     protected String getMdc(LoggedField field) {
-        String key = mdcFields.get(field.name());
-        return key == null ? null : MDC.get(key);
+        return mdc.get(field);
     }
 
     /**
@@ -556,29 +468,6 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         LoggedSupport.endCapture(log, "Unable to log the captured body or to release the capture, the exchange itself is left unaffected", capture, action);
     }
 
-    /**
-     * Removes any MDC entry owned by this provider still present on the current thread.
-     * <p>
-     * Called at the very start of every request as a safety net, not as the normal cleanup path (which is
-     * {@link #cleanupMdc(LoggedRequestState)}): MDC is thread-local and request threads are pooled, so an
-     * entry that could not be removed at the end of a previous request - because it completed on another
-     * thread, or because the container never reached this provider's completion callbacks (an entity whose
-     * {@code MessageBodyWriter} failed to be selected, for instance) - would otherwise stay attached to
-     * this thread and silently mislabel every log line of the unrelated request now running on it.
-     * <p>
-     * Covers both the fixed {@link #mdcFields}, whose names are known up front, and every other key the
-     * request this thread carried put on it (see {@link #threadMdcKeys}), such as those an automatic
-     * {@link LoggedMapping} derives from what the client sent.
-     */
-    protected void resetMdc() {
-        removeMdcFields();
-        Set<String> keys = threadMdcKeys.get();
-        if (keys != null) {
-            keys.forEach(MDC::remove);
-            threadMdcKeys.remove();
-        }
-    }
-
     @Override
     public void filter(ContainerRequestContext requestContext) {
         // Guarded the way every other callback of this provider is (see LoggedSupport#safely). This one
@@ -588,12 +477,11 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         // disk did not merely lose the "Received ..." line, it answered a perfectly serviceable request
         // with an error having nothing to do with it.
         safely(() -> {
-            resetMdc();
             // Attaches the state to the request, which starts measuring its duration and records this
             // instance as the one handling it, for LoggedBodyInterceptor to hand its captures back to
             LoggedRequestState state = LoggedRequestState.of(requestContext, this);
-            // From here on, the entries this thread carries are this request's, see threadMdcKeys
-            threadMdcKeys.set(state.getMdcKeys());
+            // From here on, the entries this thread carries are this request's
+            mdc.start(state);
 
             putMdcFromRequest(requestContext);
             putMdcFromMappings(requestContext);
@@ -839,7 +727,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         safely(() -> {
             LoggedRequestState state = startedState(requestContext);
             if (state != null) {
-                onBehalfOf(state, () -> describeResponse(state, responseContext));
+                mdc.onBehalfOf(state, () -> describeResponse(state, responseContext));
             }
         });
     }
@@ -938,7 +826,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             safely(() -> {
                 LoggedRequestState state = LoggedRequestState.find(context);
                 if (state != null) {
-                    onBehalfOf(state, () -> logResponseWithBody(state));
+                    mdc.onBehalfOf(state, () -> logResponseWithBody(state));
                 }
             });
         }
@@ -1100,12 +988,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param state The state of the request done with
      */
     protected void cleanupMdc(LoggedRequestState state) {
-        removeMdcFields();
-        state.getMdcKeys().forEach(MDC::remove);
-        if (threadMdcKeys.get() == state.getMdcKeys()) {
-            // The request this thread carried is done: there is nothing left for a later request to sweep
-            threadMdcKeys.remove();
-        }
+        mdc.cleanup(state);
     }
 
 }

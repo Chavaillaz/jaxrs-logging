@@ -1,0 +1,120 @@
+package com.chavaillaz.jakarta.rs;
+
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_PARAMETERS;
+import static com.chavaillaz.jakarta.rs.LoggedField.getDefaultFields;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.util.Map;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.slf4j.MDC;
+
+@DisplayName("Request MDC")
+class RequestMdcTest {
+
+    final Map<String, String> fieldNames = getDefaultFields();
+    final RequestMdc mdc = new RequestMdc(fieldNames);
+
+    @AfterEach
+    void clearMdc() {
+        MDC.clear();
+    }
+
+    static LoggedRequestState request() {
+        return new LoggedRequestState(new LoggedFilter());
+    }
+
+    @Test
+    @DisplayName("Check an entry put for a request is removed once that request is done")
+    void checkEntryRemovedWithItsRequest() {
+        LoggedRequestState request = request();
+        mdc.start(request);
+
+        mdc.put("custom-key", "custom-value");
+        mdc.put(REQUEST_ID, "abc-123");
+        assertEquals("custom-value", MDC.get("custom-key"));
+        assertEquals("abc-123", mdc.get(REQUEST_ID));
+
+        mdc.cleanup(request);
+        assertNull(MDC.get("custom-key"));
+        assertNull(mdc.get(REQUEST_ID));
+    }
+
+    @Test
+    @DisplayName("Check a blank value is not put, rather than being logged as an always-empty entry")
+    void checkBlankValueNotPut() {
+        mdc.start(request());
+
+        mdc.put("custom-key", " ");
+
+        assertNull(MDC.get("custom-key"));
+    }
+
+    @Test
+    @DisplayName("Check a field without a name is neither put nor read")
+    void checkUnnamedFieldLeftOut() {
+        fieldNames.remove(REQUEST_PARAMETERS.name());
+        mdc.start(request());
+
+        mdc.put(REQUEST_PARAMETERS, "topic=news");
+
+        assertNull(mdc.get(REQUEST_PARAMETERS));
+        assertFalse(MDC.getCopyOfContextMap().containsValue("topic=news"));
+    }
+
+    @Test
+    @DisplayName("Check starting a request sweeps what a previous one left on the thread")
+    void checkStartSweepsPreviousRequest() {
+        // Given: a request that completed elsewhere, leaving its entries on this thread
+        mdc.start(request());
+        mdc.put("header-User-Agent", "JUnit");
+        mdc.put(REQUEST_ID, "previous");
+
+        // When
+        mdc.start(request());
+
+        // Then
+        assertNull(MDC.get("header-User-Agent"));
+        assertNull(mdc.get(REQUEST_ID));
+    }
+
+    @Test
+    @DisplayName("Check entries put on behalf of a request completing within another are that request's")
+    void checkNestedRequestKeepsEnclosingOneTracked() {
+        // Given: a request suspended earlier, and the request resuming it on this thread
+        LoggedRequestState suspended = request();
+        mdc.start(suspended);
+        LoggedRequestState enclosing = request();
+        mdc.start(enclosing);
+        mdc.put("enclosing-key", "enclosing");
+
+        // When: the suspended request completes within the enclosing one
+        mdc.onBehalfOf(suspended, () -> {
+            mdc.put("suspended-key", "suspended");
+            suspended.markCompleted();
+            mdc.cleanup(suspended);
+        });
+
+        // Then: its own entries are gone, the enclosing request's are untouched, and still removed with it
+        assertNull(MDC.get("suspended-key"));
+        assertEquals("enclosing", MDC.get("enclosing-key"));
+        mdc.cleanup(enclosing);
+        assertNull(MDC.get("enclosing-key"));
+    }
+
+    @Test
+    @DisplayName("Check the fields are recognized by name, whatever renames them")
+    void checkFieldsRecognized() {
+        fieldNames.put(REQUEST_ID.name(), "request-identifier");
+
+        assertTrue(mdc.isField("request-identifier"));
+        assertFalse(mdc.isField("request-id"));
+    }
+
+}

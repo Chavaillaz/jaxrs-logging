@@ -62,20 +62,19 @@ public class LoggedRequestState {
 
     /**
      * Key of every {@link MDC} entry put for this request through {@link LoggedFilter#putMdc(String, String)},
-     * so {@link LoggedFilter#cleanupMdc(LoggedRequestState)} removes exactly what was added.
+     * so the entries of the request are removed exactly once it is done (see {@link RequestMdc}).
      * <p>
      * {@code putMdc} takes no request to record the key against, so that a subclass can call it from
-     * anywhere it describes a request: the provider binds this very set to the thread whose MDC holds the
-     * request's entries (see {@link LoggedFilter#putMdc(String, String)}), and the key lands here. It is
-     * a set of strings rather than anything of this library's own for that reason: a value bound to a
-     * pooled thread outlives the request, and possibly the application, so it must not hold on to a class
-     * the application's class loader would then never be able to unload.
+     * anywhere it describes a request: this very set is bound to the thread whose MDC holds the request's
+     * entries, and the key lands here. It is a set of strings rather than anything of this library's own for
+     * that reason: a value bound to a pooled thread outlives the request, and possibly the application, so it
+     * must not hold on to a class the application's class loader would then never be able to unload.
      * <p>
      * This does not by itself solve MDC being thread-local. A request completed on a different thread
      * than the one that put the entries has them removed from the completing thread's MDC, not from the
-     * thread that actually set them, which is why {@link LoggedFilter#resetMdc()} sweeps stale entries at
-     * the start of every request as well. Concurrent for the same reason: keys can be recorded and read
-     * from different threads.
+     * thread that actually set them, which is why the entries a request left on a thread are swept when the
+     * next request starts there. Concurrent for the same reason: keys can be recorded and read from different
+     * threads.
      */
     private final Set<String> mdcKeys = ConcurrentHashMap.newKeySet();
 
