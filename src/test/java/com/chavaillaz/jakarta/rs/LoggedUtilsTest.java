@@ -21,6 +21,8 @@ import jakarta.ws.rs.container.ResourceInfo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -166,6 +168,72 @@ class LoggedUtilsTest {
         assertEquals(1, result.size());
         assertEquals(Set.of(LOG), Set.of(result.getFirst().value()));
         assertEquals(Set.of(REQUEST), Set.of(result.getFirst().targets()));
+    }
+
+    interface CrudApi<T> {
+
+        @Logged(@LoggedBody(LOG))
+        void create(T entity);
+
+    }
+
+    // Implements the generic method for its own type argument, and overloads it for another type, which
+    // implements nothing
+    static class ArticleCrudResource implements CrudApi<String> {
+
+        @Override
+        public void create(String article) {
+            // No-op
+        }
+
+        public void create(Integer id) {
+            // No-op
+        }
+
+    }
+
+    abstract static class AbstractCrudResource<E> implements CrudApi<E> {
+
+    }
+
+    // Gives its type argument to the interface through a generic superclass
+    static class NoteCrudResource extends AbstractCrudResource<String> {
+
+        @Override
+        public void create(String note) {
+            // No-op
+        }
+
+    }
+
+    @ParameterizedTest
+    @ValueSource(classes = {ArticleCrudResource.class, NoteCrudResource.class})
+    @DisplayName("Check an annotation on a generic interface method is found for the method implementing it")
+    void checkGenericInterfaceMethodAnnotationFound(Class<?> resourceClass) throws Exception {
+        // Given
+        doReturn(resourceClass).when(resourceInfo).getResourceClass();
+        doReturn(resourceClass.getMethod("create", String.class)).when(resourceInfo).getResourceMethod();
+
+        // When
+        List<LoggedBody> result = getAnnotation(resourceInfo, LoggedBody.class, Logged.class, Logged::value);
+
+        // Then: create(String) implements create(T), although the interface method erases to create(Object)
+        assertEquals(1, result.size());
+        assertEquals(Set.of(LOG), Set.of(result.getFirst().value()));
+    }
+
+    @Test
+    @DisplayName("Check an annotation on a generic interface method is not found for an overload implementing nothing")
+    void checkGenericInterfaceMethodAnnotationIgnoredForOverload() throws Exception {
+        // Given
+        doReturn(ArticleCrudResource.class).when(resourceInfo).getResourceClass();
+        doReturn(ArticleCrudResource.class.getMethod("create", Integer.class)).when(resourceInfo).getResourceMethod();
+
+        // When
+        List<LoggedBody> result = getAnnotation(resourceInfo, LoggedBody.class, Logged.class, Logged::value);
+
+        // Then
+        assertTrue(result.isEmpty());
     }
 
 }

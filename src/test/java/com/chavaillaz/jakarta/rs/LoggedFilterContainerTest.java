@@ -53,6 +53,7 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
         dispatcher.getProviderFactory().registerProvider(LoggedBodyInterceptor.class);
         dispatcher.getProviderFactory().registerProvider(RejectingFilter.class);
         dispatcher.getRegistry().addPerRequestResource(ArticleResource.class);
+        dispatcher.getRegistry().addPerRequestResource(NoteResource.class);
     }
 
     MockHttpResponse invoke(MockHttpRequest request) {
@@ -139,6 +140,19 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check the body logging a generic interface declares applies to the resource implementing it")
+    void checkGenericInterfaceConfigurationApplied() throws Exception {
+        // When: the container matches create(String), which implements the interface's create(T)
+        MockHttpResponse response = invoke(MockHttpRequest.post("/notes")
+                .contentType(TEXT_PLAIN)
+                .content("hello".getBytes(UTF_8)));
+
+        // Then
+        assertEquals(200, response.getStatus());
+        assertEquals("Received POST /notes" + LF + "hello", received().getMessage().getFormattedMessage());
+    }
+
+    @Test
     @DisplayName("Check nothing is left in MDC once a request has been served")
     void checkNothingLeftInMdc() throws Exception {
         // When
@@ -183,6 +197,33 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
         @DELETE
         public void delete() {
             // Answered with 204 No Content, which has no entity to write
+        }
+
+    }
+
+    /**
+     * An API declared once for several types of entity, as a CRUD interface is, with the body logging of the
+     * methods its resources implement.
+     *
+     * @param <T> The type of entity
+     */
+    public interface CrudApi<T> {
+
+        @POST
+        @Consumes(TEXT_PLAIN)
+        @Produces(TEXT_PLAIN)
+        @Logged(@LoggedBody(LOG))
+        String create(T entity);
+
+    }
+
+    @Path("/notes")
+    @Logged
+    public static class NoteResource implements CrudApi<String> {
+
+        @Override
+        public String create(String note) {
+            return "created " + note;
         }
 
     }

@@ -8,15 +8,19 @@ import static org.apache.commons.lang3.ClassUtils.getAllInterfaces;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Method;
+import java.lang.reflect.Type;
+import java.lang.reflect.TypeVariable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 
 import jakarta.ws.rs.container.ResourceInfo;
+import org.apache.commons.lang3.reflect.TypeUtils;
 
 /**
  * Reads the annotations configuring this library from the resource method matched by a request, the
@@ -175,9 +179,10 @@ public final class LoggedUtils {
      * to the least specific:
      * <ol>
      *     <li>the resource method itself</li>
-     *     <li>the methods it overrides on the interfaces implemented by the resource class - a method
-     *     annotation is never inherited by an override (regardless of {@link java.lang.annotation.Inherited}),
-     *     so this is what lets an implementation pick up an annotation declared on the interface it implements</li>
+     *     <li>the methods it overrides on the interfaces implemented by the resource class, generic ones
+     *     included, their type variables being resolved against the resource class - a method annotation is
+     *     never inherited by an override (regardless of {@link java.lang.annotation.Inherited}), so this is
+     *     what lets an implementation pick up an annotation declared on the interface it implements</li>
      *     <li>the interfaces implemented by the resource class</li>
      *     <li>the resource class itself</li>
      * </ol>
@@ -203,7 +208,7 @@ public final class LoggedUtils {
         List<Class<?>> interfaces = resourceClass == null ? List.of() : getAllInterfaces(resourceClass);
         for (Class<?> interfaceClass : interfaces) {
             for (Method interfaceMethod : interfaceClass.getMethods()) {
-                if (areMethodsEqual(interfaceMethod, resourceMethod)) {
+                if (isImplementedBy(interfaceMethod, resourceClass, resourceMethod)) {
                     sites.add(interfaceMethod);
                 }
             }
@@ -217,8 +222,7 @@ public final class LoggedUtils {
     }
 
     /**
-     * Indicates whether two methods have the same signature - name and parameter types - which is how a
-     * method of an interface is recognized as the one a resource method implements.
+     * Indicates whether two methods have the same signature - name and parameter types.
      *
      * @param method1 The first method
      * @param method2 The second method
@@ -228,6 +232,40 @@ public final class LoggedUtils {
         return method1 != null && method2 != null
                 && method1.getName().equals(method2.getName())
                 && Arrays.equals(method1.getParameterTypes(), method2.getParameterTypes());
+    }
+
+    /**
+     * Indicates whether the given interface method is one the given resource method implements.
+     * <p>
+     * It is when both have the same signature, or when they have the same once the type variables of the
+     * interface are resolved against the resource class: a resource class implementing {@code CrudApi<String>}
+     * implements {@code create(T)} with a {@code create(String)}, whose parameter type differs from the
+     * {@code Object} the interface method is erased to.
+     *
+     * @param interfaceMethod The method of an interface of the resource class
+     * @param resourceClass   The resource class matched by the current request
+     * @param resourceMethod  The resource method matched by the current request, possibly {@code null}
+     * @return {@code true} if the resource method implements the interface method, {@code false} otherwise
+     */
+    private static boolean isImplementedBy(Method interfaceMethod, Class<?> resourceClass, Method resourceMethod) {
+        if (areMethodsEqual(interfaceMethod, resourceMethod)) {
+            return true;
+        } else if (resourceMethod == null
+                || !interfaceMethod.getName().equals(resourceMethod.getName())
+                || interfaceMethod.getParameterCount() != resourceMethod.getParameterCount()) {
+            return false;
+        }
+
+        Map<TypeVariable<?>, Type> typeArguments = TypeUtils.getTypeArguments(resourceClass, interfaceMethod.getDeclaringClass());
+        Type[] interfaceParameters = interfaceMethod.getGenericParameterTypes();
+        Type[] resourceParameters = resourceMethod.getGenericParameterTypes();
+        for (int i = 0; i < interfaceParameters.length; i++) {
+            if (!TypeUtils.equals(TypeUtils.unrollVariables(typeArguments, interfaceParameters[i]),
+                    TypeUtils.unrollVariables(typeArguments, resourceParameters[i]))) {
+                return false;
+            }
+        }
+        return true;
     }
 
 }
