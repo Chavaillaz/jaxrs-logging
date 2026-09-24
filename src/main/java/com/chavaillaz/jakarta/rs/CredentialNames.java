@@ -9,8 +9,9 @@ import java.util.Set;
  * <p>
  * This is a denylist, and a denylist of names nobody controls at that: it catches what callers
  * conventionally call their secrets, not what an application's own API happens to name them. It is a
- * floor, not a guarantee - see {@link LoggedFilter#isSensitive(LoggedMapping.MappingType, String)} to
- * raise it for a particular application.
+ * floor, not a guarantee - see
+ * {@link LoggedFilterConfiguration.Builder#sensitiveParameters(java.util.function.BiPredicate)} to raise it for a
+ * particular application.
  * <p>
  * Kept apart from {@link LoggedFilter} because it is data, not behaviour: which names are secrets is a
  * question about the world (what OAuth, HTTP authentication and the average internal API call things),

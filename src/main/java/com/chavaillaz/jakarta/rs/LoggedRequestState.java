@@ -50,8 +50,8 @@ public class LoggedRequestState {
      * from a later position in the interceptor chain but delegates every decision about them back here.
      * <p>
      * Passed through the request rather than injected there, so the capture is handed back to the exact
-     * instance - a subclass, possibly one of several registered, with its own {@code createBodyCapture}
-     * or MDC field names - that is handling this particular request.
+     * instance - possibly one of several registered, each with its own configuration - that is handling this
+     * particular request.
      */
     private final LoggedFilter provider;
 

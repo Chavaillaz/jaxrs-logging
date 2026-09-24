@@ -3,7 +3,6 @@ package com.chavaillaz.jakarta.rs;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -48,18 +47,17 @@ final class RequestMdc {
     private static final ThreadLocal<Set<String>> threadKeys = new ThreadLocal<>();
 
     /**
-     * Names of the MDC entries of the fields {@link LoggedFilter} logs, by {@link LoggedField} name, a field
-     * without a name being left out (see {@link LoggedFilter#mdcFields}).
+     * Names of the MDC entries of the fields {@link LoggedFilter} logs, a field without a name being left out
+     * (see {@link LoggedFilterConfiguration.Builder#withoutField(LoggedField)}).
      */
-    private final Map<String, String> fieldNames;
+    private final Map<LoggedField, String> fieldNames;
 
     /**
      * Creates the MDC entries of a provider naming its fields as given.
      *
-     * @param fieldNames The names of the MDC entries of the fields, by {@link LoggedField} name, read on every
-     *                   use so a change made to them after this creation is taken into account
+     * @param fieldNames The names of the MDC entries of the fields, without the fields left out
      */
-    RequestMdc(Map<String, String> fieldNames) {
+    RequestMdc(Map<LoggedField, String> fieldNames) {
         this.fieldNames = fieldNames;
     }
 
@@ -104,7 +102,7 @@ final class RequestMdc {
      * @param value The value of the field, ignored if {@code null} or blank
      */
     void put(LoggedField field, String value) {
-        String key = fieldNames.get(field.name());
+        String key = fieldNames.get(field);
         if (key != null) {
             put(key, value);
         }
@@ -117,7 +115,7 @@ final class RequestMdc {
      * @return The value of the field, {@code null} if it has none or no name
      */
     String get(LoggedField field) {
-        String key = fieldNames.get(field.name());
+        String key = fieldNames.get(field);
         return key == null ? null : MDC.get(key);
     }
 
@@ -206,13 +204,10 @@ final class RequestMdc {
     }
 
     /**
-     * Removes the fixed fields from the current thread's context map, skipping those without a name, which
-     * MDC would reject as a {@code null} key.
+     * Removes the fixed fields from the current thread's context map.
      */
     private void removeFields() {
-        fieldNames.values().stream()
-                .filter(Objects::nonNull)
-                .forEach(MDC::remove);
+        fieldNames.values().forEach(MDC::remove);
     }
 
 }

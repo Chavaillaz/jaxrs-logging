@@ -16,8 +16,8 @@ import jakarta.ws.rs.core.MediaType;
  * <p>
  * This is the extension point for the mechanics of body capture itself (bounded in-memory buffering by
  * default, see {@link BoundedLoggedBodyCapture}), as opposed to {@link LoggedBodyFilter}, which only
- * transforms content already captured. Override {@code createBodyCapture(int)} on {@link LoggedFilter}
- * (or {@link LoggedClientFilter}) to plug in a different strategy, for example spilling very large
+ * transforms content already captured. Pass one to {@link LoggedFilterConfiguration.Builder#bodyCapture}, or
+ * override {@code createBodyCapture(int)} on {@link LoggedClientFilter}, to plug in a different strategy, for example spilling very large
  * bodies to a temporary file instead of memory, or capturing a digest instead of the full content.
  */
 public interface LoggedBodyCapture extends AutoCloseable {

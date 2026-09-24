@@ -2,8 +2,6 @@ package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.getAnnotation;
-import static java.util.Objects.requireNonNullElseGet;
-import static java.util.UUID.randomUUID;
 
 import jakarta.inject.Inject;
 import jakarta.ws.rs.container.ContainerRequestContext;
@@ -19,20 +17,14 @@ public class UserLoggedFilter extends LoggedFilter {
 
     @Inject
     public UserLoggedFilter() {
-        // Add new MDC fields to be finally cleaned up
-        this.mdcFields.put(USER_ID, USER_ID);
-        this.mdcFields.put(USER_AGENT, USER_AGENT);
-
-        // Edit MDC field name when needed, for example to be aligned between applications
-        // or follow schemas defined for Kibana, OpenSearch, Splunk
-        this.mdcFields.put(REQUEST_ID.name(), REQUEST_IDENTIFIER);
-    }
-
-    @Override
-    protected String getRequestId(ContainerRequestContext requestContext) {
-        // Take the request identifier from custom header received, falling back to a random one
-        // (like the base implementation) when the header is absent
-        return requireNonNullElseGet(requestContext.getHeaderString("X-Case-ID"), () -> randomUUID().toString());
+        super(LoggedFilterConfiguration.builder()
+                // Edit MDC field name when needed, for example to be aligned between applications
+                // or follow schemas defined for Kibana, OpenSearch, Splunk
+                .fieldName(REQUEST_ID, REQUEST_IDENTIFIER)
+                // Take the request identifier from a custom header, falling back to a random one
+                // when the header is absent
+                .requestIdHeader("X-Case-ID")
+                .build());
     }
 
     @Override
@@ -54,7 +46,8 @@ public class UserLoggedFilter extends LoggedFilter {
                 .map(UserLogged::userAgent)
                 .filter(loggingActivated -> loggingActivated)
                 .map(logging -> requestContext.getHeaderString("User-Agent"))
-                .ifPresent(origin -> putMdc(USER_AGENT, origin));
+                // Sanitized, as the header comes from the client, who could otherwise forge log lines with it
+                .ifPresent(origin -> putMdc(USER_AGENT, sanitize(origin)));
     }
 
 }

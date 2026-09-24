@@ -2,12 +2,12 @@ package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_PARAMETERS;
-import static com.chavaillaz.jakarta.rs.LoggedField.getDefaultFields;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.EnumMap;
 import java.util.Map;
 
 import org.junit.jupiter.api.AfterEach;
@@ -18,7 +18,7 @@ import org.slf4j.MDC;
 @DisplayName("Request MDC")
 class RequestMdcTest {
 
-    final Map<String, String> fieldNames = getDefaultFields();
+    final Map<LoggedField, String> fieldNames = new EnumMap<>(LoggedFilterConfiguration.defaults().fieldNames());
     final RequestMdc mdc = new RequestMdc(fieldNames);
 
     @AfterEach
@@ -59,7 +59,7 @@ class RequestMdcTest {
     @Test
     @DisplayName("Check a field without a name is neither put nor read")
     void checkUnnamedFieldLeftOut() {
-        fieldNames.remove(REQUEST_PARAMETERS.name());
+        fieldNames.remove(REQUEST_PARAMETERS);
         mdc.start(request());
 
         mdc.put(REQUEST_PARAMETERS, "topic=news");
@@ -111,7 +111,7 @@ class RequestMdcTest {
     @Test
     @DisplayName("Check the fields are recognized by name, whatever renames them")
     void checkFieldsRecognized() {
-        fieldNames.put(REQUEST_ID.name(), "request-identifier");
+        fieldNames.put(REQUEST_ID, "request-identifier");
 
         assertTrue(mdc.isField("request-identifier"));
         assertFalse(mdc.isField("request-id"));

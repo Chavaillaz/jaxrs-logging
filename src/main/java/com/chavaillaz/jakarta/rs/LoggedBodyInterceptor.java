@@ -31,8 +31,8 @@ import jakarta.ws.rs.ext.WriterInterceptorContext;
  * This provider runs after the entity coder instead, so what it captures is the entity's own
  * representation, whatever transfer encoding was applied around it. Everything else - deciding whether
  * a body must be captured at all, applying {@link LoggedBodyFilter}s, and writing the log lines - stays
- * on {@link LoggedFilter}, which this provider simply calls back into. That keeps a subclass overriding
- * {@code createBodyCapture} or the capture methods in control, and keeps the completion of a request
+ * on {@link LoggedFilter}, which this provider simply calls back into. That keeps the capture its
+ * configuration sets up in control, and keeps the completion of a request
  * (the "Processed ..." line and the MDC cleanup) owned by a provider that is always invoked: an
  * application that registers its providers explicitly and forgets this one loses the body from its logs,
  * not the log line itself.

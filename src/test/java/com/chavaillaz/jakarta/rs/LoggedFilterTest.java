@@ -33,6 +33,7 @@ import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -56,7 +57,6 @@ import java.util.zip.GZIPOutputStream;
 import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
 import jakarta.ws.rs.container.ContainerRequestContext;
-import jakarta.ws.rs.container.ContainerResponseContext;
 import jakarta.ws.rs.container.ResourceInfo;
 import jakarta.ws.rs.ext.InterceptorContext;
 import jakarta.ws.rs.ext.ReaderInterceptor;
@@ -71,6 +71,7 @@ import org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContex
 import org.jboss.resteasy.mock.MockHttpRequest;
 import org.jboss.resteasy.mock.MockHttpResponse;
 import org.jboss.resteasy.specimpl.BuiltResponse;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -79,8 +80,6 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
-import org.junit.jupiter.params.provider.ValueSource;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.MDC;
@@ -127,7 +126,6 @@ class LoggedFilterTest extends AbstractFilterTest {
     @Mock
     ResourceInfo resourceInfo;
 
-    @InjectMocks
     LoggedFilter loggingFilter;
 
     /**
@@ -149,6 +147,23 @@ class LoggedFilterTest extends AbstractFilterTest {
                 Arguments.of(AnnotatedResource.class, "bodyAsMix", MDC_LOGGING, LOG_LOGGING, NO_FILTERING),
                 Arguments.of(AnnotatedResource.class, "noBodyLogging", NO_LOGGING, NO_LOGGING, NO_FILTERING)
         );
+    }
+
+    @BeforeEach
+    void setupFilter() {
+        loggingFilter = filterWith(LoggedFilterConfiguration.defaults());
+    }
+
+    /**
+     * Builds a filter with the given configuration, sharing the mocks the container would inject into it.
+     *
+     * @param configuration The configuration of the filter
+     * @return The filter created
+     */
+    LoggedFilter filterWith(LoggedFilterConfiguration configuration) {
+        LoggedFilter filter = new LoggedFilter(configuration);
+        filter.resourceInfo = resourceInfo;
+        return filter;
     }
 
     void setupTest(Class<?> type, String method) throws Exception {
@@ -848,16 +863,12 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         // Given
         AtomicInteger captures = new AtomicInteger();
-        LoggedFilter countingFilter = new LoggedFilter() {
-
-            @Override
-            protected LoggedBodyCapture createBodyCapture(int limit) {
-                captures.incrementAndGet();
-                return super.createBodyCapture(limit);
-            }
-
-        };
-        countingFilter.resourceInfo = resourceInfo;
+        LoggedFilter countingFilter = filterWith(LoggedFilterConfiguration.builder()
+                .bodyCapture(limit -> {
+                    captures.incrementAndGet();
+                    return new BoundedLoggedBodyCapture(limit);
+                })
+                .build());
         PreMatchContainerRequestContext requestContext = getRequestContext();
         countingFilter.filter(requestContext);
         countingFilter.filter(requestContext, getResponseContext(requestContext));
@@ -987,6 +998,91 @@ class LoggedFilterTest extends AbstractFilterTest {
                 .filter(LoggedFilter.REQUEST_ID_HEADER::equalsIgnoreCase)
                 .count());
         assertEquals("chosen-by-the-application", responseContext.getHeaders().getFirst("x-request-id"));
+    }
+
+    @Test
+    @DisplayName("Check the request identifier is read from and returned in the header configured")
+    void checkConfiguredRequestIdHeader() throws Exception {
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given
+        LoggedFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
+                .fieldName(REQUEST_ID, "trace-id")
+                .requestIdHeader("X-Trace-ID")
+                .build());
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
+                MockHttpRequest.create("GET", "example.company.com/service").header("X-Trace-ID", "trace-42"));
+        ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext);
+
+        // When
+        configuredFilter.filter(requestContext);
+        String requestId = MDC.get("trace-id");
+        configuredFilter.filter(requestContext, responseContext);
+
+        // Then
+        assertEquals("trace-42", requestId);
+        assertEquals("trace-42", responseContext.getHeaders().getFirst("X-Trace-ID"));
+        assertNull(responseContext.getHeaders().getFirst(LoggedFilter.REQUEST_ID_HEADER));
+    }
+
+    @Test
+    @DisplayName("Check the request identifier is not returned to the caller once configured not to be")
+    void checkRequestIdNotReturned() throws Exception {
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given
+        LoggedFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
+                .withoutReturnedRequestId()
+                .build());
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext);
+
+        // When
+        configuredFilter.filter(requestContext);
+        configuredFilter.filter(requestContext, responseContext);
+
+        // Then
+        assertTrue(responseContext.getHeaders().isEmpty());
+        assertNotNull(listAppender.findFirstMessage("Processed"));
+    }
+
+    @Test
+    @DisplayName("Check the level of the completion line follows the level configured for the status")
+    void checkConfiguredResponseLevel() throws Exception {
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given: an application expecting its 404, which is no reason to warn anybody
+        LoggedFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
+                .responseLevel(status -> status == 404 ? Level.INFO : LoggedSupport.levelOf(status))
+                .build());
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+
+        // When
+        configuredFilter.filter(requestContext);
+        configuredFilter.filter(requestContext, getEmptyResponseContext(requestContext, 404));
+
+        // Then
+        assertEquals(Level.INFO.name(), listAppender.findFirstMessage("Processed").getLevel().name());
+    }
+
+    @Test
+    @DisplayName("Check the value of a query parameter configured as sensitive is masked")
+    void checkConfiguredSensitiveParameter() throws Exception {
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given
+        LoggedFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
+                .sensitiveParameters((type, name) -> LoggedFilterConfiguration.isCredential(type, name)
+                        || (type == QUERY && "url-signature".equals(name)))
+                .build());
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
+                MockHttpRequest.create("GET", "example.company.com/service?url-signature=secret&access_token=token"));
+
+        // When
+        configuredFilter.filter(requestContext);
+
+        // Then: both the one configured and the default ones
+        assertEquals("access_token=***&url-signature=***", getMdc(REQUEST_PARAMETERS));
     }
 
     @Test
@@ -1290,11 +1386,8 @@ class LoggedFilterTest extends AbstractFilterTest {
      * @return The filter created
      */
     LoggedFilter failingSinkFilter() {
-        LoggedFilter failingSinkFilter = new LoggedFilter() {
-
-            @Override
-            protected LoggedBodyCapture createBodyCapture(int limit) {
-                return new BoundedLoggedBodyCapture(limit) {
+        return filterWith(LoggedFilterConfiguration.builder()
+                .bodyCapture(limit -> new BoundedLoggedBodyCapture(limit) {
 
                     @Override
                     public OutputStream sink() {
@@ -1308,12 +1401,8 @@ class LoggedFilterTest extends AbstractFilterTest {
                         };
                     }
 
-                };
-            }
-
-        };
-        failingSinkFilter.resourceInfo = resourceInfo;
-        return failingSinkFilter;
+                })
+                .build());
     }
 
     /**
@@ -1324,70 +1413,47 @@ class LoggedFilterTest extends AbstractFilterTest {
      * @return The filter created
      */
     LoggedFilter capturingFilter(AtomicBoolean closed) {
-        LoggedFilter capturingFilter = new LoggedFilter() {
-
-            @Override
-            protected LoggedBodyCapture createBodyCapture(int limit) {
-                return new BoundedLoggedBodyCapture(limit) {
+        return filterWith(LoggedFilterConfiguration.builder()
+                .bodyCapture(limit -> new BoundedLoggedBodyCapture(limit) {
 
                     @Override
                     public void close() {
                         closed.set(true);
                     }
 
-                };
-            }
-
-        };
-        capturingFilter.resourceInfo = resourceInfo;
-        return capturingFilter;
+                })
+                .build());
     }
 
     /**
-     * Builds a filter whose body capture cannot be created, sharing the mocks the container would inject
-     * into {@link #loggingFilter} as {@code @InjectMocks} does for it.
+     * Builds a filter whose body capture cannot be created.
      *
      * @return The filter created
      */
     LoggedFilter failingCaptureFilter() {
-        LoggedFilter failingCaptureFilter = new LoggedFilter() {
-
-            @Override
-            protected LoggedBodyCapture createBodyCapture(int limit) {
-                throw new IllegalStateException("No room left to capture anything");
-            }
-
-        };
-        failingCaptureFilter.resourceInfo = resourceInfo;
-        return failingCaptureFilter;
+        return filterWith(LoggedFilterConfiguration.builder()
+                .bodyCapture(limit -> {
+                    throw new IllegalStateException("No room left to capture anything");
+                })
+                .build());
     }
 
-    @ParameterizedTest(name = "removed={0}")
-    @ValueSource(booleans = {true, false})
-    @DisplayName("Check a field a subclass unmaps is left out while every other one is still logged")
-    void checkUnmappedFieldLeftOut(boolean removed) throws Exception {
-        // Unmapping a field is the obvious way to keep it out of the logs, and MDC rejected the null key it
-        // then resolved to: every field described after it was lost, or every field of every request
+    @Test
+    @DisplayName("Check a field left out is not logged while every other one still is")
+    void checkFieldLeftOut() throws Exception {
+        // Unmapping a field was the obvious way to keep it out of the logs, and MDC rejected the null key
+        // it then resolved to: every field described after it was lost, or every field of every request
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given
-        LoggedFilter unmappingFilter = new LoggedFilter() {
-
-            {
-                if (removed) {
-                    mdcFields.remove(REQUEST_PARAMETERS.name());
-                } else {
-                    mdcFields.put(REQUEST_PARAMETERS.name(), null);
-                }
-            }
-
-        };
-        unmappingFilter.resourceInfo = resourceInfo;
+        LoggedFilter leavingOutFilter = filterWith(LoggedFilterConfiguration.builder()
+                .withoutField(REQUEST_PARAMETERS)
+                .build());
         PreMatchContainerRequestContext requestContext = getRequestContext();
 
         // When
-        unmappingFilter.filter(requestContext);
-        unmappingFilter.filter(requestContext, getEmptyResponseContext(requestContext));
+        leavingOutFilter.filter(requestContext);
+        leavingOutFilter.filter(requestContext, getEmptyResponseContext(requestContext));
 
         // Then
         assertNull(listAppender.findFirstMessage("Unable to log"));
@@ -1528,7 +1594,7 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     String getMdcField(LoggedField field) {
-        return loggingFilter.mdcFields.get(field.name());
+        return loggingFilter.configuration.fieldName(field);
     }
 
     String getMdcLogged(LoggedField key) {
@@ -1626,24 +1692,16 @@ class LoggedFilterTest extends AbstractFilterTest {
         // out answers with a 500 a request the application served successfully
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
-        // Given: a subclass failing to return the identifier, standing in for whatever can go wrong while
-        // this provider describes a response (a container returning the unexpected, an appender that ran
-        // out of disk, ...)
-        LoggedFilter failingFilter = new LoggedFilter() {
-
-            @Override
-            protected void addRequestId(ContainerResponseContext responseContext) {
-                throw new IllegalStateException("Cannot describe the response");
-            }
-
-        };
-        failingFilter.resourceInfo = resourceInfo;
+        // Given: a response whose headers cannot be read to return the identifier in, standing in for
+        // whatever can go wrong while this provider describes a response (a container returning the
+        // unexpected, an appender that ran out of disk, ...)
         PreMatchContainerRequestContext requestContext = getRequestContext();
-        ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext);
-        failingFilter.filter(requestContext);
+        ContainerResponseContextImpl responseContext = spy(getEmptyResponseContext(requestContext));
+        doThrow(new IllegalStateException("Cannot describe the response")).when(responseContext).getHeaders();
+        loggingFilter.filter(requestContext);
 
         // When
-        assertDoesNotThrow(() -> failingFilter.filter(requestContext, responseContext));
+        assertDoesNotThrow(() -> loggingFilter.filter(requestContext, responseContext));
 
         // Then: the request is still completed, the response logged and its MDC cleaned up
         assertNotNull(listAppender.findFirstMessage("Processed"));

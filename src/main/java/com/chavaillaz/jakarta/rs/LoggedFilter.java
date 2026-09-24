@@ -10,9 +10,9 @@ import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_URI;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
-import static com.chavaillaz.jakarta.rs.LoggedField.getDefaultFields;
 import static jakarta.ws.rs.RuntimeType.SERVER;
 import static java.lang.String.valueOf;
+import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElse;
 import static org.apache.commons.lang3.StringUtils.EMPTY;
 import static org.apache.commons.lang3.StringUtils.LF;
@@ -35,7 +35,6 @@ import jakarta.ws.rs.container.ContainerResponseContext;
 import jakarta.ws.rs.container.ContainerResponseFilter;
 import jakarta.ws.rs.container.ResourceInfo;
 import jakarta.ws.rs.core.Context;
-import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.ext.Provider;
 import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
@@ -45,7 +44,6 @@ import org.apache.commons.lang3.math.NumberUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
-import org.slf4j.event.Level;
 
 /**
  * Provider adding the following request information to {@link MDC} (see {@link LoggedField}):
@@ -53,14 +51,16 @@ import org.slf4j.event.Level;
  *     <li>Request identifier (from the {@value #REQUEST_ID_HEADER} header, or a random UUID)</li>
  *     <li>Request method (see {@link jakarta.ws.rs.HttpMethod})</li>
  *     <li>Request URI path relative to the base URI</li>
- *     <li>Request query parameters, credentials masked (see {@link #isSensitive(MappingType, String)})</li>
+ *     <li>Request query parameters, credentials masked (see
+ *     {@link LoggedFilterConfiguration.Builder#sensitiveParameters(java.util.function.BiPredicate)})</li>
  *     <li>Resource class matched by the current request</li>
  *     <li>Resource method matched by the current request</li>
  *     <li>Whatever the {@link LoggedMapping} annotations of the resource ask for</li>
  * </ul>
  * Once the response is computed, the request will be logged using the format
  * <code>Processed [method] [URI] with status [status] in [duration]ms</code>, at a level derived from the
- * status (see {@link #getResponseLevel(String)}), with the following {@link MDC}:
+ * status (see {@link LoggedFilterConfiguration.Builder#responseLevel(java.util.function.IntFunction)}), with the
+ * following {@link MDC}:
  * <ul>
  *     <li>Response status (see {@link jakarta.ws.rs.core.Response.Status})</li>
  *     <li>Response duration in milliseconds</li>
@@ -105,39 +105,10 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     public static final String REQUEST_ID_HEADER = "X-Request-ID";
 
     /**
-     * Names of MDC fields to be used for all logged fields, by {@link LoggedField} name.
-     * <p>
-     * Allows changes from children classes: mapping a field to another name renames it, and removing it
-     * (or mapping it to {@code null}) leaves it out of MDC altogether - along with the log lines reading it
-     * back from there, such as the status in the {@code "Processed ..."} line and the level it decides. Keys
-     * other than those of {@link LoggedField} name the entries a subclass puts itself, so they are removed
-     * at the end of every request as well.
+     * Configuration of this provider: the names of its MDC entries, how it identifies a request, which
+     * parameters it keeps out of the logs, the level it logs a request at and how it captures bodies.
      */
-    protected final Map<String, String> mdcFields = getDefaultFields();
-
-    /**
-     * The MDC entries of the requests this provider logs, named after {@link #mdcFields}.
-     */
-    private final RequestMdc mdc = new RequestMdc(mdcFields);
-
-    /**
-     * Puts the MDC entries the {@link LoggedMapping} annotations ask for, keeping the parameters
-     * {@link #isSensitive(MappingType, String)} reports out of automatic mappings, as well as the keys of
-     * the fields above.
-     */
-    private final MappingApplier mappingApplier = new MappingApplier(this::isSensitive, mdc::isField);
-
-    /**
-     * Describes the requests received, masking the query parameters {@link #isSensitive(MappingType, String)}
-     * reports.
-     */
-    private final RequestDescriber describer = new RequestDescriber(this::isSensitive);
-
-    /**
-     * Captures the bodies of the requests read and the responses written, through
-     * {@link #createBodyCapture(int)}.
-     */
-    private final BodyCapturer bodyCapturer = new BodyCapturer(log, this::createBodyCapture);
+    protected final LoggedFilterConfiguration configuration;
 
     /**
      * Instantiates and caches {@link LoggedBodyFilter} instances by class.
@@ -157,6 +128,51 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected ResourceInfo resourceInfo;
 
     /**
+     * The MDC entries of the requests this provider logs, named as configured.
+     */
+    private final RequestMdc mdc;
+
+    /**
+     * Describes the requests received, masking the query parameters the configuration reports as sensitive.
+     */
+    private final RequestDescriber describer;
+
+    /**
+     * Puts the MDC entries the {@link LoggedMapping} annotations ask for, keeping the parameters the
+     * configuration reports as sensitive out of automatic mappings, as well as the names of the fields.
+     */
+    private final MappingApplier mappingApplier;
+
+    /**
+     * Captures the bodies of the requests read and the responses written, as the configuration says to.
+     */
+    private final BodyCapturer bodyCapturer;
+
+    /**
+     * Creates a provider with the default configuration (see {@link LoggedFilterConfiguration#defaults()}).
+     */
+    public LoggedFilter() {
+        this(LoggedFilterConfiguration.defaults());
+    }
+
+    /**
+     * Creates a provider with the given configuration.
+     * <p>
+     * A container instantiates a provider through its no-argument constructor, so a subclass passes its
+     * configuration from its own (see {@link LoggedFilterConfiguration}), while an application registering
+     * its providers explicitly passes it here directly.
+     *
+     * @param configuration The configuration of the provider
+     */
+    public LoggedFilter(LoggedFilterConfiguration configuration) {
+        this.configuration = requireNonNull(configuration, "The configuration is required");
+        this.mdc = new RequestMdc(configuration.fieldNames());
+        this.describer = new RequestDescriber(configuration::isSensitive);
+        this.mappingApplier = new MappingApplier(configuration::isSensitive, mdc::isField);
+        this.bodyCapturer = new BodyCapturer(log, configuration::createBodyCapture);
+    }
+
+    /**
      * Puts a diagnostic context value identified by the given key into the current thread's context map,
      * recording the key against the request whose entries this thread carries, so it is removed once that
      * request has been fully processed (see {@link RequestMdc}).
@@ -174,13 +190,24 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     /**
      * Puts a diagnostic context value identified by the given field into the current thread's context map,
-     * unless the field was unmapped from {@link #mdcFields} to leave it out.
+     * unless the field is left out (see {@link LoggedFilterConfiguration.Builder#withoutField(LoggedField)}).
      *
      * @param field The field for which put the given value
      * @param value The value to be associated with the given field
      */
     protected void putMdc(LoggedField field, String value) {
         mdc.put(field, value);
+    }
+
+    /**
+     * Gets a diagnostic context value identified by the given field from the current thread's context map.
+     *
+     * @param field The field for which get the value
+     * @return The value associated with the given field, {@code null} for a field left out (see
+     * {@link LoggedFilterConfiguration.Builder#withoutField(LoggedField)})
+     */
+    protected String getMdc(LoggedField field) {
+        return mdc.get(field);
     }
 
     /**
@@ -199,75 +226,12 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Indicates whether the value of the given parameter must be kept out of the logs.
-     * <p>
-     * Two things honour this: an automatic {@link LoggedMapping}, which skips the parameter entirely
-     * rather than copying it into MDC, and the query parameters logged as
-     * {@link LoggedField#REQUEST_PARAMETERS}, which mask the value while keeping the parameter name. An
-     * explicit mapping naming a parameter is a deliberate decision by the developer and is left alone by
-     * both.
-     * <p>
-     * The defaults come from {@link CredentialNames}, which only knows what callers conventionally name
-     * their secrets. Override to extend (or restrict) them for an application that knows its own, for
-     * example to also mask a query parameter carrying a signed URL token:
-     * <pre>{@code
-     * @Override
-     * protected boolean isSensitive(MappingType type, String name) {
-     *     return super.isSensitive(type, name)
-     *             || (type == QUERY && "url-signature".equalsIgnoreCase(name));
-     * }
-     * }</pre>
-     *
-     * @param type The type of parameter being logged
-     * @param name The name of the parameter being logged
-     * @return {@code true} if the value must be kept out of the logs, {@code false} otherwise
-     */
-    protected boolean isSensitive(MappingType type, String name) {
-        return switch (type) {
-            case HEADER -> CredentialNames.isHeader(name);
-            case QUERY -> CredentialNames.isQueryParameter(name);
-            // Path parameter names are chosen by the application itself, not by whoever calls it, so
-            // there is no equivalent list of names that "just happen" to carry a credential
-            case PATH -> false;
-        };
-    }
-
-    /**
-     * Gets a diagnostic context value identified by the given field from the current thread's context map.
-     *
-     * @param field The field for which get the value
-     * @return The value associated with the given field, {@code null} for a field unmapped from
-     * {@link #mdcFields} to leave it out
-     */
-    protected String getMdc(LoggedField field) {
-        return mdc.get(field);
-    }
-
-    /**
-     * Gets the request identifier that will be stored in MDC for the complete request processing.
-     * Returns the header value of {@value #REQUEST_ID_HEADER} (sanitized, and truncated to 128 characters)
-     * or a random UUID when not present.
-     * <p>
-     * Note that the identifier is taken from the client as-is (beyond truncation and
-     * {@link #sanitize(String)}): it is a correlation hint, never an authenticated value, so nothing
-     * downstream should treat two requests sharing one as necessarily related. Override this method to
-     * always generate the identifier server-side when the caller is untrusted.
-     *
-     * @param requestContext The context of the request received
-     * @return The request identifier
-     */
-    protected String getRequestId(ContainerRequestContext requestContext) {
-        MultivaluedMap<String, String> headers = requestContext.getHeaders();
-        return RequestDescriber.requestIdOf(headers == null ? null : headers.getFirst(REQUEST_ID_HEADER));
-    }
-
-    /**
      * Runs the given logging action, swallowing anything it throws, so that logging a request can never
      * be the reason it fails. See {@link LoggedSupport#safely(Logger, String, Runnable)}.
      *
      * @param action The logging action to run
      */
-    protected void safely(Runnable action) {
+    private void safely(Runnable action) {
         LoggedSupport.safely(log, "Unable to log the request or response, the exchange itself is left unaffected", action);
     }
 
@@ -324,12 +288,12 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * matched for it (see {@link RequestDescriber}).
      * <p>
      * Everything sourced from the request is passed through {@link #sanitize(String)} first, as all of it
-     * is client-controlled - including the identifier {@link #getRequestId(ContainerRequestContext)} gets.
+     * is client-controlled - including the identifier the configuration gets for it.
      *
      * @param requestContext The context of the request received
      */
-    protected void putMdcFromRequest(ContainerRequestContext requestContext) {
-        describer.describe(requestContext, resourceInfo, getRequestId(requestContext), this::putMdc);
+    private void putMdcFromRequest(ContainerRequestContext requestContext) {
+        describer.describe(requestContext, resourceInfo, configuration.requestIdOf(requestContext), this::putMdc);
     }
 
     /**
@@ -338,7 +302,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      *
      * @param requestContext The context of the request received
      */
-    protected void putMdcFromMappings(ContainerRequestContext requestContext) {
+    private void putMdcFromMappings(ContainerRequestContext requestContext) {
         mappingApplier.apply(resolver.getMappings(resourceInfo), type -> getParameters(requestContext, type), this::putMdc);
     }
 
@@ -366,7 +330,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * up as allocation pressure in production.
      * <p>
      * Checks {@code INFO}, the lowest level this provider writes at, and not the level the completion of
-     * this particular request will end up being logged at ({@link #getResponseLevel(String)}): whether a
+     * this particular request will end up being logged at (see
+     * {@link LoggedFilterConfiguration.Builder#responseLevel(java.util.function.IntFunction)}): whether a
      * request failed is only known once it has been answered, long after the decision to capture its body
      * had to be made. An application configured above {@code INFO} therefore gets its failures logged at
      * {@code WARN}/{@code ERROR} but without bodies, which is the deliberate trade: the alternative is
@@ -374,7 +339,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      *
      * @return {@code true} if the log lines written by this provider are enabled, {@code false} otherwise
      */
-    protected boolean isLoggingEnabled() {
+    private boolean isLoggingEnabled() {
         return log.isInfoEnabled();
     }
 
@@ -419,24 +384,10 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @throws IOException              if an IO error arises while reading the entity
      * @throws WebApplicationException  if the entity cannot be read
      */
-    protected Object captureRequestBody(ReaderInterceptorContext context) throws IOException, WebApplicationException {
+    Object captureRequestBody(ReaderInterceptorContext context) throws IOException, WebApplicationException {
         LoggedRequestState state = LoggedRequestState.find(context);
         // The state is only read once a body was captured, which the configuration rules out without one
         return bodyCapturer.read(context, getCaptureConfiguration(state, REQUEST), body -> state.setRequestBody(body));
-    }
-
-    /**
-     * Creates the {@link LoggedBodyCapture} used to capture a request or response body.
-     * <p>
-     * This is the extension point for the mechanics of body capture itself (as opposed to
-     * {@link LoggedBodyFilter}, which only transforms content already captured): override to plug in a
-     * different strategy, for example spilling very large bodies to a temporary file instead of memory.
-     *
-     * @param limit The maximum size of the body to capture in bytes, or {@code -1} for no limit
-     * @return The body capture to use
-     */
-    protected LoggedBodyCapture createBodyCapture(int limit) {
-        return new BoundedLoggedBodyCapture(limit);
     }
 
     /**
@@ -450,7 +401,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param state       The state of the request being logged
      * @param requestBody The request body to be logged
      */
-    protected void logRequest(LoggedRequestState state, String requestBody) {
+    private void logRequest(LoggedRequestState state, String requestBody) {
         if (!state.markRequestLogged(isNotBlank(requestBody))) {
             return;
         }
@@ -518,7 +469,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             }
 
             putMdc(RESPONSE_STATUS, valueOf(responseContext.getStatus()));
-            addRequestId(responseContext);
+            returnRequestId(responseContext);
         } finally {
             // Logs directly from filter in case no response body is present, as aroundWriteTo will not
             // be called by the container in that case (e.g. 204 No Content, HEAD requests). This must
@@ -534,28 +485,22 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Returns the identifier this request was logged under to the caller, as
-     * {@value #REQUEST_ID_HEADER}.
-     * <p>
-     * Without it, the identifier tying every log line of a request together exists only on the server:
-     * a caller reporting "your API returned a 500 at about 14:32" leaves whoever picks up the report
-     * searching by timestamp, while a caller quoting the identifier from the response they received
-     * points straight at the request. It is also what lets a browser, a load test or any client that
-     * does not send its own identifier still correlate what it saw with what the server logged.
+     * Returns the identifier this request was logged under to the caller, in the header the configuration
+     * names (see {@link LoggedFilterConfiguration.Builder#withoutReturnedRequestId()} for why).
      * <p>
      * Left alone if the response already carries the header, whatever its casing, so an application (or
-     * a gateway in front of it) deliberately setting its own is not overwritten by this one. Override to
-     * do nothing to opt out entirely, or to return the identifier under a different header name.
+     * a gateway in front of it) deliberately setting its own is not overwritten by this one.
      *
      * @param responseContext The context of the response to be sent
      */
-    protected void addRequestId(ContainerResponseContext responseContext) {
+    private void returnRequestId(ContainerResponseContext responseContext) {
+        String header = configuration.returnedRequestIdHeader();
         String requestId = getMdc(REQUEST_ID);
         // HTTP header names are case-insensitive, but the response header map is only a MultivaluedMap
         // in the JAX-RS API, so a container backing it with a case-sensitive one would otherwise send
         // the header twice with two different values
-        if (isNotBlank(requestId) && responseContext.getHeaders().keySet().stream().noneMatch(REQUEST_ID_HEADER::equalsIgnoreCase)) {
-            responseContext.getHeaders().putSingle(REQUEST_ID_HEADER, requestId);
+        if (header != null && isNotBlank(requestId) && responseContext.getHeaders().keySet().stream().noneMatch(header::equalsIgnoreCase)) {
+            responseContext.getHeaders().putSingle(header, requestId);
         }
     }
 
@@ -590,12 +535,12 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             return;
         }
         try {
-            LoggedBodyConfiguration configuration = getBodyConfiguration(state, RESPONSE);
+            LoggedBodyConfiguration bodyConfiguration = getBodyConfiguration(state, RESPONSE);
             String body = state.getResponseBody();
-            if (configuration.logs(LoggedBody.LogType.MDC)) {
+            if (bodyConfiguration.logs(LoggedBody.LogType.MDC)) {
                 putMdc(RESPONSE_BODY, body);
             }
-            logResponse(state, configuration.logs(LOG) ? requireNonNullElse(body, EMPTY) : EMPTY);
+            logResponse(state, bodyConfiguration.logs(LOG) ? requireNonNullElse(body, EMPTY) : EMPTY);
         } catch (RuntimeException e) {
             // Completion is what cleans MDC up, so it must still happen when assembling the log
             // line above failed, or the fields would stay behind on this (pooled) thread
@@ -615,7 +560,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @throws IOException              if an IO error arises while writing the entity
      * @throws WebApplicationException  if the entity cannot be written
      */
-    protected void captureResponseBody(WriterInterceptorContext context) throws IOException, WebApplicationException {
+    void captureResponseBody(WriterInterceptorContext context) throws IOException, WebApplicationException {
         LoggedRequestState state = LoggedRequestState.find(context);
         // The state is only read once a body was captured, which the configuration rules out without one
         bodyCapturer.write(context, getCaptureConfiguration(state, RESPONSE), body -> state.setResponseBody(body));
@@ -638,7 +583,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param state        The state of the request being completed
      * @param responseBody The response body to be logged
      */
-    protected void logResponse(LoggedRequestState state, String responseBody) {
+    void logResponse(LoggedRequestState state, String responseBody) {
         if (!state.markCompleted()) {
             return;
         }
@@ -650,8 +595,10 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 putMdc(REQUEST_BODY, state.getRequestBody());
             }
 
+            // The status is read back from MDC rather than taken from the response context, so the level still
+            // matches the status actually logged when completion happens where the response context is not at hand
             String status = getMdc(RESPONSE_STATUS);
-            log.atLevel(getResponseLevel(status))
+            log.atLevel(configuration.responseLevel(NumberUtils.toInt(status)))
                     .log("Processed {} {} with status {} in {}ms{}{}",
                             getMdc(REQUEST_METHOD),
                             getMdc(REQUEST_URI),
@@ -666,22 +613,6 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Gets the level at which the completion of a request answered with the given status is logged, see
-     * {@link LoggedSupport#levelOf(int)} for why it is not simply {@code INFO}.
-     * <p>
-     * Override to fit an application's own conventions, for example to leave an expected {@code 404} at
-     * {@code INFO}, or to raise a specific status the application treats as an incident.
-     *
-     * @param status The response status as stored in MDC, possibly {@code null} if it was never resolved
-     * @return The level to log the completion of the request at
-     */
-    protected Level getResponseLevel(String status) {
-        // Parsed rather than taken from the response context, so the level still matches the status that
-        // was actually logged when completion happens somewhere the response context is not at hand
-        return LoggedSupport.levelOf(NumberUtils.toInt(status));
-    }
-
-    /**
      * Gets the body logging configuration for the given target (request or response) of the resource
      * method matched by the given request, delegating resolution and caching to {@link #resolver} the
      * first time it is asked for and reusing that result for the rest of the request afterwards (see
@@ -692,17 +623,17 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @return The body logging configuration, {@link LoggedBodyConfiguration#NONE} for a request without
      * state, never {@code null}
      */
-    protected LoggedBodyConfiguration getBodyConfiguration(LoggedRequestState state, Direction target) {
+    LoggedBodyConfiguration getBodyConfiguration(LoggedRequestState state, Direction target) {
         if (state == null) {
             // Nowhere to keep the resolved configuration, and nowhere to keep a body captured with it either
             return LoggedBodyConfiguration.NONE;
         }
-        BodyConfiguration configuration = state.getBodyConfiguration();
-        if (configuration == null) {
-            configuration = resolver.getBodyConfiguration(resourceInfo);
-            state.setBodyConfiguration(configuration);
+        BodyConfiguration resolved = state.getBodyConfiguration();
+        if (resolved == null) {
+            resolved = resolver.getBodyConfiguration(resourceInfo);
+            state.setBodyConfiguration(resolved);
         }
-        return configuration.of(target);
+        return resolved.of(target);
     }
 
     /**
@@ -710,13 +641,13 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * for the given request (see {@link LoggedRequestState#getMdcKeys()}), which covers every entry put by
      * this provider itself as well as any subclass following the same convention.
      * <p>
-     * Also sweeps the fixed set of fields in {@link #mdcFields} as a safety net, in case a subclass still
-     * puts one of those directly through {@link MDC#put(String, String)} (as opposed to
-     * {@link #putMdc(LoggedField, String)}) after registering it there.
+     * Also sweeps the fields named by the configuration as a safety net, in case a subclass still puts one
+     * of those directly through {@link MDC#put(String, String)} (as opposed to
+     * {@link #putMdc(LoggedField, String)}).
      *
      * @param state The state of the request done with
      */
-    protected void cleanupMdc(LoggedRequestState state) {
+    void cleanupMdc(LoggedRequestState state) {
         mdc.cleanup(state);
     }
 

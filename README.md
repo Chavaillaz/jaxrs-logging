@@ -52,8 +52,8 @@ That line is written at a level derived from the status: `ERROR` for a server er
 client error (4xx), `INFO` otherwise. Client errors are deliberately not errors - a `404` or a `400` is
 the application working as designed and says something about the caller, not about the service - but a
 failed request logged at the same level as a successful one is a line nobody is alerted on, and the
-library is the one place that already knows which it was. Override `getResponseLevel(String)` to fit your
-own conventions.
+library is the one place that already knows which it was. Set `responseLevel` in the
+[configuration](#configuration) to fit your own conventions.
 
 Note that setting the logger above `INFO` disables body capture entirely (see below), so failures are
 then logged at `WARN`/`ERROR` but without their bodies: whether a request failed is only known once it
@@ -63,8 +63,8 @@ The identifier the request was logged under is also returned to the caller as `X
 that identifier only exists on the server: a caller reporting "your API returned a 500 at about 14:32"
 leaves whoever picks up the report searching by timestamp, while a caller quoting the identifier from the
 response points straight at the request. A header already set by the application (or by a gateway in front
-of it) is left alone; override `addRequestId(ContainerResponseContext)` to return it under another name,
-or to do nothing at all.
+of it) is left alone. The [configuration](#configuration) reads and returns it in another header with
+`requestIdHeader`, or stops returning it with `withoutReturnedRequestId()`.
 
 Additional logging features can be activated by adding `@LoggedBody` (repeatable) to `@Logged`:
 
@@ -228,8 +228,8 @@ Automatic mapping never copies a credential-carrying header (`Authorization`, `C
 into MDC, as `auto = true` is a blanket "map whatever the client sent" instruction and is otherwise an easy
 way to end up with bearer tokens and session cookies permanently stored in a log aggregator. The exact list
 is in [CredentialNames](src/main/java/com/chavaillaz/jakarta/rs/CredentialNames.java); extend or restrict
-it by overriding `isSensitive(MappingType, String)`. An explicit mapping naming a header is a deliberate
-decision and is left alone.
+it with `sensitiveParameters` in the [configuration](#configuration). An explicit mapping naming a header
+is a deliberate decision and is left alone.
 
 ## Credentials in query parameters
 
@@ -249,14 +249,14 @@ request-parameters: access_token=***&topic=news
 
 Automatic `QUERY` mapping skips those parameters entirely, the way it does for headers. Names too commonly
 used for ordinary things to mask for everyone (`code`, for instance) are not in the list; add whatever
-your callers actually send by overriding `isSensitive(MappingType, String)`:
+your callers actually send with `sensitiveParameters` in the [configuration](#configuration), composing
+with the default list:
 
 ```java
-@Override
-protected boolean isSensitive(MappingType type, String name) {
-    return super.isSensitive(type, name)
-            || (type == QUERY && "url-signature".equalsIgnoreCase(name));
-}
+LoggedFilterConfiguration.builder()
+        .sensitiveParameters((type, name) -> isCredential(type, name)
+                || (type == QUERY && "url-signature".equalsIgnoreCase(name)))
+        .build();
 ```
 
 The same goes for the calls logged by [LoggedClientFilter](#client-calls), which log the URI of each call whole:
@@ -475,17 +475,53 @@ public void get(@Suspended AsyncResponse response) {
 }
 ```
 
-## Extension
+## Configuration
 
-An example of extension of the filter is available
-with [UserLogged](src/test/java/com/chavaillaz/jakarta/rs/UserLogged.java)
-and [UserLoggedFilter](src/test/java/com/chavaillaz/jakarta/rs/UserLoggedFilter.java).
-In this example, you can find the following customization of the original filter:
+`LoggedFilter` applies the same configuration to every resource it logs: what varies from a resource to
+another is declared on the resource itself with `@LoggedBody` and `@LoggedMapping`. That configuration is a
+[LoggedFilterConfiguration](src/main/java/com/chavaillaz/jakarta/rs/LoggedFilterConfiguration.java), built
+with `LoggedFilterConfiguration.builder()`:
 
-* Log new **user-id** field in MDC
-* Log new **user-agent** field in MDC if activated in annotation
-* Change **request-id** logic to get it from a header field
-* Rename MDC field of **request-id** to **request-identifier**
+* **fieldName** / **withoutField**: Renames the MDC entry of a field, for example to align it with other
+  applications or with the schema of whatever the logs are shipped to, or leaves the field out altogether.
+* **requestIdHeader**: Header the request identifier is read from and returned in (`X-Request-ID` by default).
+* **requestId**: How the request identifier is obtained, for example to always generate it server-side
+  when the callers are untrusted.
+* **withoutReturnedRequestId**: Stops returning the request identifier to the caller.
+* **sensitiveParameters**: Parameters whose value is kept out of the logs (credential names by default, see
+  [Credentials in query parameters](#credentials-in-query-parameters)).
+* **responseLevel**: Level the `Processed ...` line is logged at, given the response status.
+* **bodyCapture**: How bodies are captured (in memory by default), for example to spill very large ones to
+  a temporary file.
+
+A container instantiates a provider through its no-argument constructor, so pass the configuration from the
+constructor of a subclass:
+
+```java
+@Provider
+public class ApplicationLoggedFilter extends LoggedFilter {
+
+    public ApplicationLoggedFilter() {
+        super(LoggedFilterConfiguration.builder()
+                .fieldName(REQUEST_ID, "trace-id")
+                .requestIdHeader("X-Trace-ID")
+                .responseLevel(status -> status == 404 ? Level.INFO : LoggedSupport.levelOf(status))
+                .build());
+    }
+
+}
+```
+
+An application registering its providers explicitly can pass it to `new LoggedFilter(configuration)` instead.
+
+A subclass can also put entries of its own in MDC, through `putMdc` so they are removed once the request is
+done. An example is available with [UserLogged](src/test/java/com/chavaillaz/jakarta/rs/UserLogged.java)
+and [UserLoggedFilter](src/test/java/com/chavaillaz/jakarta/rs/UserLoggedFilter.java), which:
+
+* Logs a new **user-id** field in MDC
+* Logs a new **user-agent** field in MDC if activated in its annotation
+* Reads the **request-id** from another header
+* Renames the MDC field of **request-id** to **request-identifier**
 
 A subclass bound to an annotation of its own, as `UserLoggedFilter` is to `@UserLogged`, logs bodies only if
 [LoggedBodyInterceptor](src/main/java/com/chavaillaz/jakarta/rs/LoggedBodyInterceptor.java) runs for the same

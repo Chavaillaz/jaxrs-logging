@@ -31,8 +31,9 @@ import org.slf4j.Logger;
  *     being exactly the step that fails on a payload nobody expected, which is precisely when a capture
  *     holding more than memory - a temporary file - must not be left behind.</li>
  * </ul>
- * That is not hypothetical: {@code createBodyCapture} is the documented extension point for the mechanics
- * of capture, spilling to a temporary file for instance, which fails the way file system access does.
+ * That is not hypothetical: a capture of one's own (see {@link LoggedFilterConfiguration.Builder#bodyCapture})
+ * is the documented extension point for the mechanics of capture, spilling to a temporary file for instance,
+ * which fails the way file system access does.
  * The capture put in place also guards its own sink (see {@link GuardedBodyCapture}), written to as a
  * branch of the entity stream itself.
  */

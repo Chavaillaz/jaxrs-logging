@@ -188,7 +188,8 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
          * Sets the MDC key read to obtain the identifier propagated as {@value LoggedFilter#REQUEST_ID_HEADER}
          * on outgoing requests, falling back to a random one when absent from MDC (e.g. no {@link LoggedFilter}
          * is active on the calling thread). Defaults to {@code request-id}; change it to match a renamed
-         * {@link LoggedField#REQUEST_ID} MDC key (see {@link LoggedFilter#mdcFields}).
+         * {@link LoggedField#REQUEST_ID} MDC key (see
+         * {@link LoggedFilterConfiguration.Builder#fieldName(LoggedField, String)}).
          *
          * @param mdcKey The MDC key to read the correlation identifier from
          * @return This builder
@@ -612,8 +613,8 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     /**
      * Creates the {@link LoggedBodyCapture} used to capture a request or response body.
      * <p>
-     * Same extension point as {@link LoggedFilter#createBodyCapture(int)}: override to plug in a
-     * different body capture strategy.
+     * Same extension point as {@link LoggedFilterConfiguration.Builder#bodyCapture} on the server side:
+     * override to plug in a different body capture strategy.
      *
      * @param limit The maximum size of the body to capture in bytes, or {@code -1} for no limit
      * @return The body capture to use
@@ -625,8 +626,8 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     /**
      * Indicates whether anything this provider writes would actually reach an appender.
      * <p>
-     * Used to skip body capture entirely when it would be thrown away, see
-     * {@link LoggedFilter#isLoggingEnabled()}.
+     * Used to skip body capture entirely when it would be thrown away: buffering (and filtering, and
+     * decoding) every body of an application whose logger is configured above {@code INFO} is pure overhead.
      *
      * @return {@code true} if the log lines written by this provider are enabled, {@code false} otherwise
      */

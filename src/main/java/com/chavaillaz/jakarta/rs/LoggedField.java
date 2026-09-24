@@ -6,7 +6,7 @@ import java.util.stream.Stream;
 
 /**
  * List of context fields to be written in MDC by {@link LoggedFilter}, under the default names given here
- * unless a subclass renames them (see {@link LoggedFilter#mdcFields}).
+ * unless its configuration renames them (see {@link LoggedFilterConfiguration.Builder#fieldName(LoggedField, String)}).
  */
 public enum LoggedField {
 
