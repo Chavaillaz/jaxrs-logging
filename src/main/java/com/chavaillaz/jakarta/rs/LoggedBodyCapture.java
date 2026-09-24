@@ -9,10 +9,9 @@ import jakarta.ws.rs.core.MediaType;
  * Captures a request or response body as it flows through a stream, to later expose it (optionally
  * filtered) as text.
  * <p>
- * An instance is meant to be used once, for a single request or response body: {@link #sink()} is used
- * as the target of a {@code TeeInputStream}/{@code TeeOutputStream} wrapping the body while it is being
- * read or written, {@link #content(Set)} is called once that is done to retrieve what was captured, and
- * {@link #close()} releases whatever the capture held.
+ * An instance is meant to be used once, for a single request or response body: {@link #sink()} receives a
+ * copy of the body while it is being read or written, {@link #content(Set)} is called once that is done to
+ * retrieve what was captured, and {@link #close()} releases whatever the capture held.
  * <p>
  * This is the extension point for the mechanics of body capture itself (bounded in-memory buffering by
  * default, see {@link BoundedLoggedBodyCapture}), as opposed to {@link LoggedBodyFilter}, which only
@@ -28,8 +27,8 @@ public interface LoggedBodyCapture extends AutoCloseable {
     int NO_LIMIT = -1;
 
     /**
-     * Gets the output stream acting as the sink of a {@code TeeInputStream}/{@code TeeOutputStream}
-     * wrapping the request or response body, capturing a copy of every byte read from or written to it.
+     * Gets the output stream receiving a copy of every byte of the request or response body, once each, as
+     * it is read or written.
      * <p>
      * A sink that throws does not fail the exchange it observes: the providers report the failure, stop
      * writing to the sink, and leave the body out of the logs rather than logging the part of it captured

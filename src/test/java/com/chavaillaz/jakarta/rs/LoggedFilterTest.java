@@ -534,6 +534,29 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check a request body the message body reader peeks at is logged as it was received")
+    void checkPeekedRequestBodyLoggedAsReceived() throws Exception {
+        // A reader checking for an empty entity marks the stream, reads its first byte and resets the stream
+        // before reading it for good: a plain tee copies that first byte to the capture twice
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        loggingFilter.filter(requestContext);
+
+        // When
+        loggingFilter.aroundReadFrom(readerContext(requestContext, IOUtils.toInputStream(INPUT, UTF_8), stream -> {
+            stream.mark(1);
+            stream.read();
+            stream.reset();
+            stream.readAllBytes();
+        }));
+
+        // Then
+        assertEquals(List.of("Received POST /service" + LF + INPUT), getReceivedMessages());
+    }
+
+    @Test
     @DisplayName("Check a body read after the request was logged without one is still logged")
     void checkBodyLoggedAfterRequestLoggedWithoutOne() throws Exception {
         // Whether a request has a body is decided before it is read, by some containers from its

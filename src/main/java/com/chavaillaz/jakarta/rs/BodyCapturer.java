@@ -8,12 +8,11 @@ import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.ext.InterceptorContext;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
 import jakarta.ws.rs.ext.WriterInterceptorContext;
-import org.apache.commons.io.input.TeeInputStream;
 import org.apache.commons.io.output.TeeOutputStream;
 import org.slf4j.Logger;
 
 /**
- * Captures the body of an entity as it is read or written, for a provider to log: tees the entity stream to
+ * Captures the body of an entity as it is read or written, for a provider to log: copies the entity stream to
  * a {@link LoggedBodyCapture}, and hands over the body it renders once the entity is done, without any of it
  * being allowed to fail the exchange it observes.
  * <p>
@@ -81,7 +80,7 @@ final class BodyCapturer {
         }
 
         LoggedBodyCapture capture = start(configuration,
-                started -> context.setInputStream(new TeeInputStream(context.getInputStream(), started.sink())));
+                started -> context.setInputStream(new CapturingInputStream(context.getInputStream(), started.sink())));
         try {
             return context.proceed();
         } finally {
