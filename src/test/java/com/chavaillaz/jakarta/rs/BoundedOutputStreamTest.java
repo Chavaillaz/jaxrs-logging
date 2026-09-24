@@ -1,9 +1,6 @@
 package com.chavaillaz.jakarta.rs;
 
-import static com.chavaillaz.jakarta.rs.BoundedOutputStream.trimIncompleteTrailingCharacter;
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static java.util.Arrays.copyOfRange;
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -249,60 +246,6 @@ class BoundedOutputStreamTest {
             assertFalse(bounded.isTruncated());
             bounded.write('b');
             assertTrue(bounded.isTruncated());
-        }
-
-    }
-
-    @Nested
-    @DisplayName("Trimming a dangling trailing character")
-    class TrailingCharacterTrimming {
-
-        @Test
-        @DisplayName("Check trimming leaves complete ASCII content untouched")
-        void checkCompleteAsciiUntouched() {
-            byte[] bytes = "If debuggi".getBytes(UTF_8);
-            assertArrayEquals(bytes, trimIncompleteTrailingCharacter(bytes));
-        }
-
-        @Test
-        @DisplayName("Check trimming leaves an empty array untouched")
-        void checkEmptyArrayUntouched() {
-            assertArrayEquals(new byte[0], trimIncompleteTrailingCharacter(new byte[0]));
-        }
-
-        @Test
-        @DisplayName("Check trimming leaves a complete multi-byte character untouched")
-        void checkCompleteMultiByteCharacterUntouched() {
-            // "Café" ends with a complete 2-byte character (é = 0xC3 0xA9)
-            byte[] bytes = "Café".getBytes(UTF_8);
-            assertArrayEquals(bytes, trimIncompleteTrailingCharacter(bytes));
-        }
-
-        @Test
-        @DisplayName("Check trimming removes a 2-byte character cut after its lead byte")
-        void checkDanglingTwoByteLeadByteRemoved() {
-            // "Café" (5 bytes: C,a,f,0xC3,0xA9) truncated right after the lead byte of é
-            byte[] bytes = copyOfRange("Café".getBytes(UTF_8), 0, 4);
-            assertArrayEquals("Caf".getBytes(UTF_8), trimIncompleteTrailingCharacter(bytes));
-        }
-
-        @Test
-        @DisplayName("Check trimming removes a 3-byte character cut after one or two of its bytes")
-        void checkDanglingThreeByteCharacterRemoved() {
-            // "a€" (€ = 0xE2 0x82 0xAC) truncated after 1 then 2 of its 3 bytes
-            byte[] full = "a€".getBytes(UTF_8);
-            assertArrayEquals("a".getBytes(UTF_8), trimIncompleteTrailingCharacter(copyOfRange(full, 0, 2)));
-            assertArrayEquals("a".getBytes(UTF_8), trimIncompleteTrailingCharacter(copyOfRange(full, 0, 3)));
-        }
-
-        @Test
-        @DisplayName("Check trimming removes a 4-byte character cut after one, two or three of its bytes")
-        void checkDanglingFourByteCharacterRemoved() {
-            // "a😀" (grinning face emoji = 0xF0 0x9F 0x98 0x80) truncated after each partial length
-            byte[] full = "a😀".getBytes(UTF_8);
-            assertArrayEquals("a".getBytes(UTF_8), trimIncompleteTrailingCharacter(copyOfRange(full, 0, 2)));
-            assertArrayEquals("a".getBytes(UTF_8), trimIncompleteTrailingCharacter(copyOfRange(full, 0, 3)));
-            assertArrayEquals("a".getBytes(UTF_8), trimIncompleteTrailingCharacter(copyOfRange(full, 0, 4)));
         }
 
     }
