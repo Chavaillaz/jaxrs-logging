@@ -78,18 +78,17 @@ final class RequestDescriber {
     }
 
     /**
-     * Gets the identifier of a request from the value of its {@value LoggedFilter#REQUEST_ID_HEADER} header,
-     * sanitized and truncated to {@link #REQUEST_ID_MAX_LENGTH} characters, or a random UUID when the header
-     * is absent or blank.
+     * Gets the identifier to log a request under from the one obtained for it - read from its
+     * {@value LoggedFilter#REQUEST_ID_HEADER} header by default - sanitized and truncated to
+     * {@link #REQUEST_ID_MAX_LENGTH} characters, or a random UUID when none was obtained.
      *
-     * @param header The value of the header, {@code null} if the request has none
-     * @return The request identifier
+     * @param obtained The identifier obtained for the request, {@code null} if there is none
+     * @return The request identifier, never blank
      */
-    static String requestIdOf(String header) {
+    static String requestIdOf(String obtained) {
         // Sanitized before being checked, as sanitizing turns an identifier made of nothing but control
-        // characters blank, and a blank value is never put in MDC: checked first, such an identifier left
-        // the request without any identifier at all
-        String requestId = sanitize(header);
+        // characters blank, and a blank value is never put in MDC
+        String requestId = sanitize(obtained);
         return isNotBlank(requestId) ? truncate(requestId) : randomUUID().toString();
     }
 
@@ -118,12 +117,13 @@ final class RequestDescriber {
      *
      * @param request   The context of the request received
      * @param resource  The resource matched for the request
-     * @param requestId The identifier of the request, sanitized here as it may still come from the client
+     * @param requestId The identifier obtained for the request, {@code null} if there is none, made fit to
+     *                  be logged here as it may come from the client (see {@link #requestIdOf(String)})
      * @param output    What to do with each field, given its value
      */
     void describe(ContainerRequestContext request, ResourceInfo resource, String requestId, BiConsumer<LoggedField, String> output) {
         UriInfo uriInfo = request.getUriInfo();
-        output.accept(REQUEST_ID, sanitize(requestId));
+        output.accept(REQUEST_ID, requestIdOf(requestId));
         output.accept(REQUEST_URI, sanitize(uriInfo.getPath()));
         output.accept(REQUEST_PARAMETERS, sanitize(describeQuery(uriInfo.getQueryParameters())));
         output.accept(REQUEST_METHOD, sanitize(request.getMethod()));

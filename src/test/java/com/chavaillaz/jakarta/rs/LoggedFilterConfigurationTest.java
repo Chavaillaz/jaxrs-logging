@@ -16,7 +16,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Arrays;
-import java.util.UUID;
 
 import jakarta.ws.rs.container.ContainerRequestContext;
 import org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext;
@@ -50,7 +49,8 @@ class LoggedFilterConfigurationTest {
         LoggedFilterConfiguration configuration = LoggedFilterConfiguration.defaults();
 
         assertEquals("abc-123", configuration.requestIdOf(request(LoggedFilter.REQUEST_ID_HEADER, "abc-123")));
-        assertDoesNotThrow(() -> UUID.fromString(configuration.requestIdOf(request("X-Other", "abc-123"))));
+        // Left for RequestDescriber to generate, as it does for whatever strategy obtains none
+        assertNull(configuration.requestIdOf(request("X-Other", "abc-123")));
         assertEquals(LoggedFilter.REQUEST_ID_HEADER, configuration.returnedRequestIdHeader());
     }
 

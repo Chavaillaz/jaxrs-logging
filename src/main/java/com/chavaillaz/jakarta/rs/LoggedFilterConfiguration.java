@@ -124,10 +124,11 @@ public final class LoggedFilterConfiguration {
     }
 
     /**
-     * Gets the identifier of the given request.
+     * Gets the identifier of the given request, as the configured strategy obtains it.
      *
      * @param request The context of the request received
-     * @return The identifier of the request
+     * @return The identifier of the request, not sanitized yet, and {@code null} or blank if there is none
+     *         (see {@link RequestDescriber#requestIdOf(String)})
      */
     String requestIdOf(ContainerRequestContext request) {
         return requestId.apply(request);
@@ -174,15 +175,15 @@ public final class LoggedFilterConfiguration {
     }
 
     /**
-     * Gets the identifier of the given request from the given header, see {@link RequestDescriber#requestIdOf(String)}.
+     * Gets the identifier of the given request from the given header.
      *
      * @param request The context of the request received
      * @param header  The name of the header carrying the identifier
-     * @return The identifier of the request
+     * @return The value of the header, {@code null} if the request has none
      */
     private static String requestIdFromHeader(ContainerRequestContext request, String header) {
         MultivaluedMap<String, String> headers = request.getHeaders();
-        return RequestDescriber.requestIdOf(headers == null ? null : headers.getFirst(header));
+        return headers == null ? null : headers.getFirst(header);
     }
 
     /**
@@ -262,8 +263,9 @@ public final class LoggedFilterConfiguration {
          * <pre>{@code
          * .requestId(request -> UUID.randomUUID().toString())
          * }</pre>
-         * The identifier obtained is sanitized before it reaches MDC. Defaults to reading the
-         * {@link #requestIdHeader(String) request identifier header}.
+         * The identifier obtained is sanitized and truncated like one read from the header, and a request
+         * the strategy obtains none for - returning {@code null} or a blank value, or failing - gets a
+         * random UUID. Defaults to reading the {@link #requestIdHeader(String) request identifier header}.
          *
          * @param strategy The strategy getting the identifier of the given request
          * @return This builder

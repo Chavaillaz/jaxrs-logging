@@ -47,6 +47,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -80,6 +81,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.MDC;
@@ -1046,6 +1049,56 @@ class LoggedFilterTest extends AbstractFilterTest {
         assertEquals("trace-42", requestId);
         assertEquals("trace-42", responseContext.getHeaders().getFirst("X-Trace-ID"));
         assertNull(responseContext.getHeaders().getFirst(LoggedFilter.REQUEST_ID_HEADER));
+    }
+
+    @ParameterizedTest(name = "strategy obtaining \"{0}\"")
+    @NullSource
+    @ValueSource(strings = {"", " ", "\r\n"})
+    @DisplayName("Check a request the identifier strategy obtains none for gets a random one")
+    void checkRequestIdGeneratedWhenStrategyObtainsNone(String obtained) throws Exception {
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given
+        LoggedFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
+                .requestId(request -> obtained)
+                .build());
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext);
+
+        // When
+        configuredFilter.filter(requestContext);
+        configuredFilter.filter(requestContext, responseContext);
+
+        // Then
+        String requestId = getMdcLogged(REQUEST_ID);
+        assertDoesNotThrow(() -> UUID.fromString(requestId));
+        assertEquals(requestId, responseContext.getHeaders().getFirst(LoggedFilter.REQUEST_ID_HEADER));
+    }
+
+    @Test
+    @DisplayName("Check an identifier strategy that fails costs the request its identifier alone")
+    void checkRequestIdGeneratedWhenStrategyFails() throws Exception {
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given
+        LoggedFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
+                .requestId(request -> {
+                    throw new IllegalStateException("No trace context on this request");
+                })
+                .build());
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+
+        // When
+        configuredFilter.filter(requestContext);
+        configuredFilter.filter(requestContext, getEmptyResponseContext(requestContext));
+
+        // Then
+        assertDoesNotThrow(() -> UUID.fromString(getMdcLogged(REQUEST_ID)));
+        assertEquals("POST", getMdcLogged(REQUEST_METHOD));
+        assertEquals("/service", getMdcLogged(REQUEST_URI));
+        assertEquals("Processed POST /service with status 204", listAppender.findFirstMessage("Processed")
+                .getMessage().getFormattedMessage().replaceAll(" in \\d+ms$", ""));
+        assertNotNull(listAppender.findFirstMessage("Unable to get the identifier of the request"));
     }
 
     @Test

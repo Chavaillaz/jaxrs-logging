@@ -292,12 +292,17 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * matched for it (see {@link RequestDescriber}).
      * <p>
      * Everything sourced from the request is passed through {@link #sanitize(String)} first, as all of it
-     * is client-controlled - including the identifier the configuration gets for it.
+     * is client-controlled - including the identifier the configuration gets for it, which is replaced with
+     * a random one when there is none.
      *
      * @param requestContext The context of the request received
      */
     private void putMdcFromRequest(ContainerRequestContext requestContext) {
-        describer.describe(requestContext, resourceInfo, configuration.requestIdOf(requestContext), this::putMdc);
+        // A strategy of the application failing costs the request its identifier, which is then generated,
+        // rather than every field describing it
+        String requestId = LoggedSupport.safely(log, "Unable to get the identifier of the request, a random one is used instead",
+                () -> configuration.requestIdOf(requestContext), null);
+        describer.describe(requestContext, resourceInfo, requestId, this::putMdc);
     }
 
     /**
