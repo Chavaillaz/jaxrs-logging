@@ -15,7 +15,6 @@ import static java.lang.String.valueOf;
 import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElse;
 import static org.apache.commons.lang3.StringUtils.EMPTY;
-import static org.apache.commons.lang3.StringUtils.LF;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
 import java.io.IOException;
@@ -40,7 +39,6 @@ import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
 import jakarta.ws.rs.ext.WriterInterceptor;
 import jakarta.ws.rs.ext.WriterInterceptorContext;
-import org.apache.commons.lang3.math.NumberUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -149,6 +147,11 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     private final BodyCapturer bodyCapturer;
 
     /**
+     * Writes the lines logging the requests and returns their identifier to the caller, as configured.
+     */
+    private final ExchangeLogger exchangeLogger;
+
+    /**
      * Creates a provider with the default configuration (see {@link LoggedFilterConfiguration#defaults()}).
      */
     public LoggedFilter() {
@@ -170,6 +173,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         this.describer = new RequestDescriber(configuration::isSensitive);
         this.mappingApplier = new MappingApplier(configuration::isSensitive, mdc::isField);
         this.bodyCapturer = new BodyCapturer(log, configuration::createBodyCapture);
+        this.exchangeLogger = new ExchangeLogger(log, configuration);
     }
 
     /**
@@ -402,14 +406,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param requestBody The request body to be logged
      */
     private void logRequest(LoggedRequestState state, String requestBody) {
-        if (!state.markRequestLogged(isNotBlank(requestBody))) {
-            return;
+        if (state.markRequestLogged(isNotBlank(requestBody))) {
+            exchangeLogger.received(getMdc(REQUEST_METHOD), getMdc(REQUEST_URI), requestBody);
         }
-        log.info("Received {} {}{}{}",
-                getMdc(REQUEST_METHOD),
-                getMdc(REQUEST_URI),
-                isNotBlank(requestBody) ? LF : EMPTY,
-                requestBody);
     }
 
     @Override
@@ -469,7 +468,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             }
 
             putMdc(RESPONSE_STATUS, valueOf(responseContext.getStatus()));
-            returnRequestId(responseContext);
+            exchangeLogger.returnRequestId(responseContext.getHeaders(), getMdc(REQUEST_ID));
         } finally {
             // Logs directly from filter in case no response body is present, as aroundWriteTo will not
             // be called by the container in that case (e.g. 204 No Content, HEAD requests). This must
@@ -481,26 +480,6 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             if (!responseContext.hasEntity()) {
                 logResponse(state, EMPTY);
             }
-        }
-    }
-
-    /**
-     * Returns the identifier this request was logged under to the caller, in the header the configuration
-     * names (see {@link LoggedFilterConfiguration.Builder#withoutReturnedRequestId()} for why).
-     * <p>
-     * Left alone if the response already carries the header, whatever its casing, so an application (or
-     * a gateway in front of it) deliberately setting its own is not overwritten by this one.
-     *
-     * @param responseContext The context of the response to be sent
-     */
-    private void returnRequestId(ContainerResponseContext responseContext) {
-        String header = configuration.returnedRequestIdHeader();
-        String requestId = getMdc(REQUEST_ID);
-        // HTTP header names are case-insensitive, but the response header map is only a MultivaluedMap
-        // in the JAX-RS API, so a container backing it with a case-sensitive one would otherwise send
-        // the header twice with two different values
-        if (header != null && isNotBlank(requestId) && responseContext.getHeaders().keySet().stream().noneMatch(header::equalsIgnoreCase)) {
-            responseContext.getHeaders().putSingle(header, requestId);
         }
     }
 
@@ -595,18 +574,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 putMdc(REQUEST_BODY, state.getRequestBody());
             }
 
-            // The status is read back from MDC rather than taken from the response context, so the level still
-            // matches the status actually logged when completion happens where the response context is not at hand
-            String status = getMdc(RESPONSE_STATUS);
-            log.atLevel(configuration.responseLevel(NumberUtils.toInt(status)))
-                    .log("Processed {} {} with status {} in {}ms{}{}",
-                            getMdc(REQUEST_METHOD),
-                            getMdc(REQUEST_URI),
-                            status,
-                            getMdc(DURATION),
-                            isNotBlank(responseBody) ? LF : EMPTY,
-                            responseBody);
-
+            exchangeLogger.processed(getMdc(REQUEST_METHOD), getMdc(REQUEST_URI), getMdc(RESPONSE_STATUS), getMdc(DURATION), responseBody);
         } finally {
             cleanupMdc(state);
         }
