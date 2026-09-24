@@ -840,6 +840,42 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check an entity written in several parts is captured and logged once, leaving nothing in MDC")
+    void checkEntityWrittenInPartsLoggedOnce() throws Exception {
+        // A chunked or event stream response goes through the writer interceptors once per part, long after
+        // the first part completed the request: every later part was captured for nothing, and its body put
+        // in MDC by a completion that no longer removed anything
+        setupTest(AnnotatedResource.class, "bodyAsMdcAndLog");
+
+        // Given
+        AtomicInteger captures = new AtomicInteger();
+        LoggedFilter countingFilter = new LoggedFilter() {
+
+            @Override
+            protected LoggedBodyCapture createBodyCapture(int limit) {
+                captures.incrementAndGet();
+                return super.createBodyCapture(limit);
+            }
+
+        };
+        countingFilter.resourceInfo = resourceInfo;
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        countingFilter.filter(requestContext);
+        countingFilter.filter(requestContext, getResponseContext(requestContext));
+
+        // When
+        countingFilter.aroundWriteTo(writerContext(requestContext, output -> output.write("first".getBytes(UTF_8))));
+        countingFilter.aroundWriteTo(writerContext(requestContext, output -> output.write("second".getBytes(UTF_8))));
+
+        // Then
+        assertEquals(1, captures.get());
+        assertEquals(1, listAppender.getMessages().stream()
+                .filter(event -> event.getMessage().getFormattedMessage().startsWith("Processed"))
+                .count());
+        assertTrue(MDC.getCopyOfContextMap().isEmpty(), () -> "Left in MDC: " + MDC.getCopyOfContextMap());
+    }
+
+    @Test
     @DisplayName("Check whatever was written to the response body is still logged when writing it then fails")
     void checkPartialResponseBodyLoggedOnWriteFailure() throws Exception {
         // A serialization error partway through, or a client disconnecting mid-write, must not discard

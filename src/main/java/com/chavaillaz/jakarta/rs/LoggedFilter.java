@@ -532,7 +532,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @return The configuration to capture the body with, never {@code null}
      */
     private LoggedBodyConfiguration getCaptureConfiguration(LoggedRequestState state, Direction target) {
-        if (!isLoggingEnabled()) {
+        // A request already completed has had its "Processed ..." line logged, so nothing captured from now
+        // on - the later parts of a chunked or event stream response - could ever be logged
+        if (!isLoggingEnabled() || (state != null && state.isCompleted())) {
             return LoggedBodyConfiguration.NONE;
         }
         return LoggedSupport.safely(log, CAPTURE_FAILURE, () -> getBodyConfiguration(state, target), LoggedBodyConfiguration.NONE);
@@ -940,10 +942,17 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     /**
      * Completes the request once its entity has been written, with the response body if it was captured.
+     * <p>
+     * An entity written in several parts - a chunked or event stream response - goes through the writer
+     * interceptors once per part, and only the first of them completes the request: a later one putting its
+     * body in MDC would leave it there, as there is no completion left to remove it.
      *
      * @param state The state of the request being answered
      */
     private void logResponseWithBody(LoggedRequestState state) {
+        if (state.isCompleted()) {
+            return;
+        }
         try {
             LoggedBodyConfiguration configuration = getBodyConfiguration(state, RESPONSE);
             String body = state.getResponseBody();
