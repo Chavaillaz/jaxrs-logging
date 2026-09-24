@@ -25,6 +25,10 @@ public interface LoggedBodyCapture extends AutoCloseable {
     /**
      * Gets the output stream acting as the sink of a {@code TeeInputStream}/{@code TeeOutputStream}
      * wrapping the request or response body, capturing a copy of every byte read from or written to it.
+     * <p>
+     * A sink that throws does not fail the exchange it observes: the providers report the failure, stop
+     * writing to the sink, and leave the body out of the logs rather than logging the part of it captured
+     * before the failure as if it were the whole.
      *
      * @return The output stream capturing the body
      */

@@ -85,7 +85,7 @@ public final class LoggedSupport {
      * @param message The message to report the failure with
      * @param failure The failure to report
      */
-    private static void report(Logger log, String message, Exception failure) {
+    static void report(Logger log, String message, Exception failure) {
         try {
             log.error(message, failure);
         } catch (Exception ignored) {
@@ -114,6 +114,11 @@ public final class LoggedSupport {
      * be wired in is a capture holding whatever it reserved - the temporary file above - with nobody left
      * to hand it back to, as {@link #endCapture} only ever sees one that was successfully put in place.
      * Keeping the two apart is what lets this release it.
+     * <p>
+     * The same extension point can fail later, once the capture is in place: its sink is written to as a
+     * branch of the entity stream itself, so the capture handed to the wiring, and returned, guards that
+     * sink (see {@link GuardedBodyCapture}) - a sink that fails leaves the body out of the logs, reported on
+     * the given logger, rather than failing the read or write of the entity it was only observing.
      *
      * @param log     The logger to report a failure on
      * @param message The message to report a failure with
@@ -125,6 +130,7 @@ public final class LoggedSupport {
         LoggedBodyCapture capture = null;
         try {
             capture = factory.get();
+            capture = new GuardedBodyCapture(capture, log, message);
             wiring.accept(capture);
             return capture;
         } catch (Exception e) {

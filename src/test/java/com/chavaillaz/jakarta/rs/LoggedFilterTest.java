@@ -1114,6 +1114,94 @@ class LoggedFilterTest extends AbstractFilterTest {
         assertTrue(closed.get());
     }
 
+    @Test
+    @DisplayName("Check a capture whose sink fails neither breaks reading the entity nor logs part of it")
+    void checkFailingCaptureSinkDoesNotBreakRequest() throws Exception {
+        // The sink is written to as a branch of the entity stream itself, so what it throws surfaces in the
+        // middle of the read: a capture spilling to a temporary file failing the way a full disk does
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+
+        // Given
+        LoggedFilter failingSinkFilter = failingSinkFilter();
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        AtomicReference<String> entityRead = new AtomicReference<>();
+        ReaderInterceptorContext requestInterceptorContext = readerContext(
+                requestContext, requestContext.getEntityStream(),
+                stream -> entityRead.set(new String(stream.readAllBytes(), UTF_8)));
+
+        failingSinkFilter.filter(requestContext);
+
+        // When
+        assertDoesNotThrow(() -> failingSinkFilter.aroundReadFrom(requestInterceptorContext));
+        failingSinkFilter.filter(requestContext, getEmptyResponseContext(requestContext));
+
+        // Then: the entity was read whole, and the part captured before the failure is not logged as if it
+        // were the body the application received
+        assertEquals(INPUT, entityRead.get());
+        assertEquals(List.of("Received POST /service"), getReceivedMessages());
+    }
+
+    @Test
+    @DisplayName("Check a capture whose sink fails neither breaks writing the entity nor logs part of it")
+    void checkFailingCaptureSinkDoesNotBreakResponse() throws Exception {
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+
+        // Given
+        LoggedFilter failingSinkFilter = failingSinkFilter();
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ContainerResponseContextImpl responseContext = getResponseContext(requestContext);
+        ByteArrayOutputStream written = new ByteArrayOutputStream();
+        WriterInterceptorContext responseInterceptorContext = writerContext(requestContext, output -> {
+            output.write(OUTPUT.getBytes(UTF_8));
+            written.write(OUTPUT.getBytes(UTF_8));
+        });
+
+        failingSinkFilter.filter(requestContext);
+        failingSinkFilter.filter(requestContext, responseContext);
+
+        // When
+        assertDoesNotThrow(() -> failingSinkFilter.aroundWriteTo(responseInterceptorContext));
+
+        // Then
+        assertEquals(OUTPUT, written.toString(UTF_8));
+        LogEvent event = listAppender.findFirstMessage("Processed");
+        assertNotNull(event);
+        assertFalse(event.getMessage().getFormattedMessage().contains(LF));
+    }
+
+    /**
+     * Builds a filter whose body capture fails as soon as anything is written to its sink, standing in for
+     * a capture spilling to a temporary file on a full disk.
+     *
+     * @return The filter created
+     */
+    LoggedFilter failingSinkFilter() {
+        LoggedFilter failingSinkFilter = new LoggedFilter() {
+
+            @Override
+            protected LoggedBodyCapture createBodyCapture(int limit) {
+                return new BoundedLoggedBodyCapture(limit) {
+
+                    @Override
+                    public OutputStream sink() {
+                        return new OutputStream() {
+
+                            @Override
+                            public void write(int b) throws IOException {
+                                throw new IOException("No space left on device");
+                            }
+
+                        };
+                    }
+
+                };
+            }
+
+        };
+        failingSinkFilter.resourceInfo = resourceInfo;
+        return failingSinkFilter;
+    }
+
     /**
      * Builds a filter capturing bodies with a capture standing in for one holding more than memory (a
      * temporary file, a pooled buffer, ...), recording whether it was given the chance to hand it back.
