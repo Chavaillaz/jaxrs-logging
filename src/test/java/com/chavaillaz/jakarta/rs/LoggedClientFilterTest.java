@@ -6,6 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -31,6 +32,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 import jakarta.ws.rs.client.ClientRequestContext;
 import jakarta.ws.rs.client.ClientResponseContext;
+import jakarta.ws.rs.core.FeatureContext;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
@@ -44,6 +46,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.MDC;
 import org.slf4j.event.Level;
@@ -367,6 +370,28 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         LogEvent event = listAppender.findFirstMessage("Response body");
         assertNotNull(event);
         assertTrue(event.getMessage().getFormattedMessage().contains("Received content"));
+    }
+
+    @Test
+    @DisplayName("Check registering the filter registers the interceptor capturing bodies on its behalf")
+    void checkRegistrationRegistersBodyInterceptor() throws Exception {
+        // Given
+        filter.filter(requestContext);
+        FeatureContext featureContext = mock(FeatureContext.class);
+        LoggedClientFilter bodyLoggingFilter = LoggedClientFilter.builder().logRequestBody().logResponseBody().build();
+
+        // When
+        boolean enabled = bodyLoggingFilter.configure(featureContext);
+
+        // Then: a single client.register(...) keeps covering bodies, which the interceptor hands back
+        ArgumentCaptor<Object> registered = ArgumentCaptor.forClass(Object.class);
+        verify(featureContext).register(registered.capture());
+        LoggedClientFilter.BodyInterceptor interceptor = assertInstanceOf(LoggedClientFilter.BodyInterceptor.class, registered.getValue());
+        interceptor.aroundWriteTo(writerContext(properties, "Hello, world!"));
+        interceptor.aroundReadFrom(readerContext("Received content"));
+        assertTrue(enabled);
+        assertNotNull(listAppender.findFirstMessage("Request body"));
+        assertNotNull(listAppender.findFirstMessage("Response body"));
     }
 
     @Test
