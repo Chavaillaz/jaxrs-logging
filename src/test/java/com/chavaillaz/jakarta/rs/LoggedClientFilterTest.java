@@ -454,7 +454,8 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         assertDoesNotThrow(() -> filter.filter(requestContext));
         assertDoesNotThrow(() -> filter.filter(requestContext, responseContext));
 
-        // Then: the call went out, only without the lines describing it
+        // Then: the call went out, correlated with the service it reaches, only without the lines describing it
+        assertNotNull(headers.getFirst(REQUEST_ID_HEADER));
         assertNull(listAppender.findFirstMessage("Calling"));
         assertNull(listAppender.findFirstMessage("Called"));
     }
