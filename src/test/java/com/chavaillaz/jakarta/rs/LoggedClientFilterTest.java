@@ -161,6 +161,23 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check a configuration that cannot work is rejected by the builder rather than on every call")
+    void checkInvalidConfigurationRejected() {
+        // Accepted, each of them failed later on every single call: a body limit below -1 by leaving every
+        // body out of the logs, a missing MDC key by losing the line announcing the call, a missing filter
+        // by dropping every body it was meant to filter
+        LoggedClientFilter.Builder builder = LoggedClientFilter.builder();
+
+        assertThrows(IllegalArgumentException.class, () -> builder.bodyLimit(-2));
+        assertThrows(IllegalArgumentException.class, () -> builder.requestBodyLimit(-2));
+        assertThrows(IllegalArgumentException.class, () -> builder.responseBodyLimit(Integer.MIN_VALUE));
+        assertThrows(NullPointerException.class, () -> builder.correlationIdKey(null));
+        assertThrows(NullPointerException.class, () -> builder.bodyFilters((LoggedBodyFilter) null));
+        assertThrows(NullPointerException.class, () -> builder.bodyFilters(AppendA.class, null));
+        assertDoesNotThrow(() -> builder.bodyLimit(0).bodyLimit(-1).build());
+    }
+
+    @Test
     @DisplayName("Check the response is logged exactly once with its status and duration")
     void checkResponseLogged() {
         // Given

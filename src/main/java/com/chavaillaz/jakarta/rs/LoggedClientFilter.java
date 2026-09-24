@@ -5,6 +5,7 @@ import static jakarta.ws.rs.RuntimeType.CLIENT;
 import static java.lang.System.nanoTime;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Collections.unmodifiableSet;
+import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElseGet;
 import static java.util.UUID.randomUUID;
 import static java.util.stream.Collectors.joining;
@@ -16,6 +17,7 @@ import java.net.URI;
 import java.net.URLDecoder;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -166,9 +168,10 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
          *
          * @param mdcKey The MDC key to read the correlation identifier from
          * @return This builder
+         * @throws NullPointerException if the key is {@code null}, as MDC cannot read an entry without one
          */
         public Builder correlationIdKey(String mdcKey) {
-            this.correlationIdMdcKey = mdcKey;
+            this.correlationIdMdcKey = requireNonNull(mdcKey, "The MDC key of the correlation identifier is required");
             return this;
         }
 
@@ -198,11 +201,10 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
          *
          * @param limit The maximum size of the body to be logged in bytes, or {@code -1} for no limit
          * @return This builder
+         * @throws IllegalArgumentException if the limit is lower than {@code -1}
          */
         public Builder bodyLimit(int limit) {
-            this.requestBodyLimit = limit;
-            this.responseBodyLimit = limit;
-            return this;
+            return requestBodyLimit(limit).responseBodyLimit(limit);
         }
 
         /**
@@ -210,9 +212,10 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
          *
          * @param limit The maximum size of the body to be logged in bytes, or {@code -1} for no limit
          * @return This builder
+         * @throws IllegalArgumentException if the limit is lower than {@code -1}
          */
         public Builder requestBodyLimit(int limit) {
-            this.requestBodyLimit = limit;
+            this.requestBodyLimit = checkLimit(limit);
             return this;
         }
 
@@ -221,9 +224,10 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
          *
          * @param limit The maximum size of the body to be logged in bytes, or {@code -1} for no limit
          * @return This builder
+         * @throws IllegalArgumentException if the limit is lower than {@code -1}
          */
         public Builder responseBodyLimit(int limit) {
-            this.responseBodyLimit = limit;
+            this.responseBodyLimit = checkLimit(limit);
             return this;
         }
 
@@ -234,10 +238,11 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
          *
          * @param filters The filter classes to add
          * @return This builder
+         * @throws NullPointerException if any of the filters is {@code null}
          */
         @SafeVarargs
         public final Builder bodyFilters(Class<? extends LoggedBodyFilter>... filters) {
-            this.bodyFilterClasses.addAll(Arrays.asList(filters));
+            bodyFilterClasses.addAll(nonNull(filters, "A body filter class is required"));
             return this;
         }
 
@@ -254,9 +259,10 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
          *
          * @param filters The filter instances to add
          * @return This builder
+         * @throws NullPointerException if any of the filters is {@code null}
          */
         public Builder bodyFilters(LoggedBodyFilter... filters) {
-            this.bodyFilterInstances.addAll(Arrays.asList(filters));
+            bodyFilterInstances.addAll(nonNull(filters, "A body filter is required"));
             return this;
         }
 
@@ -267,6 +273,36 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
          */
         public LoggedClientFilter build() {
             return new LoggedClientFilter(this);
+        }
+
+        /**
+         * Checks the given body size limit, which is rejected here rather than by the capture it is given to:
+         * there, it would fail every call, and leave every body out of the logs.
+         *
+         * @param limit The maximum size of the body to be logged in bytes, or {@code -1} for no limit
+         * @return The limit, valid
+         * @throws IllegalArgumentException if the limit is lower than {@code -1}
+         */
+        private static int checkLimit(int limit) {
+            if (limit < BoundedOutputStream.NO_LIMIT) {
+                throw new IllegalArgumentException("Limit must be -1 (unlimited) or a positive value, but was " + limit);
+            }
+            return limit;
+        }
+
+        /**
+         * Lists the given elements, checking none of them is {@code null} before anything is added from them.
+         *
+         * @param elements The elements to list
+         * @param message  The message of the exception thrown for a {@code null} element
+         * @param <T>      The type of the elements
+         * @return The elements, as a list
+         * @throws NullPointerException if any of the elements is {@code null}
+         */
+        private static <T> List<T> nonNull(T[] elements, String message) {
+            List<T> list = Arrays.asList(elements);
+            list.forEach(element -> requireNonNull(element, message));
+            return list;
         }
 
     }
