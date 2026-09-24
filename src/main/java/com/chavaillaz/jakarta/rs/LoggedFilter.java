@@ -39,8 +39,6 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.function.Consumer;
-import java.util.function.Supplier;
 import java.util.regex.Pattern;
 
 import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
@@ -61,8 +59,6 @@ import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
 import jakarta.ws.rs.ext.WriterInterceptor;
 import jakarta.ws.rs.ext.WriterInterceptorContext;
-import org.apache.commons.io.input.TeeInputStream;
-import org.apache.commons.io.output.TeeOutputStream;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.slf4j.Logger;
@@ -147,11 +143,6 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     private static final Pattern CONTROL_CHARACTERS = Pattern.compile("[\\p{Cntrl}\\u0085\\u2028\\u2029]");
 
     /**
-     * Message reporting a body that could not be captured.
-     */
-    private static final String CAPTURE_FAILURE = "Unable to capture the body, it is left out of the logs, the exchange itself is left unaffected";
-
-    /**
      * Names of MDC fields to be used for all logged fields, by {@link LoggedField} name.
      * <p>
      * Allows changes from children classes: mapping a field to another name renames it, and removing it
@@ -166,6 +157,12 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * The MDC entries of the requests this provider logs, named after {@link #mdcFields}.
      */
     private final RequestMdc mdc = new RequestMdc(mdcFields);
+
+    /**
+     * Captures the bodies of the requests read and the responses written, through
+     * {@link #createBodyCapture(int)}.
+     */
+    private final BodyCapturer bodyCapturer = new BodyCapturer(log, this::createBodyCapture);
 
     /**
      * Instantiates and caches {@link LoggedBodyFilter} instances by class.
@@ -420,28 +417,14 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Runs the given body capture setup, returning {@code null} rather than letting a failure out, so a
-     * body that cannot be captured is left out of the logs instead of failing the request. See
-     * {@link LoggedSupport#startCapture(Logger, String, Supplier, Consumer)} for why this one piece of
-     * logging work needs a guard of its own.
-     *
-     * @param factory The creation of the capture
-     * @param wiring  The wrapping of the entity stream with the created capture
-     * @return The capture put in place, or {@code null} if it could not be
-     */
-    protected LoggedBodyCapture startCapture(Supplier<LoggedBodyCapture> factory, Consumer<LoggedBodyCapture> wiring) {
-        return LoggedSupport.startCapture(log, CAPTURE_FAILURE, factory, wiring);
-    }
-
-    /**
      * Gets the configuration a body about to be read or written is captured with, which is
      * {@link LoggedBodyConfiguration#NONE} when nothing is to be captured at all.
      * <p>
-     * Guarded like the rest of the capture setup (see {@link #startCapture(Supplier, Consumer)}), and for
-     * the same reason: deciding whether to capture happens before {@code proceed()}, so a configuration that
-     * cannot be resolved - the container's {@link ResourceInfo} failing outside of the request scope it
-     * expects, a subclass overriding the resolution - would otherwise fail the read or the write of the
-     * entity itself, leaving the exchange broken over a body nobody was going to log.
+     * Guarded like the rest of the capture setup (see {@link BodyCapturer}), and for the same reason:
+     * deciding whether to capture happens before {@code proceed()}, so a configuration that cannot be
+     * resolved - the container's {@link ResourceInfo} failing outside of the request scope it expects, a
+     * subclass overriding the resolution - would otherwise fail the read or the write of the entity itself,
+     * leaving the exchange broken over a body nobody was going to log.
      *
      * @param state  The state of the request, or {@code null} if this provider never saw it start
      * @param target The direction of the body about to be read or written
@@ -453,19 +436,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         if (!isLoggingEnabled() || (state != null && state.isCompleted())) {
             return LoggedBodyConfiguration.NONE;
         }
-        return LoggedSupport.safely(log, CAPTURE_FAILURE, () -> getBodyConfiguration(state, target), LoggedBodyConfiguration.NONE);
-    }
-
-    /**
-     * Runs the given action reading what a capture collected and releases that capture afterwards,
-     * swallowing anything either of them throws. See
-     * {@link LoggedSupport#endCapture(Logger, String, LoggedBodyCapture, Runnable)}.
-     *
-     * @param capture The capture to read from and release
-     * @param action  The action reading what the capture collected
-     */
-    protected void endCapture(LoggedBodyCapture capture, Runnable action) {
-        LoggedSupport.endCapture(log, "Unable to log the captured body or to release the capture, the exchange itself is left unaffected", capture, action);
+        return LoggedSupport.safely(log, BodyCapturer.CAPTURE_FAILURE, () -> getBodyConfiguration(state, target), LoggedBodyConfiguration.NONE);
     }
 
     @Override
@@ -663,22 +634,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      */
     protected Object captureRequestBody(ReaderInterceptorContext context) throws IOException, WebApplicationException {
         LoggedRequestState state = LoggedRequestState.find(context);
-        LoggedBodyConfiguration configuration = getCaptureConfiguration(state, REQUEST);
-        if (!configuration.isActive()) {
-            return context.proceed();
-        }
-
-        LoggedBodyCapture capture = startCapture(
-                () -> createBodyCapture(configuration.limit()),
-                started -> context.setInputStream(new TeeInputStream(context.getInputStream(), started.sink())));
-        try {
-            return context.proceed();
-        } finally {
-            if (capture != null) {
-                endCapture(capture, () -> state.setRequestBody(
-                        capture.content(configuration.filters(), context.getMediaType())));
-            }
-        }
+        // The state is only read once a body was captured, which the configuration rules out without one
+        return bodyCapturer.read(context, getCaptureConfiguration(state, REQUEST), body -> state.setRequestBody(body));
     }
 
     /**
@@ -873,23 +830,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      */
     protected void captureResponseBody(WriterInterceptorContext context) throws IOException, WebApplicationException {
         LoggedRequestState state = LoggedRequestState.find(context);
-        LoggedBodyConfiguration configuration = getCaptureConfiguration(state, RESPONSE);
-        if (!configuration.isActive()) {
-            context.proceed();
-            return;
-        }
-
-        LoggedBodyCapture capture = startCapture(
-                () -> createBodyCapture(configuration.limit()),
-                started -> context.setOutputStream(new TeeOutputStream(context.getOutputStream(), started.sink())));
-        try {
-            context.proceed();
-        } finally {
-            if (capture != null) {
-                endCapture(capture, () -> state.setResponseBody(
-                        capture.content(configuration.filters(), context.getMediaType())));
-            }
-        }
+        // The state is only read once a body was captured, which the configuration rules out without one
+        bodyCapturer.write(context, getCaptureConfiguration(state, RESPONSE), body -> state.setResponseBody(body));
     }
 
     /**

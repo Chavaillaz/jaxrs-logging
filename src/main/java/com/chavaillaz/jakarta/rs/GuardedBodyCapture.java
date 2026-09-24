@@ -21,7 +21,7 @@ import org.slf4j.Logger;
  * on. What it collected until then is not logged at all: a body missing an arbitrary part of it reads, in the
  * logs, as the one the application actually handled, which is worse than no body.
  *
- * @see LoggedSupport#startCapture
+ * @see BodyCapturer
  */
 final class GuardedBodyCapture implements LoggedBodyCapture {
 

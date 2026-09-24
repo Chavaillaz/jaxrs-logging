@@ -1,5 +1,6 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.LOG;
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static jakarta.ws.rs.RuntimeType.CLIENT;
 import static java.lang.System.nanoTime;
@@ -20,8 +21,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 import jakarta.annotation.Priority;
 import jakarta.ws.rs.ConstrainedTo;
@@ -38,8 +37,6 @@ import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
 import jakarta.ws.rs.ext.WriterInterceptor;
 import jakarta.ws.rs.ext.WriterInterceptorContext;
-import org.apache.commons.io.input.TeeInputStream;
-import org.apache.commons.io.output.TeeOutputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -111,17 +108,25 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     protected final LoggedBodyFilterFactory bodyFilterFactory = new LoggedBodyFilterFactory();
 
     protected final String correlationIdMdcKey;
-    protected final boolean logRequestBody;
-    protected final boolean logResponseBody;
-    protected final int requestBodyLimit;
-    protected final int responseBodyLimit;
 
     /**
-     * Body filter instances, resolved once here rather than on every call: unlike {@link LoggedFilter},
-     * whose configuration depends on the resource method matched by each request, this provider's
-     * configuration is fixed at build time, so there is nothing about it left to resolve per call.
+     * Body logging configuration of the requests sent, resolved once here rather than on every call:
+     * unlike {@link LoggedFilter}, whose configuration depends on the resource method matched by each
+     * request, this provider's configuration is fixed at build time, so there is nothing about it left to
+     * resolve per call.
      */
-    protected final Set<LoggedBodyFilter> bodyFilters;
+    protected final LoggedBodyConfiguration requestBody;
+
+    /**
+     * Body logging configuration of the responses received, resolved once here, see {@link #requestBody}.
+     */
+    protected final LoggedBodyConfiguration responseBody;
+
+    /**
+     * Captures the bodies of the requests written and the responses read, through
+     * {@link #createBodyCapture(int)}.
+     */
+    private final BodyCapturer bodyCapturer = new BodyCapturer(log, this::createBodyCapture);
 
     /**
      * Creates a new client filter with the default configuration (no body logging, correlation identifier
@@ -133,15 +138,28 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
 
     protected LoggedClientFilter(Builder builder) {
         this.correlationIdMdcKey = builder.correlationIdMdcKey;
-        this.logRequestBody = builder.logRequestBody;
-        this.logResponseBody = builder.logResponseBody;
-        this.requestBodyLimit = builder.requestBodyLimit;
-        this.responseBodyLimit = builder.responseBodyLimit;
         // Classes first, then instances, keeping the declaration order within each: a filter given as a
         // class cannot depend on one given as an instance without the caller having built both anyway
         Set<LoggedBodyFilter> filters = new LinkedHashSet<>(bodyFilterFactory.getInstances(builder.bodyFilterClasses));
         filters.addAll(builder.bodyFilterInstances);
-        this.bodyFilters = unmodifiableSet(filters);
+        Set<LoggedBodyFilter> bodyFilters = unmodifiableSet(filters);
+        this.requestBody = bodyConfiguration(builder.logRequestBody, builder.requestBodyLimit, bodyFilters);
+        this.responseBody = bodyConfiguration(builder.logResponseBody, builder.responseBodyLimit, bodyFilters);
+    }
+
+    /**
+     * Creates the body logging configuration of one side of the calls made.
+     *
+     * @param logged  Whether the body is logged
+     * @param limit   The maximum size of the body to log in bytes, or {@code -1} for no limit
+     * @param filters The filters to apply to the body before logging it, in the order they apply
+     * @return The body logging configuration
+     */
+    private static LoggedBodyConfiguration bodyConfiguration(boolean logged, int limit, Set<LoggedBodyFilter> filters) {
+        // Only a separate log line is supported on this side, see the class documentation
+        return logged
+                ? new LoggedBodyConfiguration(Set.of(LOG), limit, filters)
+                : LoggedBodyConfiguration.NONE;
     }
 
     /**
@@ -435,32 +453,17 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      * @throws WebApplicationException if the entity cannot be written
      */
     protected void captureRequestBody(WriterInterceptorContext context) throws IOException, WebApplicationException {
-        if (!logRequestBody || !isLoggingEnabled()) {
-            context.proceed();
-            return;
-        }
-
-        LoggedBodyCapture capture = startCapture(
-                () -> createBodyCapture(requestBodyLimit),
-                started -> context.setOutputStream(new TeeOutputStream(context.getOutputStream(), started.sink())));
-        try {
-            context.proceed();
-        } finally {
-            // Logs whatever was captured even if writing the entity failed (e.g. connection reset before
-            // the body was fully sent), mirroring aroundReadFrom's handling of the response body below
-            if (capture != null) {
-                endCapture(capture, () -> {
-                    String body = capture.content(getBodyFilters(), context.getMediaType());
-                    if (isNotBlank(body)) {
-                        log.info("Request body {} {}{}{}",
-                                context.getProperty(REQUEST_METHOD_PROPERTY),
-                                context.getProperty(REQUEST_URI_PROPERTY),
-                                LF,
-                                body);
-                    }
-                });
+        // Logs whatever was captured even if writing the entity failed (e.g. connection reset before the
+        // body was fully sent), the way the response body is logged even if reading it failed
+        bodyCapturer.write(context, isLoggingEnabled() ? requestBody : LoggedBodyConfiguration.NONE, body -> {
+            if (isNotBlank(body)) {
+                log.info("Request body {} {}{}{}",
+                        context.getProperty(REQUEST_METHOD_PROPERTY),
+                        context.getProperty(REQUEST_URI_PROPERTY),
+                        LF,
+                        body);
             }
-        }
+        });
     }
 
     /**
@@ -524,30 +527,18 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      * @throws WebApplicationException if the entity cannot be read
      */
     protected Object captureResponseBody(ReaderInterceptorContext context) throws IOException, WebApplicationException {
-        if (!logResponseBody || !isLoggingEnabled() || Boolean.TRUE.equals(context.getProperty(RESPONSE_BODY_LOGGED_PROPERTY))) {
-            return context.proceed();
-        }
-
-        LoggedBodyCapture capture = startCapture(
-                () -> createBodyCapture(responseBodyLimit),
-                started -> context.setInputStream(new TeeInputStream(context.getInputStream(), started.sink())));
-        try {
-            return context.proceed();
-        } finally {
-            if (capture != null) {
-                endCapture(capture, () -> {
-                    String body = capture.content(getBodyFilters(), context.getMediaType());
-                    if (isNotBlank(body)) {
-                        context.setProperty(RESPONSE_BODY_LOGGED_PROPERTY, true);
-                        log.info("Response body {} {}{}{}",
-                                context.getProperty(REQUEST_METHOD_PROPERTY),
-                                context.getProperty(REQUEST_URI_PROPERTY),
-                                LF,
-                                body);
-                    }
-                });
+        boolean alreadyLogged = Boolean.TRUE.equals(context.getProperty(RESPONSE_BODY_LOGGED_PROPERTY));
+        LoggedBodyConfiguration configuration = isLoggingEnabled() && !alreadyLogged ? responseBody : LoggedBodyConfiguration.NONE;
+        return bodyCapturer.read(context, configuration, body -> {
+            if (isNotBlank(body)) {
+                context.setProperty(RESPONSE_BODY_LOGGED_PROPERTY, true);
+                log.info("Response body {} {}{}{}",
+                        context.getProperty(REQUEST_METHOD_PROPERTY),
+                        context.getProperty(REQUEST_URI_PROPERTY),
+                        LF,
+                        body);
             }
-        }
+        });
     }
 
     /**
@@ -619,32 +610,6 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     }
 
     /**
-     * Runs the given body capture setup, returning {@code null} rather than letting a failure out, so a
-     * body that cannot be captured is left out of the logs instead of failing the call. See
-     * {@link LoggedSupport#startCapture(Logger, String, Supplier, Consumer)} for why this one piece of
-     * logging work needs a guard of its own.
-     *
-     * @param factory The creation of the capture
-     * @param wiring  The wrapping of the entity stream with the created capture
-     * @return The capture put in place, or {@code null} if it could not be
-     */
-    protected LoggedBodyCapture startCapture(Supplier<LoggedBodyCapture> factory, Consumer<LoggedBodyCapture> wiring) {
-        return LoggedSupport.startCapture(log, "Unable to capture the body, it is left out of the logs, the call itself is left unaffected", factory, wiring);
-    }
-
-    /**
-     * Runs the given action reading what a capture collected and releases that capture afterwards,
-     * swallowing anything either of them throws. See
-     * {@link LoggedSupport#endCapture(Logger, String, LoggedBodyCapture, Runnable)}.
-     *
-     * @param capture The capture to read from and release
-     * @param action  The action reading what the capture collected
-     */
-    protected void endCapture(LoggedBodyCapture capture, Runnable action) {
-        LoggedSupport.endCapture(log, "Unable to log the captured body or to release the capture, the call itself is left unaffected", capture, action);
-    }
-
-    /**
      * Creates the {@link LoggedBodyCapture} used to capture a request or response body.
      * <p>
      * Same extension point as {@link LoggedFilter#createBodyCapture(int)}: override to plug in a
@@ -655,17 +620,6 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      */
     protected LoggedBodyCapture createBodyCapture(int limit) {
         return new BoundedLoggedBodyCapture(limit);
-    }
-
-    /**
-     * Gets the filter instances configured for this client filter.
-     *
-     * @return The set of filter instances to be applied, iterating in the order the classes were declared
-     * through {@link Builder#bodyFilters(Class[])}, so filters that depend on one another's output run
-     * predictably
-     */
-    protected Set<LoggedBodyFilter> getBodyFilters() {
-        return bodyFilters;
     }
 
     /**
