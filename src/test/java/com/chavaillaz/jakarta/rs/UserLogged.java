@@ -21,13 +21,6 @@ import jakarta.ws.rs.NameBinding;
 public @interface UserLogged {
 
     /**
-     * Base filter logging configuration for {@link LoggedFilter}
-     *
-     * @return The annotation configuration
-     */
-    Logged logging() default @Logged();
-
-    /**
      * Indicates if the user agent must be as MDC field when processing and logging the request.
      *
      * @return {@code true} to log the user agent, {@code false} otherwise

@@ -482,6 +482,11 @@ In this example, you can find the following customization of the original filter
 * Change **request-id** logic to get it from a header field
 * Rename MDC field of **request-id** to **request-identifier**
 
+A subclass bound to an annotation of its own, as `UserLoggedFilter` is to `@UserLogged`, logs bodies only if
+[LoggedBodyInterceptor](src/main/java/com/chavaillaz/jakarta/rs/LoggedBodyInterceptor.java) runs for the same
+resources: it is bound to `@Logged`, so declare a subclass of it bound to your annotation too. The body logging
+configuration itself is still read from `@Logged` and `@LoggedBody`, declared on the resources as usual.
+
 ## Contributing
 
 If you have a feature request or found a bug, you can:
