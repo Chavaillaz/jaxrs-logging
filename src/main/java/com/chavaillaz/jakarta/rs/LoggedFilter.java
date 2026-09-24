@@ -64,6 +64,7 @@ import jakarta.ws.rs.ext.WriterInterceptor;
 import jakarta.ws.rs.ext.WriterInterceptorContext;
 import org.apache.commons.io.input.TeeInputStream;
 import org.apache.commons.io.output.TeeOutputStream;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -122,6 +123,15 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * same identifier in MDC on both sides of the call.
      */
     public static final String REQUEST_ID_HEADER = "X-Request-ID";
+
+    /**
+     * Maximum length kept from a client-supplied {@code X-Request-ID} header before it is stored in MDC.
+     * <p>
+     * A container's overall header size limit is shared across every header of the request, not applied
+     * individually, so without a limit of its own a client can inflate every single log line written
+     * during the request by supplying an excessively long identifier.
+     */
+    protected static final int REQUEST_ID_MAX_LENGTH = 128;
 
     /**
      * Pattern matching control characters (e.g. CR, LF) that must be removed from client-controlled
@@ -416,18 +426,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Maximum length kept from a client-supplied {@code X-Request-ID} header before it is stored in MDC.
-     * <p>
-     * A container's overall header size limit is shared across every header of the request, not applied
-     * individually, so without a limit of its own a client can inflate every single log line written
-     * during the request by supplying an excessively long identifier.
-     */
-    protected static final int REQUEST_ID_MAX_LENGTH = 128;
-
-    /**
      * Gets the request identifier that will be stored in MDC for the complete request processing.
-     * Returns the header value of {@code X-Request-ID} (truncated to {@link #REQUEST_ID_MAX_LENGTH}
-     * characters) or a random UUID when not present.
+     * Returns the header value of {@code X-Request-ID} (sanitized, and truncated to
+     * {@link #REQUEST_ID_MAX_LENGTH} characters) or a random UUID when not present.
      * <p>
      * Note that the identifier is taken from the client as-is (beyond truncation and
      * {@link #sanitize(String)}): it is a correlation hint, never an authenticated value, so nothing
@@ -441,11 +442,34 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         return of(requestContext)
                 .map(ContainerRequestContext::getHeaders)
                 .map(headers -> headers.getFirst(REQUEST_ID_HEADER))
-                .filter(org.apache.commons.lang3.StringUtils::isNotBlank)
-                .map(value -> value.length() > REQUEST_ID_MAX_LENGTH ? value.substring(0, REQUEST_ID_MAX_LENGTH) : value)
+                // Sanitized before being checked, as sanitizing turns an identifier made of nothing but
+                // control characters blank, and a blank value is never put in MDC: checked first, such an
+                // identifier left the request without any identifier at all
+                .map(LoggedFilter::sanitize)
+                .filter(StringUtils::isNotBlank)
+                .map(LoggedFilter::truncateRequestId)
                 // orElseGet (not orElse) so a UUID, which is comparatively expensive to generate
                 // (backed by SecureRandom), is only computed when the header is actually absent
                 .orElseGet(() -> randomUUID().toString());
+    }
+
+    /**
+     * Truncates the given request identifier to {@link #REQUEST_ID_MAX_LENGTH} characters, leaving out
+     * whole a character the limit would otherwise cut in half: a character outside the Basic Multilingual
+     * Plane takes two {@code char}s, and keeping only the first of them leaves a string that is no longer
+     * valid text, which an appender encoding it then writes as a replacement character, or rejects.
+     *
+     * @param requestId The request identifier to truncate
+     * @return The identifier, truncated if it was longer than allowed
+     */
+    private static String truncateRequestId(String requestId) {
+        if (requestId.length() <= REQUEST_ID_MAX_LENGTH) {
+            return requestId;
+        }
+        int end = Character.isHighSurrogate(requestId.charAt(REQUEST_ID_MAX_LENGTH - 1))
+                ? REQUEST_ID_MAX_LENGTH - 1
+                : REQUEST_ID_MAX_LENGTH;
+        return requestId.substring(0, end);
     }
 
     /**

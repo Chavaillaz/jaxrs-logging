@@ -755,6 +755,45 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check a request identifier made of nothing but control characters is replaced by a generated one")
+    void checkControlCharacterRequestIdReplaced() throws Exception {
+        // Sanitizing turns such an identifier blank, and a blank value is never put in MDC: checked before
+        // being sanitized, it left the request without any identifier at all
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
+                MockHttpRequest.create("GET", "example.company.com/service")
+                        .header("X-Request-ID", "\u0007\u007f"));
+
+        // When
+        loggingFilter.filter(requestContext);
+
+        // Then
+        String requestId = getMdc(REQUEST_ID);
+        assertNotNull(requestId);
+        assertFalse(requestId.isBlank());
+    }
+
+    @Test
+    @DisplayName("Check truncating an oversized request identifier does not cut a character in half")
+    void checkOversizedRequestIdTruncatedOnCharacterBoundary() throws Exception {
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given: a character outside the Basic Multilingual Plane, two chars long, straddling the limit
+        String prefix = "a".repeat(LoggedFilter.REQUEST_ID_MAX_LENGTH - 1);
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
+                MockHttpRequest.create("GET", "example.company.com/service")
+                        .header("X-Request-ID", prefix + "😀"));
+
+        // When
+        loggingFilter.filter(requestContext);
+
+        // Then: the character is left out whole, rather than half of it staying as an invalid string
+        assertEquals(prefix, getMdc(REQUEST_ID));
+    }
+
+    @Test
     @DisplayName("Check control characters are stripped from auto-mapped parameter values to prevent log injection")
     void checkLogInjectionSanitizationOnMappedParameter() throws Exception {
         setupTest(AnnotatedResource.class, "autoMappedQueryParameters");
