@@ -39,6 +39,8 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <mockito.version>5.20.0</mockito.version>
+        <!-- Set by the JaCoCo agent in the coverage profile, empty otherwise (see maven-surefire-plugin) -->
+        <argLine/>
     </properties>
 
     <dependencyManagement>
@@ -176,8 +178,10 @@
                 <artifactId>maven-surefire-plugin</artifactId>
                 <version>3.5.4</version>
                 <configuration>
+                    <!-- Extends the argLine the JaCoCo agent sets rather than replacing it, which left the
+                         coverage profile without any execution data to report on -->
                     <argLine>
-                        -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar
+                        @{argLine} -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar
                     </argLine>
                 </configuration>
             </plugin>
