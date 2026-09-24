@@ -406,11 +406,11 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      * <p>
      * The defaults come from {@link CredentialNames}, which only knows what callers conventionally name
      * their secrets. Override to extend (or restrict) them for the services an application calls, for
-     * example to also mask the signature of an S3 presigned URL:
+     * example to also mask the key a partner API expects in its query string:
      * <pre>{@code
      * @Override
      * protected boolean isSensitiveQueryParameter(String name) {
-     *     return super.isSensitiveQueryParameter(name) || "X-Amz-Signature".equalsIgnoreCase(name);
+     *     return super.isSensitiveQueryParameter(name) || "partner-key".equalsIgnoreCase(name);
      * }
      * }</pre>
      *

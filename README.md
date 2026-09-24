@@ -234,7 +234,7 @@ practice and well known as such, and it is also what OAuth's implicit and author
 presigned URLs and plenty of internal APIs do - the application has no say in what its callers send.
 
 The value of a parameter whose name is a well-known credential name (`access_token`, `password`,
-`client_secret`, ... see [CredentialNames](src/main/java/com/chavaillaz/jakarta/rs/CredentialNames.java))
+`client_secret`, the `X-Amz-Signature` of a presigned URL, ... see [CredentialNames](src/main/java/com/chavaillaz/jakarta/rs/CredentialNames.java))
 is therefore replaced with `***`, while the name stays visible - knowing a token was supplied at all is
 the useful part for troubleshooting, and the name is not the secret:
 
@@ -263,7 +263,7 @@ Calling GET https://***@service.company.com/article?topic=news&access_token=***
 ```
 
 Override `isSensitiveQueryParameter(String)` on the client filter to mask the parameters of the services your
-application calls, such as the `X-Amz-Signature` of an S3 presigned URL.
+application calls, such as the key a partner API expects in its query string.
 
 ## Body filters
 

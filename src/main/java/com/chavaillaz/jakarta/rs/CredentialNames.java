@@ -47,7 +47,15 @@ public final class CredentialNames {
             "x-auth-token",
             "x-access-token",
             "x-csrf-token",
-            "x-xsrf-token");
+            "x-xsrf-token",
+            // The API keys and tokens of widely used platforms: AWS temporary credentials, Google APIs,
+            // Azure API Management and Functions, GitLab, HashiCorp Vault
+            "x-amz-security-token",
+            "x-goog-api-key",
+            "ocp-apim-subscription-key",
+            "x-functions-key",
+            "private-token",
+            "x-vault-token");
 
     /**
      * Query parameters whose value must never be written to the logs, for the same reason as
@@ -78,7 +86,14 @@ public final class CredentialNames {
             "apikey",
             "auth",
             "authorization",
-            "signature");
+            "signature",
+            // What grants access to whatever a presigned URL points at: the signature of an AWS, Google
+            // Cloud Storage or Azure one, and the session token of AWS temporary credentials
+            "x-amz-signature",
+            "x-amz-security-token",
+            "x-goog-signature",
+            "sig",
+            "private_token");
 
     private CredentialNames() {
         // Utility class
