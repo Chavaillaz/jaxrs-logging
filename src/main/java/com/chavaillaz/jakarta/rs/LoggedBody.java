@@ -15,6 +15,11 @@ import jakarta.ws.rs.NameBinding;
 
 /**
  * Configuration for body logging of HTTP requests or responses.
+ * <p>
+ * Only takes effect on a resource {@link Logged} activates, either as its content
+ * ({@code @Logged(@LoggedBody(...))}) or next to it on the resource method or class. Declared once on a
+ * resource that is not {@code @Logged}, it activates nothing: JAX-RS binds {@link LoggedFilter} to
+ * {@code @Logged}, which the compiler only synthesizes from several repeated {@code @LoggedBody}.
  */
 @Documented
 @NameBinding

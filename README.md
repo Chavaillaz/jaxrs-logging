@@ -94,6 +94,11 @@ By default, `@LoggedBody` applies to both the request and the response. Repeat t
 A configuration targeting a single direction wins over one targeting both, and among several as specific as
 one another, the first one declared wins.
 
+`@LoggedBody` and `@LoggedMapping` configure the logging `@Logged` activates, they do not activate it: on a
+resource that is not `@Logged` at its method or class level, they do nothing. Repeating `@LoggedBody` is the
+one exception, as the compiler wraps the repeated annotations into the `@Logged` they are repeatable in - so
+two of them on a method log its bodies, while a single one silently does not.
+
 Be careful when activating any body logging, as it may produce performance or memory issues if the body size
 is not limited: the captured body is buffered in memory, so an endpoint accepting large (or client-controlled)
 payloads should always set a `limit`. A body cut short by that limit ends with `...[truncated]`, so a partial
