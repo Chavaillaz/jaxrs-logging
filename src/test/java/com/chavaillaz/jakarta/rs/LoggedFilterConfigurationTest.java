@@ -66,6 +66,17 @@ class LoggedFilterConfigurationTest {
     }
 
     @Test
+    @DisplayName("Check a status the level function gives no level for keeps its default level")
+    void checkResponseLevelWithoutLevel() {
+        LoggedFilterConfiguration configuration = LoggedFilterConfiguration.builder()
+                .responseLevel(status -> status == 404 ? Level.INFO : null)
+                .build();
+
+        assertEquals(Level.INFO, configuration.responseLevel(404));
+        assertEquals(Level.ERROR, configuration.responseLevel(503));
+    }
+
+    @Test
     @DisplayName("Check the default sensitive parameters are the credentials callers conventionally send")
     void checkDefaultSensitiveParameters() {
         LoggedFilterConfiguration configuration = LoggedFilterConfiguration.defaults();

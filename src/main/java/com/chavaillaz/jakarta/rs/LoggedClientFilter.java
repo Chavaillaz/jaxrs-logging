@@ -492,12 +492,13 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
                     .map(Number::longValue)
                     .orElseGet(System::nanoTime);
             long duration = (nanoTime() - requestStartTime) / 1_000_000;
+            int status = responseContext.getStatus();
 
-            log.atLevel(getResponseLevel(responseContext.getStatus()))
+            log.atLevel(requireNonNullElseGet(getResponseLevel(status), () -> LoggedSupport.levelOf(status)))
                     .log("Called {} {} with status {} in {}ms",
                             requestContext.getMethod(),
                             getLoggedUri(requestContext.getUri()),
-                            responseContext.getStatus(),
+                            status,
                             duration);
         });
     }
@@ -507,7 +508,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      * {@link LoggedSupport#levelOf(int)}, which covers both sides of the call.
      *
      * @param status The status of the response received
-     * @return The level to log the call at
+     * @return The level to log the call at, {@code null} leaving the status at its default level
      */
     protected Level getResponseLevel(int status) {
         return LoggedSupport.levelOf(status);

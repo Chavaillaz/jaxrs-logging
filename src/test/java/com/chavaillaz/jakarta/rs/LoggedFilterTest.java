@@ -1142,6 +1142,27 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check a status the level function gives no level for is still logged, at its default level")
+    void checkConfiguredResponseLevelWithoutLevel() throws Exception {
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given: a function covering the statuses it cares about, and returning null for the others
+        LoggedFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
+                .responseLevel(status -> status == 404 ? Level.INFO : null)
+                .build());
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+
+        // When
+        configuredFilter.filter(requestContext);
+        configuredFilter.filter(requestContext, getEmptyResponseContext(requestContext, 503));
+
+        // Then
+        LogEvent event = listAppender.findFirstMessage("Processed");
+        assertNotNull(event, "No Processed line was logged");
+        assertEquals(Level.ERROR.name(), event.getLevel().name());
+    }
+
+    @Test
     @DisplayName("Check the value of a query parameter configured as sensitive is masked")
     void checkConfiguredSensitiveParameter() throws Exception {
         setupTest(AnnotatedResource.class, "noBodyLogging");

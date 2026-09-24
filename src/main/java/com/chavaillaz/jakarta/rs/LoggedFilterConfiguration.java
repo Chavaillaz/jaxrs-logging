@@ -2,6 +2,7 @@ package com.chavaillaz.jakarta.rs;
 
 import static java.util.Collections.unmodifiableMap;
 import static java.util.Objects.requireNonNull;
+import static java.util.Objects.requireNonNullElseGet;
 import static org.apache.commons.lang3.StringUtils.isBlank;
 
 import java.util.EnumMap;
@@ -158,10 +159,10 @@ public final class LoggedFilterConfiguration {
      * Gets the level a request answered with the given status is logged at.
      *
      * @param status The status the request was answered with, {@code 0} when unknown
-     * @return The level to log the request at
+     * @return The level to log the request at, never {@code null}
      */
     Level responseLevel(int status) {
-        return responseLevel.apply(status);
+        return requireNonNullElseGet(responseLevel.apply(status), () -> LoggedSupport.levelOf(status));
     }
 
     /**
@@ -319,7 +320,8 @@ public final class LoggedFilterConfiguration {
          * see there why it is not simply {@code INFO}.
          * <p>
          * The status is read back from MDC, so a request whose {@link LoggedField#RESPONSE_STATUS} field is
-         * left out is given {@code 0}.
+         * left out is given {@code 0}. A status the function returns {@code null} for is logged at its
+         * default level.
          *
          * @param levels The level to log a request answered with the given status at
          * @return This builder
