@@ -79,6 +79,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -1324,6 +1325,41 @@ class LoggedFilterTest extends AbstractFilterTest {
         };
         failingCaptureFilter.resourceInfo = resourceInfo;
         return failingCaptureFilter;
+    }
+
+    @ParameterizedTest(name = "removed={0}")
+    @ValueSource(booleans = {true, false})
+    @DisplayName("Check a field a subclass unmaps is left out while every other one is still logged")
+    void checkUnmappedFieldLeftOut(boolean removed) throws Exception {
+        // Unmapping a field is the obvious way to keep it out of the logs, and MDC rejected the null key it
+        // then resolved to: every field described after it was lost, or every field of every request
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given
+        LoggedFilter unmappingFilter = new LoggedFilter() {
+
+            {
+                if (removed) {
+                    mdcFields.remove(REQUEST_PARAMETERS.name());
+                } else {
+                    mdcFields.put(REQUEST_PARAMETERS.name(), null);
+                }
+            }
+
+        };
+        unmappingFilter.resourceInfo = resourceInfo;
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+
+        // When
+        unmappingFilter.filter(requestContext);
+        unmappingFilter.filter(requestContext, getEmptyResponseContext(requestContext));
+
+        // Then
+        assertNull(listAppender.findFirstMessage("Unable to log"));
+        Map<String, String> mdc = listAppender.findFirstMessage("Processed").getContextData().toMap();
+        assertFalse(mdc.containsValue(PARAMETERS));
+        assertEquals("noBodyLogging", mdc.get(getMdcField(RESOURCE_METHOD)));
+        assertTrue(MDC.getCopyOfContextMap().isEmpty());
     }
 
     @Test

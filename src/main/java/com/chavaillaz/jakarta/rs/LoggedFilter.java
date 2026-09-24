@@ -173,8 +173,13 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     private static final ThreadLocal<Set<String>> threadMdcKeys = new ThreadLocal<>();
 
     /**
-     * Names of MDC fields to be used for all logged fields.
-     * Allows changes from children classes.
+     * Names of MDC fields to be used for all logged fields, by {@link LoggedField} name.
+     * <p>
+     * Allows changes from children classes: mapping a field to another name renames it, and removing it
+     * (or mapping it to {@code null}) leaves it out of MDC altogether - along with the log lines reading it
+     * back from there, such as the status in the {@code "Processed ..."} line and the level it decides. Keys
+     * other than those of {@link LoggedField} name the entries a subclass puts itself, so they are removed
+     * at the end of every request as well.
      */
     protected final Map<String, String> mdcFields = getDefaultFields();
 
@@ -266,13 +271,27 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Puts a diagnostic context value identified by the given field into the current thread's context map.
+     * Puts a diagnostic context value identified by the given field into the current thread's context map,
+     * unless the field was unmapped from {@link #mdcFields} to leave it out.
      *
      * @param field The field for which put the given value
      * @param value The value to be associated with the given field
      */
     protected void putMdc(LoggedField field, String value) {
-        putMdc(mdcFields.get(field.name()), value);
+        String key = mdcFields.get(field.name());
+        if (key != null) {
+            putMdc(key, value);
+        }
+    }
+
+    /**
+     * Removes the fields of {@link #mdcFields} from the current thread's context map, skipping those
+     * unmapped to leave them out, which MDC would reject as a {@code null} key.
+     */
+    private void removeMdcFields() {
+        mdcFields.values().stream()
+                .filter(Objects::nonNull)
+                .forEach(MDC::remove);
     }
 
     /**
@@ -419,10 +438,12 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * Gets a diagnostic context value identified by the given field from the current thread's context map.
      *
      * @param field The field for which get the value
-     * @return The value associated with the given field
+     * @return The value associated with the given field, {@code null} for a field unmapped from
+     * {@link #mdcFields} to leave it out
      */
     protected String getMdc(LoggedField field) {
-        return MDC.get(mdcFields.get(field.name()));
+        String key = mdcFields.get(field.name());
+        return key == null ? null : MDC.get(key);
     }
 
     /**
@@ -544,7 +565,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * {@link LoggedMapping} derives from what the client sent.
      */
     protected void resetMdc() {
-        mdcFields.values().forEach(MDC::remove);
+        removeMdcFields();
         Set<String> keys = threadMdcKeys.get();
         if (keys != null) {
             keys.forEach(MDC::remove);
@@ -1066,7 +1087,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param state The state of the request done with
      */
     protected void cleanupMdc(LoggedRequestState state) {
-        mdcFields.values().forEach(MDC::remove);
+        removeMdcFields();
         state.getMdcKeys().forEach(MDC::remove);
         if (threadMdcKeys.get() == state.getMdcKeys()) {
             // The request this thread carried is done: there is nothing left for a later request to sweep
