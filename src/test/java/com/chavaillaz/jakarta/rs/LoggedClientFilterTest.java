@@ -156,6 +156,10 @@ class LoggedClientFilterTest extends AbstractFilterTest {
             "https://service.company.com/a?access%5Ftoken=x        | https://service.company.com/a?access%5Ftoken=***",
             "https://service.company.com/a?token&password=&x=token | https://service.company.com/a?token&password=***&x=token",
             "https://user@[::1]:8443/a?b=c#access_token=x          | https://***@[::1]:8443/a?b=c#access_token=x",
+            // A host name with an underscore leaves java.net.URI without any user information to report
+            "https://jane:hunter2@my_service:8080/a                 | https://***@my_service:8080/a",
+            "https://jane:hunter2@my_service/a?access_token=x      | https://***@my_service/a?access_token=***",
+            "https://my_service:8080/a?topic=news                  | https://my_service:8080/a?topic=news",
             "mailto:jane@company.com?password=x                    | mailto:jane@company.com?password=x"
     })
     @DisplayName("Check a URI is logged as given, but for the credentials it carries")

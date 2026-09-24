@@ -376,7 +376,13 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      * @return The URI as it must be logged
      */
     protected String getLoggedUri(URI uri) {
-        if (uri.isOpaque() || (uri.getRawUserInfo() == null && uri.getRawQuery() == null)) {
+        String authority = uri.getRawAuthority();
+        // The user information ends at the last '@' of the authority, a character it cannot contain itself.
+        // It is found there rather than through getRawUserInfo(), which is null for an authority that
+        // java.net.URI cannot parse as a host and a port - a host name with an underscore, as containers are
+        // commonly named - although the credentials it holds are just as real
+        int userInfoEnd = authority == null ? -1 : authority.lastIndexOf('@');
+        if (uri.isOpaque() || (userInfoEnd < 0 && uri.getRawQuery() == null)) {
             // Nothing to mask, which is the case of almost every call: returned without being rebuilt
             return uri.toString();
         }
@@ -385,12 +391,10 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         if (uri.getScheme() != null) {
             rendered.append(uri.getScheme()).append(':');
         }
-        if (uri.getRawAuthority() != null) {
-            String authority = uri.getRawAuthority();
-            String userInfo = uri.getRawUserInfo();
-            rendered.append("//").append(userInfo == null
+        if (authority != null) {
+            rendered.append("//").append(userInfoEnd < 0
                     ? authority
-                    : MaskingBodyFilter.DEFAULT_MASK + authority.substring(userInfo.length()));
+                    : MaskingBodyFilter.DEFAULT_MASK + authority.substring(userInfoEnd));
         }
         rendered.append(uri.getRawPath());
         if (uri.getRawQuery() != null) {
