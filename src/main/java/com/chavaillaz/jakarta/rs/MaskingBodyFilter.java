@@ -1,5 +1,7 @@
 package com.chavaillaz.jakarta.rs;
 
+import static java.util.Objects.requireNonNull;
+
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -42,15 +44,25 @@ public abstract class MaskingBodyFilter implements LoggedBodyFilter {
 
     /**
      * Creates a filter masking the given group of every match of the given pattern.
+     * <p>
+     * A group the pattern does not have is rejected here: accepted, it failed on the first match of every
+     * body filtered, and a filter that throws has the body dropped, so every payload the filter was declared
+     * for ended up out of the logs, one reported error at a time.
      *
      * @param pattern The pattern matching the values to mask
      * @param group   The number of the capturing group to replace within each match
      * @param mask    The replacement to write in place of the matched group
+     * @throws IllegalArgumentException if the pattern has no capturing group of the given number
      */
     protected MaskingBodyFilter(Pattern pattern, int group, String mask) {
+        int groupCount = pattern.matcher("").groupCount();
+        if (group < 0 || group > groupCount) {
+            throw new IllegalArgumentException("Group " + group + " does not exist in the pattern " + pattern
+                    + ", which has " + groupCount + " capturing group(s)");
+        }
         this.pattern = pattern;
         this.group = group;
-        this.mask = mask;
+        this.mask = requireNonNull(mask, "A mask is required");
     }
 
     @Override

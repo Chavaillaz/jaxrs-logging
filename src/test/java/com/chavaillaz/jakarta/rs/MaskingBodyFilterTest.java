@@ -188,6 +188,15 @@ class MaskingBodyFilterTest {
             assertEquals("id=***&id=***", filter(filter, "id=12&id=34"));
         }
 
+        @Test
+        @DisplayName("Check a group the pattern does not have is rejected when the filter is created")
+        void checkMissingGroupRejected() {
+            // Accepted, it failed on the first match of every body filtered, which drops the body: every
+            // payload the filter was declared for ended up out of the logs, one error at a time
+            assertThrows(IllegalArgumentException.class, () -> new RegexMaskingBodyFilter("id=(\\d+)", 2));
+            assertThrows(IllegalArgumentException.class, () -> new RegexMaskingBodyFilter("id=(\\d+)", -1));
+        }
+
     }
 
     @Nested
