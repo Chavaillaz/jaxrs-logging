@@ -161,8 +161,8 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         private String correlationIdMdcKey = LoggedField.REQUEST_ID.getDefaultField();
         private boolean logRequestBody = false;
         private boolean logResponseBody = false;
-        private int requestBodyLimit = -1;
-        private int responseBodyLimit = -1;
+        private int requestBodyLimit = LoggedBodyCapture.NO_LIMIT;
+        private int responseBodyLimit = LoggedBodyCapture.NO_LIMIT;
         private final Set<Class<? extends LoggedBodyFilter>> bodyFilterClasses = new LinkedHashSet<>();
         private final Set<LoggedBodyFilter> bodyFilterInstances = new LinkedHashSet<>();
 
@@ -290,10 +290,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
          * @throws IllegalArgumentException if the limit is lower than {@code -1}
          */
         private static int checkLimit(int limit) {
-            if (limit < BoundedOutputStream.NO_LIMIT) {
-                throw new IllegalArgumentException("Limit must be -1 (unlimited) or a positive value, but was " + limit);
-            }
-            return limit;
+            return CaptureBuffer.checkLimit(limit);
         }
 
         /**

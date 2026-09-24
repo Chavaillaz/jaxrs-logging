@@ -50,7 +50,7 @@ public @interface LoggedBody {
      *
      * @return The maximum size of the body to be logged in bytes, or {@code -1} for no limit
      */
-    int limit() default -1;
+    int limit() default LoggedBodyCapture.NO_LIMIT;
 
     /**
      * Indicates which filters must be applied before logging the request or response body.

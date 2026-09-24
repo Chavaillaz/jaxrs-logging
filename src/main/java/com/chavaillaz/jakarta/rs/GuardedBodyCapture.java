@@ -62,13 +62,18 @@ final class GuardedBodyCapture implements LoggedBodyCapture {
 
     /**
      * Sink forwarding everything to the one of the guarded capture until that one fails.
+     * <p>
+     * Written to once per chunk of the entity - once per byte for a reader reading a byte at a time - so
+     * each method forwards directly, rather than through a shared helper taking the operation as a lambda
+     * that could cost an allocation per write. Confined to the thread reading or writing the entity, as the
+     * capture itself is (see {@link CaptureBuffer}), so the flag needs no synchronization either.
      */
     private static final class GuardedSink extends OutputStream {
 
         private final OutputStream sink;
         private final Logger log;
         private final String message;
-        private volatile boolean failed;
+        private boolean failed;
 
         private GuardedSink(OutputStream sink, Logger log, String message) {
             this.sink = sink;
@@ -78,47 +83,60 @@ final class GuardedBodyCapture implements LoggedBodyCapture {
 
         @Override
         public void write(int b) {
-            forward(() -> sink.write(b));
+            if (!failed) {
+                try {
+                    sink.write(b);
+                } catch (IOException | RuntimeException e) {
+                    fail(e);
+                }
+            }
         }
 
         @Override
         public void write(byte[] b, int off, int len) {
-            forward(() -> sink.write(b, off, len));
+            if (!failed) {
+                try {
+                    sink.write(b, off, len);
+                } catch (IOException | RuntimeException e) {
+                    fail(e);
+                }
+            }
         }
 
         @Override
         public void flush() {
-            forward(sink::flush);
+            if (!failed) {
+                try {
+                    sink.flush();
+                } catch (IOException | RuntimeException e) {
+                    fail(e);
+                }
+            }
         }
 
         @Override
         public void close() {
             // Closed along with the entity stream by a TeeOutputStream: a sink failing to close may not have
             // written out what it was given, which makes its content as unreliable as a failed write does
-            forward(sink::close);
-        }
-
-        private void forward(SinkOperation operation) {
-            if (failed) {
-                return;
-            }
-            try {
-                operation.run();
-            } catch (IOException | RuntimeException e) {
-                failed = true;
-                LoggedSupport.report(log, message, e);
+            if (!failed) {
+                try {
+                    sink.close();
+                } catch (IOException | RuntimeException e) {
+                    fail(e);
+                }
             }
         }
 
-    }
-
-    /**
-     * Operation on the guarded sink.
-     */
-    @FunctionalInterface
-    private interface SinkOperation {
-
-        void run() throws IOException;
+        /**
+         * Records the sink as failed, so it receives nothing more and its content is left out of the logs,
+         * and reports the failure.
+         *
+         * @param failure The failure of the sink
+         */
+        private void fail(Exception failure) {
+            failed = true;
+            LoggedSupport.report(log, message, failure);
+        }
 
     }
 

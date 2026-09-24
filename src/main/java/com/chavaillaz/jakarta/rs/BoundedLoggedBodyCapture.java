@@ -1,10 +1,7 @@
 package com.chavaillaz.jakarta.rs;
 
-import static com.chavaillaz.jakarta.rs.BoundedOutputStream.NO_LIMIT;
-import static java.lang.Math.min;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import java.io.ByteArrayOutputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
@@ -97,31 +94,24 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
             "+yaml");
 
     /**
-     * Initial capacity of the buffer, also used as its upper bound when a limit is configured, so a
-     * small body does not pay for a buffer sized after a generous limit, and a large one does not pay
-     * for the repeated array copies of a buffer growing from scratch.
+     * Where the captured bytes are kept, and the sink the entity stream is teed to (see {@link CaptureBuffer}
+     * for why it is neither synchronized nor wrapped).
      */
-    protected static final int INITIAL_BUFFER_SIZE = 1024;
-
-    protected final ByteArrayOutputStream buffer;
-    protected final BoundedOutputStream sink;
+    private final CaptureBuffer buffer;
 
     /**
      * Creates a new bounded, in-memory body capture.
      *
-     * @param limit The maximum number of bytes to capture, or {@link BoundedOutputStream#NO_LIMIT} for no limit
+     * @param limit The maximum number of bytes to capture, or {@link LoggedBodyCapture#NO_LIMIT} for no limit
+     * @throws IllegalArgumentException if the limit is lower than {@link LoggedBodyCapture#NO_LIMIT}
      */
     public BoundedLoggedBodyCapture(int limit) {
-        // Every negative limit, not only NO_LIMIT, sizes the buffer the default way, so that validating
-        // the limit is left entirely to the sink below: sizing on a limit of -2 otherwise rejected it
-        // first, with a "Negative initial size" nobody can trace back to the annotation to fix
-        this.buffer = new ByteArrayOutputStream(limit < 0 ? INITIAL_BUFFER_SIZE : min(limit, INITIAL_BUFFER_SIZE));
-        this.sink = new BoundedOutputStream(buffer, limit);
+        this.buffer = new CaptureBuffer(limit);
     }
 
     @Override
     public OutputStream sink() {
-        return sink;
+        return buffer;
     }
 
     @Override
@@ -132,16 +122,18 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
 
     @Override
     public String content(Set<LoggedBodyFilter> filters, MediaType mediaType) {
-        byte[] bytes = buffer.toByteArray();
-        boolean truncated = sink.isTruncated();
+        // Read in place: the buffer hands out the array it filled, only its first bytes being the body
+        byte[] bytes = buffer.array();
+        int size = buffer.size();
+        boolean truncated = buffer.isTruncated();
         String body;
 
         if (isBinary(mediaType)) {
-            body = HexFormat.of().formatHex(bytes);
+            body = HexFormat.of().formatHex(bytes, 0, size);
         } else {
             Charset charset = charsetOf(mediaType);
             // A limit reached mid-character would otherwise decode to a trailing replacement character
-            int end = truncated ? completeLength(bytes, charset) : bytes.length;
+            int end = truncated ? completeLength(bytes, size, charset) : size;
             body = new String(bytes, 0, end, charset);
         }
 
@@ -189,16 +181,17 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
      * byte of an ISO-8859-1 {@code é} as the start of a longer sequence and dropping it.
      *
      * @param bytes   The bytes captured, possibly cut in the middle of a character
+     * @param size    The number of bytes captured, at the start of the array
      * @param charset The charset the bytes are encoded with
      * @return The number of leading bytes forming complete characters
      */
-    protected static int completeLength(byte[] bytes, Charset charset) {
-        ByteBuffer input = ByteBuffer.wrap(bytes);
+    protected static int completeLength(byte[] bytes, int size, Charset charset) {
+        ByteBuffer input = ByteBuffer.wrap(bytes, 0, size);
         CharsetDecoder decoder = charset.newDecoder()
                 .onMalformedInput(CodingErrorAction.REPLACE)
                 .onUnmappableCharacter(CodingErrorAction.REPLACE);
         // Only how far the decoder gets matters here, not the characters it decodes along the way
-        CharBuffer discarded = CharBuffer.allocate(INITIAL_BUFFER_SIZE);
+        CharBuffer discarded = CharBuffer.allocate(CaptureBuffer.INITIAL_CAPACITY);
         while (decoder.decode(input, discarded, false).isOverflow()) {
             discarded.clear();
         }

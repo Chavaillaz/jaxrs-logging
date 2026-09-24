@@ -515,7 +515,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         boolean closed = false;
 
         ReleasingBodyCapture() {
-            super(BoundedOutputStream.NO_LIMIT);
+            super(LoggedBodyCapture.NO_LIMIT);
         }
 
         @Override

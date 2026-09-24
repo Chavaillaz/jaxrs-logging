@@ -23,6 +23,11 @@ import jakarta.ws.rs.core.MediaType;
 public interface LoggedBodyCapture extends AutoCloseable {
 
     /**
+     * Limit meaning that a capture keeps the whole body, however large, see {@link LoggedBody#limit()}.
+     */
+    int NO_LIMIT = -1;
+
+    /**
      * Gets the output stream acting as the sink of a {@code TeeInputStream}/{@code TeeOutputStream}
      * wrapping the request or response body, capturing a copy of every byte read from or written to it.
      * <p>

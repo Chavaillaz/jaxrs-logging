@@ -109,7 +109,7 @@ class BoundedLoggedBodyCaptureTest {
 
         // Then
         assertEquals("Café", result);
-        assertFalse(((BoundedOutputStream) capture.sink()).isTruncated());
+        assertFalse(((CaptureBuffer) capture.sink()).isTruncated());
     }
 
     @Test

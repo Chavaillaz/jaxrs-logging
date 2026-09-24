@@ -15,13 +15,17 @@ import org.apache.commons.io.output.ProxyOutputStream;
  * did before decoding the captured bytes as text, so such a dangling partial character can be left out
  * rather than decoded to a replacement character (see {@link BoundedLoggedBodyCapture}, which does so for
  * whichever charset the body declares).
+ *
+ * @deprecated No longer used by this library: {@link BoundedLoggedBodyCapture} keeps what it captures in a
+ * buffer applying the limit itself, without a stream in front of it nor a lock on every write.
  */
+@Deprecated(since = "4.0", forRemoval = true)
 public class BoundedOutputStream extends ProxyOutputStream {
 
     /**
      * Value of {@link #limit} meaning that no limit is applied.
      */
-    public static final int NO_LIMIT = -1;
+    public static final int NO_LIMIT = LoggedBodyCapture.NO_LIMIT;
 
     private final int limit;
     private int writtenBytes = 0;

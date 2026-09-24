@@ -27,7 +27,7 @@ public record LoggedBodyConfiguration(Set<LogType> types, int limit, Set<LoggedB
     /**
      * Configuration logging nothing, used whenever no {@link LoggedBody} applies.
      */
-    public static final LoggedBodyConfiguration NONE = new LoggedBodyConfiguration(Set.of(), -1, Set.of());
+    public static final LoggedBodyConfiguration NONE = new LoggedBodyConfiguration(Set.of(), LoggedBodyCapture.NO_LIMIT, Set.of());
 
     /**
      * Creates a body logging configuration, rejecting one that could never capture anything.
@@ -41,9 +41,7 @@ public record LoggedBodyConfiguration(Set<LogType> types, int limit, Set<LoggedB
     public LoggedBodyConfiguration {
         requireNonNull(types, "The types of body logging are required");
         requireNonNull(filters, "The body filters are required");
-        if (limit < BoundedOutputStream.NO_LIMIT) {
-            throw new IllegalArgumentException("Limit must be -1 (unlimited) or a positive value, but was " + limit);
-        }
+        CaptureBuffer.checkLimit(limit);
     }
 
     /**
