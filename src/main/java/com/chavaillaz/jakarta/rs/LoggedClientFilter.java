@@ -102,6 +102,12 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      */
     protected static final String REQUEST_URI_PROPERTY = LoggedClientFilter.class.getName() + ".requestUri";
 
+    /**
+     * Name of the property stored in request context to record that the response body of the call has been
+     * logged, see {@link #captureResponseBody(ReaderInterceptorContext)}.
+     */
+    protected static final String RESPONSE_BODY_LOGGED_PROPERTY = LoggedClientFilter.class.getName() + ".responseBodyLogged";
+
     protected final LoggedBodyFilterFactory bodyFilterFactory = new LoggedBodyFilterFactory();
 
     protected final String correlationIdMdcKey;
@@ -509,6 +515,11 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      * {@code response.readEntity(MyType.class)}), which can happen after - or not at all after - the
      * "Called ..." line has already been logged by {@link #filter(ClientRequestContext, ClientResponseContext)}.
      * If the entity is never read, the response body is never logged, even if activated.
+     * <p>
+     * A buffered entity can be read any number of times - {@code bufferEntity()} then {@code readEntity()}
+     * once per type the calling code tries - and every read goes through the interceptors again, so a body
+     * already logged for the call (see {@link #RESPONSE_BODY_LOGGED_PROPERTY}) is neither captured nor
+     * logged again.
      *
      * @param context The context of the entity being read
      * @return The entity read
@@ -516,7 +527,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      * @throws WebApplicationException if the entity cannot be read
      */
     protected Object captureResponseBody(ReaderInterceptorContext context) throws IOException, WebApplicationException {
-        if (!logResponseBody || !isLoggingEnabled()) {
+        if (!logResponseBody || !isLoggingEnabled() || Boolean.TRUE.equals(context.getProperty(RESPONSE_BODY_LOGGED_PROPERTY))) {
             return context.proceed();
         }
 
@@ -530,6 +541,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
                 endCapture(capture, () -> {
                     String body = capture.content(getBodyFilters(), context.getMediaType());
                     if (isNotBlank(body)) {
+                        context.setProperty(RESPONSE_BODY_LOGGED_PROPERTY, true);
                         log.info("Response body {} {}{}{}",
                                 context.getProperty(REQUEST_METHOD_PROPERTY),
                                 context.getProperty(REQUEST_URI_PROPERTY),

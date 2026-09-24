@@ -370,6 +370,23 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check a response entity read twice is only logged once")
+    void checkResponseBodyLoggedOnceWhenReadTwice() throws Exception {
+        // A buffered entity can be read any number of times - bufferEntity() then readEntity() once per
+        // type the calling code tries - and every read goes through the interceptors again
+        LoggedClientFilter bodyLoggingFilter = LoggedClientFilter.builder().logResponseBody().build();
+
+        // When
+        bodyLoggingFilter.captureResponseBody(readerContext("Received content"));
+        bodyLoggingFilter.captureResponseBody(readerContext("Received content"));
+
+        // Then
+        assertEquals(1, listAppender.getMessages().stream()
+                .filter(event -> event.getMessage().getFormattedMessage().startsWith("Response body"))
+                .count());
+    }
+
+    @Test
     @DisplayName("Check a call this provider cannot describe is still made")
     void checkFailureDescribingTheCallDoesNotFailIt() {
         // Given: a context failing to describe the request it carries, standing in for whatever can go
@@ -536,17 +553,19 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     private ReaderInterceptorContext readerContext(String body) throws IOException {
         ReaderInterceptorContext context = mock(ReaderInterceptorContext.class);
         AtomicReference<InputStream> input = new AtomicReference<>(IOUtils.toInputStream(body, UTF_8));
-        doAnswer(invocation -> input.get()).when(context).getInputStream();
-        doAnswer(invocation -> {
+        lenient().doAnswer(invocation -> input.get()).when(context).getInputStream();
+        lenient().doAnswer(invocation -> {
             input.set(invocation.getArgument(0, InputStream.class));
             return null;
         }).when(context).setInputStream(any());
-        doAnswer(invocation -> {
+        lenient().doAnswer(invocation -> {
             input.get().readAllBytes();
             return "read";
         }).when(context).proceed();
         lenient().doAnswer(invocation -> properties.get(invocation.getArgument(0, String.class)))
                 .when(context).getProperty(any());
+        lenient().doAnswer(invocation -> properties.put(invocation.getArgument(0, String.class), invocation.getArgument(1, Object.class)))
+                .when(context).setProperty(any(), any());
         return context;
     }
 
