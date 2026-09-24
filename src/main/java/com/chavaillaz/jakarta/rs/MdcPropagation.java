@@ -1,5 +1,7 @@
 package com.chavaillaz.jakarta.rs;
 
+import static java.util.Objects.requireNonNull;
+
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
@@ -35,6 +37,10 @@ import org.slf4j.MDC;
  * class to copy the submitting thread's MDC context map onto the thread that actually runs it, and restore
  * that thread's own previous context map once the task completes - rather than merging into it, so a
  * pooled thread never leaks one task's MDC entries into the next one it happens to run.
+ * <p>
+ * Every method rejects a {@code null} argument with a {@link NullPointerException} right away, as the
+ * {@link ExecutorService} contract has it for a task: a {@code null} wrapped into a task that is not
+ * {@code null} itself would otherwise only fail once run, on a pool thread, far from the code at fault.
  */
 public final class MdcPropagation {
 
@@ -50,6 +56,7 @@ public final class MdcPropagation {
      * @return A task running the given one with the calling thread's MDC context map applied
      */
     public static Runnable wrap(Runnable task) {
+        requireNonNull(task, "task");
         Map<String, String> context = MDC.getCopyOfContextMap();
         return () -> {
             Map<String, String> previous = MDC.getCopyOfContextMap();
@@ -71,6 +78,7 @@ public final class MdcPropagation {
      * @return A task running the given one with the calling thread's MDC context map applied
      */
     public static <T> Callable<T> wrap(Callable<T> task) {
+        requireNonNull(task, "task");
         Map<String, String> context = MDC.getCopyOfContextMap();
         return () -> {
             Map<String, String> previous = MDC.getCopyOfContextMap();
@@ -95,6 +103,7 @@ public final class MdcPropagation {
      * @return An executor propagating MDC context to every task it runs
      */
     public static ExecutorService wrap(ExecutorService executor) {
+        requireNonNull(executor, "executor");
         return new MdcPropagatingExecutorService(executor);
     }
 
@@ -117,6 +126,7 @@ public final class MdcPropagation {
      * @return An executor propagating MDC context to every task it runs
      */
     public static ScheduledExecutorService wrap(ScheduledExecutorService executor) {
+        requireNonNull(executor, "executor");
         return new MdcPropagatingScheduledExecutorService(executor);
     }
 
@@ -142,6 +152,7 @@ public final class MdcPropagation {
      * @return An executor propagating MDC context to every task it runs
      */
     public static Executor wrap(Executor executor) {
+        requireNonNull(executor, "executor");
         return task -> executor.execute(wrap(task));
     }
 
@@ -160,6 +171,7 @@ public final class MdcPropagation {
      * @return A supplier running the given one with the calling thread's MDC context map applied
      */
     public static <T> Supplier<T> wrapSupplier(Supplier<T> task) {
+        requireNonNull(task, "task");
         Map<String, String> context = MDC.getCopyOfContextMap();
         return () -> inContext(context, task);
     }
@@ -175,6 +187,7 @@ public final class MdcPropagation {
      * @return A function running the given one with the calling thread's MDC context map applied
      */
     public static <T, R> Function<T, R> wrapFunction(Function<T, R> task) {
+        requireNonNull(task, "task");
         Map<String, String> context = MDC.getCopyOfContextMap();
         return value -> inContext(context, () -> task.apply(value));
     }
@@ -188,6 +201,7 @@ public final class MdcPropagation {
      * @return A consumer running the given one with the calling thread's MDC context map applied
      */
     public static <T> Consumer<T> wrapConsumer(Consumer<T> task) {
+        requireNonNull(task, "task");
         Map<String, String> context = MDC.getCopyOfContextMap();
         return value -> inContext(context, () -> {
             task.accept(value);
@@ -207,6 +221,7 @@ public final class MdcPropagation {
      * @return A function running the given one with the calling thread's MDC context map applied
      */
     public static <T, U, R> BiFunction<T, U, R> wrapBiFunction(BiFunction<T, U, R> task) {
+        requireNonNull(task, "task");
         Map<String, String> context = MDC.getCopyOfContextMap();
         return (first, second) -> inContext(context, () -> task.apply(first, second));
     }
@@ -221,6 +236,7 @@ public final class MdcPropagation {
      * @return A consumer running the given one with the calling thread's MDC context map applied
      */
     public static <T, U> BiConsumer<T, U> wrapBiConsumer(BiConsumer<T, U> task) {
+        requireNonNull(task, "task");
         Map<String, String> context = MDC.getCopyOfContextMap();
         return (first, second) -> inContext(context, () -> {
             task.accept(first, second);
@@ -255,6 +271,7 @@ public final class MdcPropagation {
      * @return An asynchronous response completing the request with the calling thread's MDC context map
      */
     public static AsyncResponse wrap(AsyncResponse response) {
+        requireNonNull(response, "response");
         return new MdcPropagatingAsyncResponse(response, MDC.getCopyOfContextMap());
     }
 
@@ -458,6 +475,12 @@ public final class MdcPropagation {
 
         @Override
         public void setTimeoutHandler(TimeoutHandler handler) {
+            if (handler == null) {
+                // Clearing the handler lets the container time the request out its own way again: wrapped,
+                // it became a handler failing on the very timeout it was meant to leave alone
+                delegate.setTimeoutHandler(null);
+                return;
+            }
             // Handed this wrapper rather than the response the container passes, so a handler completing
             // the request on the timer thread does so with the context too
             delegate.setTimeoutHandler(ignored -> inContext(context, () -> {

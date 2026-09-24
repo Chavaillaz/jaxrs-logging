@@ -203,6 +203,21 @@ class MdcPropagationAsyncResponseTest {
     }
 
     @Test
+    @DisplayName("Check clearing the timeout handler clears it on the response")
+    void checkTimeoutHandlerCleared() {
+        // Given: a handler set, then cleared so the container times the request out its own way again
+        RecordingAsyncResponse response = new RecordingAsyncResponse();
+        AsyncResponse propagating = MdcPropagation.wrap(response);
+        propagating.setTimeoutHandler(timedOut -> timedOut.resume("timeout"));
+
+        // When
+        propagating.setTimeoutHandler(null);
+
+        // Then: wrapped, it used to become a handler failing on the timeout it was meant to leave alone
+        assertNull(response.timeoutHandler);
+    }
+
+    @Test
     @DisplayName("Check the completing thread keeps its own context afterwards")
     void checkCompletingThreadContextRestored() {
         MDC.put("request-id", "abc-123");

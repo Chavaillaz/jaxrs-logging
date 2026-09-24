@@ -3,6 +3,7 @@ package com.chavaillaz.jakarta.rs;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -167,6 +168,25 @@ class MdcPropagationTest {
             MDC.put("request-id", "for-invoke-all");
             List<Future<String>> results = executor.invokeAll(List.of(() -> MDC.get("request-id")));
             assertEquals("for-invoke-all", results.getFirst().get(5, TimeUnit.SECONDS));
+        } finally {
+            executor.shutdown();
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    @DisplayName("Check a null task is rejected where it is submitted, as an unwrapped executor rejects it")
+    void checkNullTaskRejectedOnSubmission() throws Exception {
+        // Wrapped into a task that is not null itself, it used to be accepted, and to fail only once run,
+        // on a pool thread, far from the code that submitted it - killing that thread in the process
+        ExecutorService executor = MdcPropagation.wrap(Executors.newSingleThreadExecutor());
+        try {
+            assertThrows(NullPointerException.class, () -> executor.execute(null));
+            assertThrows(NullPointerException.class, () -> executor.submit((Runnable) null));
+            assertThrows(NullPointerException.class, () -> executor.submit((Callable<?>) null));
+            assertThrows(NullPointerException.class, () -> MdcPropagation.wrap((Runnable) null));
+            assertThrows(NullPointerException.class, () -> MdcPropagation.wrapSupplier(null));
+            assertThrows(NullPointerException.class, () -> MdcPropagation.wrap((ExecutorService) null));
         } finally {
             executor.shutdown();
             assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
