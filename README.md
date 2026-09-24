@@ -133,7 +133,6 @@ Given an endpoint on which users can create new articles, annotated with `@Logge
 public class ArticleResource {
 
     @POST
-    @Path("/create")
     public Article create(Article article) {
         // Creation of the article in the database
     }
@@ -181,15 +180,16 @@ Those mappings are defined with annotations to put on JAX-RS methods, classes an
 The example below defines three mappings and creates the following MDC entries:
 
 * `request-user-agent` from the header `User-Agent`
-* `request-topic` from the query parameter `topic`
-* `request-draft` from the path parameter `draft`
+* `request-topic` from the path parameter `topic`
+* `request-draft` from the query parameter `draft`
 
 ```java
 @POST
+@Logged
 @Path("/{topic}/article")
 @LoggedMapping(type = HEADER, mdcKey = "request-user-agent", paramNames = "User-Agent")
-@LoggedMapping(type = QUERY, mdcKey = "request-topic", paramNames = "topic")
-@LoggedMapping(type = PATH, mdcKey = "request-draft", paramNames = "draft")
+@LoggedMapping(type = PATH, mdcKey = "request-topic", paramNames = "topic")
+@LoggedMapping(type = QUERY, mdcKey = "request-draft", paramNames = "draft")
 public Article create(@PathParam("topic") String topicId, @QueryParam("draft") Boolean draft, Article article) {
     // Creation of the article
 }
