@@ -40,7 +40,7 @@ public class UserLoggedFilter extends LoggedFilter {
         super.filter(requestContext);
 
         // Add the user currently logged in, possibly by querying injected entity.
-        // Uses putMdc (rather than MDC.put directly) so cleanupMdc() removes it once the request is done.
+        // Uses putMdc (rather than MDC.put directly) so it is removed once the request is done.
         putMdc(USER_ID, "Doe");
 
         // Log specific field if activated in the new annotation

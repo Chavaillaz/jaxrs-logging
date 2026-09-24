@@ -31,7 +31,7 @@ import org.slf4j.MDC;
  * thread handling a request are not visible to a task submitted to an {@link ExecutorService}, a manually
  * started {@link Thread}, or any other thread hand-off - including a {@code @Suspended AsyncResponse} or a
  * reactive resource method resuming on a different worker thread, as already documented on
- * {@link LoggedRequestState#getMdcCloseables()}. Wrap a task (or a whole {@link ExecutorService}) with this
+ * {@link LoggedRequestState#getMdcKeys()}. Wrap a task (or a whole {@link ExecutorService}) with this
  * class to copy the submitting thread's MDC context map onto the thread that actually runs it, and restore
  * that thread's own previous context map once the task completes - rather than merging into it, so a
  * pooled thread never leaks one task's MDC entries into the next one it happens to run.

@@ -1,11 +1,10 @@
 package com.chavaillaz.jakarta.rs;
 
 import static java.lang.System.nanoTime;
-import static java.util.Collections.synchronizedList;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.chavaillaz.jakarta.rs.LoggedResolver.BodyConfiguration;
@@ -24,12 +23,17 @@ import org.slf4j.MDC;
  * them a type, a name, and somewhere to state the invariants they share; it also lets the provider read
  * as the sequence of decisions it makes rather than as bookkeeping.
  * <p>
+ * Every callback reaches it through the context it is handed - a filter's request context or an
+ * interceptor's context, which share the request's property map - rather than through an injected
+ * {@code @Context ContainerRequestContext}: the JAX-RS contract does not list that type among the ones
+ * a provider can have injected, and RESTEasy indeed refuses it, failing every single request.
+ * <p>
  * The request rather than the thread is deliberate throughout: a request can be started on one thread
  * and completed on another (a {@code @Suspended} response resumed from a worker, a reactive resource
- * method), so both flags are atomic and the mutable fields volatile. The state is created on the thread
+ * method), so the flags are atomic and the mutable fields volatile. The state is created on the thread
  * handling the start of the request, before any hand-off can have happened.
  *
- * @see LoggedFilter#getState()
+ * @see #of(ContainerRequestContext, LoggedFilter)
  */
 public class LoggedRequestState {
 
@@ -57,21 +61,23 @@ public class LoggedRequestState {
     private final long startTime;
 
     /**
-     * Every {@link MDC.MDCCloseable} obtained through {@link LoggedFilter#putMdc(String, String)} for
-     * this request, so {@link LoggedFilter#cleanupMdc()} closes exactly what was added.
+     * Key of every {@link MDC} entry put for this request through {@link LoggedFilter#putMdc(String, String)},
+     * so {@link LoggedFilter#cleanupMdc(LoggedRequestState)} removes exactly what was added.
      * <p>
-     * Using {@link MDC#putCloseable(String, String)} rather than hand-rolled key tracking removes an
-     * entire class of bugs where an entry is put without being recorded for cleanup (or recorded under
-     * the wrong key): the only way to obtain a value to put in this list is the very call that already
-     * knows how to remove it, so there is nothing left to keep in sync by convention.
+     * {@code putMdc} takes no request to record the key against, so that a subclass can call it from
+     * anywhere it describes a request: the provider binds this very set to the thread whose MDC holds the
+     * request's entries (see {@link LoggedFilter#putMdc(String, String)}), and the key lands here. It is
+     * a set of strings rather than anything of this library's own for that reason: a value bound to a
+     * pooled thread outlives the request, and possibly the application, so it must not hold on to a class
+     * the application's class loader would then never be able to unload.
      * <p>
      * This does not by itself solve MDC being thread-local. A request completed on a different thread
-     * than the one that put the entries has them closed against the completing thread's MDC, not against
-     * the thread that actually set them, which is why {@link LoggedFilter#resetMdc()} sweeps stale
-     * entries at the start of every request as well. Synchronized for the same reason: entries can be
-     * added and closed from different threads.
+     * than the one that put the entries has them removed from the completing thread's MDC, not from the
+     * thread that actually set them, which is why {@link LoggedFilter#resetMdc()} sweeps stale entries at
+     * the start of every request as well. Concurrent for the same reason: keys can be recorded and read
+     * from different threads.
      */
-    private final List<MDC.MDCCloseable> mdcCloseables = synchronizedList(new ArrayList<>());
+    private final Set<String> mdcKeys = ConcurrentHashMap.newKeySet();
 
     /**
      * Whether the {@code "Received ..."} line has already been logged for this request.
@@ -100,8 +106,8 @@ public class LoggedRequestState {
     private final AtomicBoolean requestBodyLogged = new AtomicBoolean();
 
     /**
-     * Whether the request has already been completed, guarding {@link LoggedFilter#logResponse(String)}
-     * against running more than once.
+     * Whether the request has already been completed, guarding
+     * {@link LoggedFilter#logResponse(LoggedRequestState, String)} against running more than once.
      * <p>
      * Depending on whether the response has an entity, the end of a request/response cycle can be reached
      * from two different callbacks: the response filter (no entity) or the writer interceptor (entity
@@ -114,7 +120,7 @@ public class LoggedRequestState {
 
     /**
      * Body logging configuration resolved for this request, kept so the several callbacks asking for it
-     * share one resolution. See {@link LoggedFilter#getBodyConfiguration(LoggedBody.Direction)}.
+     * share one resolution. See {@link LoggedFilter#getBodyConfiguration(LoggedRequestState, LoggedBody.Direction)}.
      */
     private volatile BodyConfiguration bodyConfiguration;
 
@@ -213,12 +219,12 @@ public class LoggedRequestState {
     }
 
     /**
-     * Gets the MDC closeables obtained so far for this request, see {@link #mdcCloseables}.
+     * Gets the keys of the MDC entries put so far for this request, see {@link #mdcKeys}.
      *
-     * @return The mutable, synchronized list of closeables to be closed once the request is done
+     * @return The mutable, concurrent set of keys to be removed from MDC once the request is done
      */
-    public List<MDC.MDCCloseable> getMdcCloseables() {
-        return mdcCloseables;
+    public Set<String> getMdcKeys() {
+        return mdcKeys;
     }
 
     /**
@@ -253,6 +259,15 @@ public class LoggedRequestState {
      */
     public boolean markCompleted() {
         return completed.compareAndSet(false, true);
+    }
+
+    /**
+     * Indicates whether this request has been completed, see {@link #completed}.
+     *
+     * @return {@code true} if the request has been completed, {@code false} otherwise
+     */
+    public boolean isCompleted() {
+        return completed.get();
     }
 
     /**
