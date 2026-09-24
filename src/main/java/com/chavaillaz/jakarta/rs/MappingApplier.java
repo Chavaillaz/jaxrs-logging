@@ -1,6 +1,6 @@
 package com.chavaillaz.jakarta.rs;
 
-import static com.chavaillaz.jakarta.rs.LoggedFilter.sanitize;
+import static com.chavaillaz.jakarta.rs.RequestDescriber.sanitize;
 import static java.util.Comparator.comparing;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 

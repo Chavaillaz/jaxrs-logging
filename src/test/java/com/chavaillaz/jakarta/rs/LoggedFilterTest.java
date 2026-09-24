@@ -739,7 +739,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given
-        String oversized = "a".repeat(LoggedFilter.REQUEST_ID_MAX_LENGTH + 50);
+        String oversized = "a".repeat(RequestDescriber.REQUEST_ID_MAX_LENGTH + 50);
         PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
                 MockHttpRequest.create("GET", "example.company.com/service")
                         .header("X-Request-ID", oversized));
@@ -750,8 +750,8 @@ class LoggedFilterTest extends AbstractFilterTest {
         // Then
         String requestId = getMdc(REQUEST_ID);
         assertNotNull(requestId);
-        assertEquals(LoggedFilter.REQUEST_ID_MAX_LENGTH, requestId.length());
-        assertEquals(oversized.substring(0, LoggedFilter.REQUEST_ID_MAX_LENGTH), requestId);
+        assertEquals(RequestDescriber.REQUEST_ID_MAX_LENGTH, requestId.length());
+        assertEquals(oversized.substring(0, RequestDescriber.REQUEST_ID_MAX_LENGTH), requestId);
     }
 
     @Test
@@ -781,7 +781,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given: a character outside the Basic Multilingual Plane, two chars long, straddling the limit
-        String prefix = "a".repeat(LoggedFilter.REQUEST_ID_MAX_LENGTH - 1);
+        String prefix = "a".repeat(RequestDescriber.REQUEST_ID_MAX_LENGTH - 1);
         PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
                 MockHttpRequest.create("GET", "example.company.com/service")
                         .header("X-Request-ID", prefix + "😀"));

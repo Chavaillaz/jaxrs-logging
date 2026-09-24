@@ -7,32 +7,20 @@ import static com.chavaillaz.jakarta.rs.LoggedField.DURATION;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_METHOD;
-import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_PARAMETERS;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_URI;
-import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_CLASS;
-import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
 import static com.chavaillaz.jakarta.rs.LoggedField.getDefaultFields;
-import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
 import static jakarta.ws.rs.RuntimeType.SERVER;
-import static java.lang.String.join;
 import static java.lang.String.valueOf;
-import static java.util.Map.Entry.comparingByKey;
 import static java.util.Objects.requireNonNullElse;
-import static java.util.Optional.of;
-import static java.util.UUID.randomUUID;
-import static java.util.stream.Collectors.joining;
 import static org.apache.commons.lang3.StringUtils.EMPTY;
 import static org.apache.commons.lang3.StringUtils.LF;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
 import java.io.IOException;
-import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.regex.Pattern;
 
 import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
 import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
@@ -47,12 +35,12 @@ import jakarta.ws.rs.container.ContainerResponseContext;
 import jakarta.ws.rs.container.ContainerResponseFilter;
 import jakarta.ws.rs.container.ResourceInfo;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.ext.Provider;
 import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
 import jakarta.ws.rs.ext.WriterInterceptor;
 import jakarta.ws.rs.ext.WriterInterceptorContext;
-import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -117,25 +105,6 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     public static final String REQUEST_ID_HEADER = "X-Request-ID";
 
     /**
-     * Maximum length kept from a client-supplied {@code X-Request-ID} header before it is stored in MDC.
-     * <p>
-     * A container's overall header size limit is shared across every header of the request, not applied
-     * individually, so without a limit of its own a client can inflate every single log line written
-     * during the request by supplying an excessively long identifier.
-     */
-    protected static final int REQUEST_ID_MAX_LENGTH = 128;
-
-    /**
-     * Pattern matching control characters (e.g. CR, LF) that must be removed from client-controlled
-     * input (headers, query or path parameters) before it is stored in MDC, to prevent an attacker
-     * from forging fake log entries or corrupting the log line (log injection).
-     * <p>
-     * Includes the Unicode line separators a plain {@code \p{Cntrl}} (ASCII-only) misses, as several
-     * log viewers and JavaScript-based log pipelines treat {@code U+2028}/{@code U+2029} as line breaks.
-     */
-    private static final Pattern CONTROL_CHARACTERS = Pattern.compile("[\\p{Cntrl}\\u0085\\u2028\\u2029]");
-
-    /**
      * Names of MDC fields to be used for all logged fields, by {@link LoggedField} name.
      * <p>
      * Allows changes from children classes: mapping a field to another name renames it, and removing it
@@ -157,6 +126,12 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * the fields above.
      */
     private final MappingApplier mappingApplier = new MappingApplier(this::isSensitive, mdc::isField);
+
+    /**
+     * Describes the requests received, masking the query parameters {@link #isSensitive(MappingType, String)}
+     * reports.
+     */
+    private final RequestDescriber describer = new RequestDescriber(this::isSensitive);
 
     /**
      * Captures the bodies of the requests read and the responses written, through
@@ -220,16 +195,17 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @return The sanitized value, or {@code null} if the given value was {@code null}
      */
     protected static String sanitize(String value) {
-        return value == null ? null : CONTROL_CHARACTERS.matcher(value).replaceAll(" ");
+        return RequestDescriber.sanitize(value);
     }
 
     /**
      * Indicates whether the value of the given parameter must be kept out of the logs.
      * <p>
      * Two things honour this: an automatic {@link LoggedMapping}, which skips the parameter entirely
-     * rather than copying it into MDC, and {@link #getQueryParameters(ContainerRequestContext)}, which
-     * masks the value while keeping the parameter name. An explicit mapping naming a parameter is a
-     * deliberate decision by the developer and is left alone by both.
+     * rather than copying it into MDC, and the query parameters logged as
+     * {@link LoggedField#REQUEST_PARAMETERS}, which mask the value while keeping the parameter name. An
+     * explicit mapping naming a parameter is a deliberate decision by the developer and is left alone by
+     * both.
      * <p>
      * The defaults come from {@link CredentialNames}, which only knows what callers conventionally name
      * their secrets. Override to extend (or restrict) them for an application that knows its own, for
@@ -269,8 +245,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     /**
      * Gets the request identifier that will be stored in MDC for the complete request processing.
-     * Returns the header value of {@code X-Request-ID} (sanitized, and truncated to
-     * {@link #REQUEST_ID_MAX_LENGTH} characters) or a random UUID when not present.
+     * Returns the header value of {@value #REQUEST_ID_HEADER} (sanitized, and truncated to 128 characters)
+     * or a random UUID when not present.
      * <p>
      * Note that the identifier is taken from the client as-is (beyond truncation and
      * {@link #sanitize(String)}): it is a correlation hint, never an authenticated value, so nothing
@@ -281,37 +257,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @return The request identifier
      */
     protected String getRequestId(ContainerRequestContext requestContext) {
-        return of(requestContext)
-                .map(ContainerRequestContext::getHeaders)
-                .map(headers -> headers.getFirst(REQUEST_ID_HEADER))
-                // Sanitized before being checked, as sanitizing turns an identifier made of nothing but
-                // control characters blank, and a blank value is never put in MDC: checked first, such an
-                // identifier left the request without any identifier at all
-                .map(LoggedFilter::sanitize)
-                .filter(StringUtils::isNotBlank)
-                .map(LoggedFilter::truncateRequestId)
-                // orElseGet (not orElse) so a UUID, which is comparatively expensive to generate
-                // (backed by SecureRandom), is only computed when the header is actually absent
-                .orElseGet(() -> randomUUID().toString());
-    }
-
-    /**
-     * Truncates the given request identifier to {@link #REQUEST_ID_MAX_LENGTH} characters, leaving out
-     * whole a character the limit would otherwise cut in half: a character outside the Basic Multilingual
-     * Plane takes two {@code char}s, and keeping only the first of them leaves a string that is no longer
-     * valid text, which an appender encoding it then writes as a replacement character, or rejects.
-     *
-     * @param requestId The request identifier to truncate
-     * @return The identifier, truncated if it was longer than allowed
-     */
-    private static String truncateRequestId(String requestId) {
-        if (requestId.length() <= REQUEST_ID_MAX_LENGTH) {
-            return requestId;
-        }
-        int end = Character.isHighSurrogate(requestId.charAt(REQUEST_ID_MAX_LENGTH - 1))
-                ? REQUEST_ID_MAX_LENGTH - 1
-                : REQUEST_ID_MAX_LENGTH;
-        return requestId.substring(0, end);
+        MultivaluedMap<String, String> headers = requestContext.getHeaders();
+        return RequestDescriber.requestIdOf(headers == null ? null : headers.getFirst(REQUEST_ID_HEADER));
     }
 
     /**
@@ -374,24 +321,15 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     /**
      * Puts the MDC entries this provider always creates, describing the request itself and the resource
-     * matched for it.
+     * matched for it (see {@link RequestDescriber}).
      * <p>
      * Everything sourced from the request is passed through {@link #sanitize(String)} first, as all of it
-     * is client-controlled.
+     * is client-controlled - including the identifier {@link #getRequestId(ContainerRequestContext)} gets.
      *
      * @param requestContext The context of the request received
      */
     protected void putMdcFromRequest(ContainerRequestContext requestContext) {
-        putMdc(REQUEST_ID, sanitize(getRequestId(requestContext)));
-        putMdc(REQUEST_URI, sanitize(requestContext.getUriInfo().getPath()));
-        putMdc(REQUEST_PARAMETERS, sanitize(getQueryParameters(requestContext)));
-        putMdc(REQUEST_METHOD, sanitize(requestContext.getMethod()));
-        Optional.ofNullable(resourceInfo.getResourceClass())
-                .map(Class::getSimpleName)
-                .ifPresent(value -> putMdc(RESOURCE_CLASS, value));
-        Optional.ofNullable(resourceInfo.getResourceMethod())
-                .map(Method::getName)
-                .ifPresent(value -> putMdc(RESOURCE_METHOD, value));
+        describer.describe(requestContext, resourceInfo, getRequestId(requestContext), this::putMdc);
     }
 
     /**
@@ -417,32 +355,6 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             case QUERY -> requestContext.getUriInfo().getQueryParameters();
             case HEADER -> requestContext.getHeaders();
         };
-    }
-
-    /**
-     * Renders the query parameters of the given request as a single, deterministically ordered string,
-     * masking the value of those {@link #isSensitive(MappingType, String)} reports as credential-carrying.
-     * <p>
-     * The parameter name is kept even when its value is masked, as the name is what is useful for
-     * troubleshooting (knowing an {@code access_token} was supplied at all) and is not itself the secret.
-     *
-     * @param requestContext The context of the request received
-     * @return The rendered query parameters, empty if the request has none
-     */
-    protected String getQueryParameters(ContainerRequestContext requestContext) {
-        Map<String, List<String>> parameters = requestContext.getUriInfo().getQueryParameters();
-        if (parameters.isEmpty()) {
-            // Short-circuits the sorted stream below for the (very common) case of a request without
-            // any query parameter, this method being on the hot path of every single request
-            return EMPTY;
-        }
-        return parameters.entrySet()
-                .stream()
-                .sorted(comparingByKey())
-                .map(entry -> entry.getKey() + "=" + (isSensitive(QUERY, entry.getKey())
-                        ? MaskingBodyFilter.DEFAULT_MASK
-                        : join(",", entry.getValue())))
-                .collect(joining("&"));
     }
 
     /**

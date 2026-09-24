@@ -1,0 +1,165 @@
+package com.chavaillaz.jakarta.rs;
+
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_METHOD;
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_PARAMETERS;
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_URI;
+import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_CLASS;
+import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
+import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
+import static java.lang.String.join;
+import static java.util.Map.Entry.comparingByKey;
+import static java.util.UUID.randomUUID;
+import static java.util.stream.Collectors.joining;
+import static org.apache.commons.lang3.StringUtils.EMPTY;
+import static org.apache.commons.lang3.StringUtils.isNotBlank;
+
+import java.lang.reflect.Method;
+import java.util.List;
+import java.util.Map;
+import java.util.function.BiConsumer;
+import java.util.function.BiPredicate;
+import java.util.regex.Pattern;
+
+import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
+import jakarta.ws.rs.container.ContainerRequestContext;
+import jakarta.ws.rs.container.ResourceInfo;
+import jakarta.ws.rs.core.UriInfo;
+
+/**
+ * Describes a request received and the resource matched for it, as the fields of {@link LoggedField}
+ * {@link LoggedFilter} puts in MDC once a request starts.
+ * <p>
+ * All of it but the resource comes from the client, and is treated as such: whatever reaches the logs is
+ * sanitized first (see {@link #sanitize(String)}), the identifier a client supplies is bounded (see
+ * {@link #requestIdOf(String)}), and the value of a query parameter carrying a credential is masked.
+ */
+final class RequestDescriber {
+
+    /**
+     * Maximum length kept from a client-supplied {@value LoggedFilter#REQUEST_ID_HEADER} header before it
+     * is stored in MDC.
+     * <p>
+     * A container's overall header size limit is shared across every header of the request, not applied
+     * individually, so without a limit of its own a client can inflate every single log line written
+     * during the request by supplying an excessively long identifier.
+     */
+    static final int REQUEST_ID_MAX_LENGTH = 128;
+
+    /**
+     * Pattern matching control characters (e.g. CR, LF) that must be removed from client-controlled
+     * input (headers, query or path parameters) before it is stored in MDC, to prevent an attacker
+     * from forging fake log entries or corrupting the log line (log injection).
+     * <p>
+     * Includes the Unicode line separators a plain {@code \p{Cntrl}} (ASCII-only) misses, as several
+     * log viewers and JavaScript-based log pipelines treat {@code U+2028}/{@code U+2029} as line breaks.
+     */
+    private static final Pattern CONTROL_CHARACTERS = Pattern.compile("[\\p{Cntrl}\\u0085\\u2028\\u2029]");
+
+    private final BiPredicate<MappingType, String> sensitive;
+
+    /**
+     * Creates a describer masking the parameters the given predicate reports.
+     *
+     * @param sensitive Whether the value of the parameter of the given type and name must be kept out of the logs
+     */
+    RequestDescriber(BiPredicate<MappingType, String> sensitive) {
+        this.sensitive = sensitive;
+    }
+
+    /**
+     * Removes control characters (e.g. CR, LF) from the given value, see {@link LoggedFilter#sanitize(String)}.
+     *
+     * @param value The value to sanitize
+     * @return The sanitized value, or {@code null} if the given value was {@code null}
+     */
+    static String sanitize(String value) {
+        return value == null ? null : CONTROL_CHARACTERS.matcher(value).replaceAll(" ");
+    }
+
+    /**
+     * Gets the identifier of a request from the value of its {@value LoggedFilter#REQUEST_ID_HEADER} header,
+     * sanitized and truncated to {@link #REQUEST_ID_MAX_LENGTH} characters, or a random UUID when the header
+     * is absent or blank.
+     *
+     * @param header The value of the header, {@code null} if the request has none
+     * @return The request identifier
+     */
+    static String requestIdOf(String header) {
+        // Sanitized before being checked, as sanitizing turns an identifier made of nothing but control
+        // characters blank, and a blank value is never put in MDC: checked first, such an identifier left
+        // the request without any identifier at all
+        String requestId = sanitize(header);
+        return isNotBlank(requestId) ? truncate(requestId) : randomUUID().toString();
+    }
+
+    /**
+     * Truncates the given request identifier to {@link #REQUEST_ID_MAX_LENGTH} characters, leaving out
+     * whole a character the limit would otherwise cut in half: a character outside the Basic Multilingual
+     * Plane takes two {@code char}s, and keeping only the first of them leaves a string that is no longer
+     * valid text, which an appender encoding it then writes as a replacement character, or rejects.
+     *
+     * @param requestId The request identifier to truncate
+     * @return The identifier, truncated if it was longer than allowed
+     */
+    private static String truncate(String requestId) {
+        if (requestId.length() <= REQUEST_ID_MAX_LENGTH) {
+            return requestId;
+        }
+        int end = Character.isHighSurrogate(requestId.charAt(REQUEST_ID_MAX_LENGTH - 1))
+                ? REQUEST_ID_MAX_LENGTH - 1
+                : REQUEST_ID_MAX_LENGTH;
+        return requestId.substring(0, end);
+    }
+
+    /**
+     * Describes the given request and the resource matched for it, handing each field describing them over
+     * to the given output.
+     *
+     * @param request   The context of the request received
+     * @param resource  The resource matched for the request
+     * @param requestId The identifier of the request, sanitized here as it may still come from the client
+     * @param output    What to do with each field, given its value
+     */
+    void describe(ContainerRequestContext request, ResourceInfo resource, String requestId, BiConsumer<LoggedField, String> output) {
+        UriInfo uriInfo = request.getUriInfo();
+        output.accept(REQUEST_ID, sanitize(requestId));
+        output.accept(REQUEST_URI, sanitize(uriInfo.getPath()));
+        output.accept(REQUEST_PARAMETERS, sanitize(describeQuery(uriInfo.getQueryParameters())));
+        output.accept(REQUEST_METHOD, sanitize(request.getMethod()));
+        Class<?> resourceClass = resource.getResourceClass();
+        if (resourceClass != null) {
+            output.accept(RESOURCE_CLASS, resourceClass.getSimpleName());
+        }
+        Method resourceMethod = resource.getResourceMethod();
+        if (resourceMethod != null) {
+            output.accept(RESOURCE_METHOD, resourceMethod.getName());
+        }
+    }
+
+    /**
+     * Renders the given query parameters as a single, deterministically ordered string, masking the value
+     * of those carrying a credential.
+     * <p>
+     * The parameter name is kept even when its value is masked, as the name is what is useful for
+     * troubleshooting (knowing an {@code access_token} was supplied at all) and is not itself the secret.
+     *
+     * @param parameters The query parameters of the request, by name
+     * @return The rendered query parameters, empty if the request has none
+     */
+    String describeQuery(Map<String, List<String>> parameters) {
+        if (parameters.isEmpty()) {
+            // Short-circuits the sorted stream below for the (very common) case of a request without
+            // any query parameter, this method being on the path of every single request
+            return EMPTY;
+        }
+        return parameters.entrySet()
+                .stream()
+                .sorted(comparingByKey())
+                .map(entry -> entry.getKey() + "=" + (sensitive.test(QUERY, entry.getKey())
+                        ? MaskingBodyFilter.DEFAULT_MASK
+                        : join(",", entry.getValue())))
+                .collect(joining("&"));
+    }
+
+}
