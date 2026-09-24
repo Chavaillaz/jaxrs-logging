@@ -331,10 +331,11 @@ rather than falling back to the captured text is deliberate - a filter that thre
 finished redacting, so what it was working on is exactly what must not be written. The same goes for a
 filter class that cannot be instantiated (a constructor or class that is not `public`, an inner class that
 is not `static`, ...): the failure is reported once, and every body it was declared for is dropped rather
-than logged unredacted. More generally, nothing
-this library does while logging is allowed to fail a request: capture, filtering and log writing all run
-inside a `finally` block, where a thrown exception would otherwise replace the exception the exchange
-actually failed with (or turn a good response into a 500).
+than logged unredacted.
+
+More generally, nothing this library does while logging is allowed to fail a request: capture, filtering and
+log writing all run inside a `finally` block, where a thrown exception would otherwise replace the exception
+the exchange actually failed with (or turn a good response into a 500).
 
 ## Annotation resolution
 
@@ -398,10 +399,12 @@ It logs `Calling [method] [uri]` before sending the request and `Called [method]
 in [duration]ms` once the response is received, the latter at a level derived from the status the same way
 as on the server side (`getResponseLevel(int)`). The roles are reversed there: a 5xx is the downstream
 service failing, which is this application's problem to react to, and a 4xx means this application sent
-something that service rejected - a bug on this side rather than somebody else's typo. If body logging is activated, the body is logged as a further,
-separate line rather than merged into those two: the response body is only available if/when the calling code
-actually reads the response entity, which may happen after (or not at all after) the `Called ...` line, so
-there is no single point to merge them into, unlike the server-side filter.
+something that service rejected - a bug on this side rather than somebody else's typo.
+
+If body logging is activated, the body is logged as a further, separate line rather than merged into those
+two: the response body is only available if/when the calling code actually reads the response entity, which
+may happen after (or not at all after) the `Called ...` line, so there is no single point to merge them into,
+unlike the server-side filter.
 
 For the same reason, only logging the body as a new log line is supported, not adding it to MDC: on the server
 side, `@LoggedBody(MDC)` works because `LoggedFilter` has a single, well-defined point (`logResponse`) at which
