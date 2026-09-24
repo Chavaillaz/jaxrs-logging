@@ -3,13 +3,17 @@ package com.chavaillaz.jakarta.rs;
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static jakarta.ws.rs.RuntimeType.CLIENT;
 import static java.lang.System.nanoTime;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Collections.unmodifiableSet;
 import static java.util.Objects.requireNonNullElseGet;
 import static java.util.UUID.randomUUID;
+import static java.util.stream.Collectors.joining;
 import static org.apache.commons.lang3.StringUtils.LF;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.URLDecoder;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.Optional;
@@ -50,7 +54,7 @@ import org.slf4j.event.Level;
  * {@link #builder()}, and applies uniformly to every call made through the {@code Client}/{@code WebTarget}
  * it is registered on. Register a differently configured instance per target for different needs.
  * <p>
- * Logs the following lines:
+ * Logs the following lines, with the credentials the URI may carry masked (see {@link #getLoggedUri(URI)}):
  * <ul>
  *     <li>{@code Calling [method] [uri]}, once the request is about to be sent</li>
  *     <li>{@code Called [method] [uri] with status [status] in [duration]ms}, once the response is
@@ -91,8 +95,8 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     protected static final String REQUEST_METHOD_PROPERTY = LoggedClientFilter.class.getName() + ".requestMethod";
 
     /**
-     * Name of the property stored in request context to retrieve the request URI, for the same reason
-     * as {@link #REQUEST_METHOD_PROPERTY}.
+     * Name of the property stored in request context to retrieve the request URI as it is logged (see
+     * {@link #getLoggedUri(URI)}), for the same reason as {@link #REQUEST_METHOD_PROPERTY}.
      */
     protected static final String REQUEST_URI_PROPERTY = LoggedClientFilter.class.getName() + ".requestUri";
 
@@ -279,9 +283,10 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     @Override
     public void filter(ClientRequestContext requestContext) {
         safely(() -> {
+            String uri = getLoggedUri(requestContext.getUri());
             requestContext.setProperty(REQUEST_TIME_PROPERTY, nanoTime());
             requestContext.setProperty(REQUEST_METHOD_PROPERTY, requestContext.getMethod());
-            requestContext.setProperty(REQUEST_URI_PROPERTY, requestContext.getUri().toString());
+            requestContext.setProperty(REQUEST_URI_PROPERTY, uri);
 
             // HTTP header names are case-insensitive, but the client-side header map is not guaranteed to be
             // (it is a plain MultivaluedMap in the JAX-RS Client API), so a caller having already set the
@@ -291,8 +296,93 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
                 requestContext.getHeaders().putSingle(REQUEST_ID_HEADER, correlationId);
             }
 
-            log.info("Calling {} {}", requestContext.getMethod(), requestContext.getUri());
+            log.info("Calling {} {}", requestContext.getMethod(), uri);
         });
+    }
+
+    /**
+     * Renders the given URI the way it is logged, with the credentials it may carry masked.
+     * <p>
+     * Unlike {@link LoggedFilter}, which logs the path of a request and its query parameters apart and can
+     * mask the latter one by one, this provider logs the URI of a call whole - and a URI is a common place
+     * for a credential to travel in: the password of its user information ({@code https://user:secret@host}),
+     * the {@code access_token} of an OAuth call, the signature of a presigned URL. Logging it as-is wrote
+     * all of them to the logs of every call made, with nothing to configure to prevent it.
+     * <p>
+     * The user information is therefore replaced as a whole, since it is either a credential or the name
+     * going with one, and the value of every query parameter {@link #isSensitiveQueryParameter(String)}
+     * reports is masked while its name stays visible, the way {@link LoggedFilter} masks the query
+     * parameters of the requests it receives. Everything else is left exactly as it was given.
+     *
+     * @param uri The URI of the call
+     * @return The URI as it must be logged
+     */
+    protected String getLoggedUri(URI uri) {
+        if (uri.isOpaque() || (uri.getRawUserInfo() == null && uri.getRawQuery() == null)) {
+            // Nothing to mask, which is the case of almost every call: returned without being rebuilt
+            return uri.toString();
+        }
+
+        StringBuilder rendered = new StringBuilder();
+        if (uri.getScheme() != null) {
+            rendered.append(uri.getScheme()).append(':');
+        }
+        if (uri.getRawAuthority() != null) {
+            String authority = uri.getRawAuthority();
+            String userInfo = uri.getRawUserInfo();
+            rendered.append("//").append(userInfo == null
+                    ? authority
+                    : MaskingBodyFilter.DEFAULT_MASK + authority.substring(userInfo.length()));
+        }
+        rendered.append(uri.getRawPath());
+        if (uri.getRawQuery() != null) {
+            rendered.append('?').append(maskQuery(uri.getRawQuery()));
+        }
+        if (uri.getRawFragment() != null) {
+            rendered.append('#').append(uri.getRawFragment());
+        }
+        return rendered.toString();
+    }
+
+    /**
+     * Masks the value of every parameter of the given raw query that {@link #isSensitiveQueryParameter(String)}
+     * reports, leaving the other parameters, and the encoding of all of them, as they were.
+     *
+     * @param rawQuery The query of a URI, still encoded
+     * @return The query with the values of its sensitive parameters masked
+     */
+    private String maskQuery(String rawQuery) {
+        return Arrays.stream(rawQuery.split("&", -1))
+                .map(parameter -> {
+                    int separator = parameter.indexOf('=');
+                    // Decoded before being compared, so a name the caller escaped is recognized all the same;
+                    // the raw components of a java.net.URI are always validly encoded, so this cannot fail
+                    return separator >= 0 && isSensitiveQueryParameter(URLDecoder.decode(parameter.substring(0, separator), UTF_8))
+                            ? parameter.substring(0, separator + 1) + MaskingBodyFilter.DEFAULT_MASK
+                            : parameter;
+                })
+                .collect(joining("&"));
+    }
+
+    /**
+     * Indicates whether the value of the query parameter of the given name must be kept out of the logs,
+     * see {@link #getLoggedUri(URI)}.
+     * <p>
+     * The defaults come from {@link CredentialNames}, which only knows what callers conventionally name
+     * their secrets. Override to extend (or restrict) them for the services an application calls, for
+     * example to also mask the signature of an S3 presigned URL:
+     * <pre>{@code
+     * @Override
+     * protected boolean isSensitiveQueryParameter(String name) {
+     *     return super.isSensitiveQueryParameter(name) || "X-Amz-Signature".equalsIgnoreCase(name);
+     * }
+     * }</pre>
+     *
+     * @param name The decoded name of the query parameter
+     * @return {@code true} if the value must be kept out of the logs, {@code false} otherwise
+     */
+    protected boolean isSensitiveQueryParameter(String name) {
+        return CredentialNames.isQueryParameter(name);
     }
 
     /**
@@ -359,7 +449,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
             log.atLevel(getResponseLevel(responseContext.getStatus()))
                     .log("Called {} {} with status {} in {}ms",
                             requestContext.getMethod(),
-                            requestContext.getUri(),
+                            getLoggedUri(requestContext.getUri()),
                             responseContext.getStatus(),
                             duration);
         });

@@ -125,6 +125,42 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check the credentials a URI carries are masked in every line describing the call")
+    void checkUriCredentialsMasked() {
+        // Given: the password of the user information and an OAuth access token, which a URI logged whole
+        // used to write to the logs of every call made
+        doReturn(URI.create("https://jane:hunter2@service.company.com/article?topic=news&access_token=secret"))
+                .when(requestContext).getUri();
+        ClientResponseContext responseContext = mock(ClientResponseContext.class);
+        doReturn(200).when(responseContext).getStatus();
+
+        // When
+        filter.filter(requestContext);
+        filter.filter(requestContext, responseContext);
+
+        // Then: what identifies the call stays readable
+        String masked = "https://***@service.company.com/article?topic=news&access_token=***";
+        assertEquals("Calling POST " + masked, listAppender.findFirstMessage("Calling").getMessage().getFormattedMessage());
+        assertTrue(listAppender.findFirstMessage("Called").getMessage().getFormattedMessage().startsWith("Called POST " + masked + " "));
+        assertEquals(masked, properties.get(LoggedClientFilter.REQUEST_URI_PROPERTY));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @CsvSource(delimiter = '|', value = {
+            "https://service.company.com/article                   | https://service.company.com/article",
+            "https://service.company.com/article?topic=news        | https://service.company.com/article?topic=news",
+            "https://service.company.com/a?Access_Token=x&t=1      | https://service.company.com/a?Access_Token=***&t=1",
+            "https://service.company.com/a?access%5Ftoken=x        | https://service.company.com/a?access%5Ftoken=***",
+            "https://service.company.com/a?token&password=&x=token | https://service.company.com/a?token&password=***&x=token",
+            "https://user@[::1]:8443/a?b=c#access_token=x          | https://***@[::1]:8443/a?b=c#access_token=x",
+            "mailto:jane@company.com?password=x                    | mailto:jane@company.com?password=x"
+    })
+    @DisplayName("Check a URI is logged as given, but for the credentials it carries")
+    void checkLoggedUri(String uri, String expected) {
+        assertEquals(expected, filter.getLoggedUri(URI.create(uri)));
+    }
+
+    @Test
     @DisplayName("Check the response is logged exactly once with its status and duration")
     void checkResponseLogged() {
         // Given

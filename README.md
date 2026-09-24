@@ -251,6 +251,17 @@ protected boolean isSensitive(MappingType type, String name) {
 }
 ```
 
+The same goes for the calls logged by [LoggedClientFilter](#client-calls), which log the URI of each call whole:
+the value of the same query parameters is masked, and so is the user information a URI may embed, which is
+either a credential or the name going with one:
+
+```
+Calling GET https://***@service.company.com/article?topic=news&access_token=***
+```
+
+Override `isSensitiveQueryParameter(String)` on the client filter to mask the parameters of the services your
+application calls, such as the `X-Amz-Signature` of an S3 presigned URL.
+
 ## Body filters
 
 A body filter rewrites a captured body before it is logged, which is how a value that must never reach the
