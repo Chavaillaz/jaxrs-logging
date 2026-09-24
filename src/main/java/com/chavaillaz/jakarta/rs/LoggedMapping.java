@@ -15,6 +15,11 @@ import java.lang.annotation.Target;
  * <p>
  * Only takes effect on a resource {@link Logged} activates at its method or class level: a mapping on a
  * resource that is not {@code @Logged} activates nothing by itself.
+ * <p>
+ * The mappings declared on the resource method, its interfaces and its class all apply, but a parameter is
+ * mapped once at most: of the mappings naming it, mapping or excluding it, the one declared on the most
+ * specific site wins (see {@link LoggedUtils#declarationSites}), and among those declared on the same site,
+ * the first one. An automatic mapping leaves out the parameters named by the mappings that apply.
  */
 @Documented
 @Retention(RUNTIME)

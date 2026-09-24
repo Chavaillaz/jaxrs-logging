@@ -215,8 +215,11 @@ Specific mappings can also be excluded (without giving `mdcKey` value):
 @LoggedMapping(type = HEADER, paramNames = "Accept")
 ```
 
-Note that a field can only be mapped once, and its exclusion will have priority.
-If you try to map a field that is already mapped, it will be ignored.
+The mappings declared on the resource method, its interfaces and its class all apply, but a parameter is
+mapped once at most: of the mappings naming it, the one declared closest to the resource method wins (see
+[Annotation resolution](#annotation-resolution)), and among those declared at the same place, the first one,
+whether they map the parameter or exclude it. An automatic mapping leaves out the parameters named by the
+mappings that apply.
 
 Every MDC entry the library creates is removed once the request has been logged. When a request completes
 on a different thread than the one that started it (a resumed `@Suspended` response, a reactive resource
@@ -343,8 +346,8 @@ at four declaration sites, from the most to the least specific:
 3. those interfaces themselves
 4. the resource class itself
 
-The first site declaring the annotation wins **entirely** - a more specific declaration replaces a less
-specific one rather than being merged with it. This is what lets a method opt out of a class-level
+The first site declaring `@Logged` or `@LoggedBody` wins **entirely** - a more specific declaration replaces
+a less specific one rather than being merged with it. This is what lets a method opt out of a class-level
 configuration by redeclaring an empty one:
 
 ```java
@@ -364,6 +367,9 @@ public class ArticleResource {
 
 }
 ```
+
+`@LoggedMapping` is the exception: the mappings of every site are merged, a mapping only giving way to one
+naming the same parameter at a more specific site (see [MDC Mappings](#mdc-mappings)).
 
 Resolution is cached per resource class and method, so the reflection above happens once per endpoint
 rather than once per request.
