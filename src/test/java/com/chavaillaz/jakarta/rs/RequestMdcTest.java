@@ -2,6 +2,7 @@ package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_PARAMETERS;
+import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -9,6 +10,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.EnumMap;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -106,6 +110,62 @@ class RequestMdcTest {
         assertEquals("enclosing", MDC.get("enclosing-key"));
         mdc.cleanup(enclosing);
         assertNull(MDC.get("enclosing-key"));
+    }
+
+    @Test
+    @DisplayName("Check a thread acting for a request it does not carry is lent its entries, then given its own back")
+    void checkEntriesLentToThreadCarryingAnotherRequest() {
+        // Given: a request suspended earlier, and the request resuming it on this thread
+        LoggedRequestState suspended = request();
+        mdc.start(suspended);
+        mdc.put(REQUEST_ID, "suspended");
+        LoggedRequestState enclosing = request();
+        mdc.start(enclosing);
+        mdc.put(REQUEST_ID, "enclosing");
+
+        // When: the suspended request completes within the enclosing one
+        AtomicReference<String> seen = new AtomicReference<>();
+        mdc.onBehalfOf(suspended, () -> {
+            seen.set(mdc.get(REQUEST_ID));
+            suspended.markCompleted();
+            mdc.cleanup(suspended);
+        });
+
+        // Then: it completed as itself, and the enclosing request still has its own identifier
+        assertEquals("suspended", seen.get());
+        assertEquals("enclosing", mdc.get(REQUEST_ID));
+    }
+
+    @Test
+    @DisplayName("Check a thread carrying no request is lent the entries of one it acts for, and left without them")
+    void checkEntriesLentToIdleThread() throws Exception {
+        // Given
+        LoggedRequestState request = request();
+        mdc.start(request);
+        mdc.put(REQUEST_ID, "abc-123");
+        ExecutorService worker = Executors.newSingleThreadExecutor();
+
+        // When: a response filter runs on a worker, without completing the request
+        record Observed(String requestId, Map<String, String> left) {
+        }
+        Observed observed;
+        try {
+            observed = worker.submit(() -> {
+                AtomicReference<String> seen = new AtomicReference<>();
+                mdc.onBehalfOf(request, () -> {
+                    seen.set(mdc.get(REQUEST_ID));
+                    mdc.put(RESPONSE_STATUS, "200");
+                });
+                return new Observed(seen.get(), MDC.getCopyOfContextMap());
+            }).get();
+        } finally {
+            worker.shutdown();
+        }
+
+        // Then: what the worker put is the request's, and nothing of it is left on the worker
+        assertEquals("abc-123", observed.requestId());
+        assertTrue(observed.left() == null || observed.left().isEmpty(), () -> "Left on the worker: " + observed.left());
+        assertEquals("200", request.getMdcEntries().get(RESPONSE_STATUS.getDefaultField()));
     }
 
     @Test

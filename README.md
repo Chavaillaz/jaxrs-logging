@@ -469,8 +469,10 @@ resolving to the one meant.
 
 A resource method taking a `@Suspended AsyncResponse` returns before the response exists, and the container
 only runs the response filters and writes the entity when `resume` is called - on whatever thread the
-application calls it from. Without propagation, that thread carries none of the request's MDC, so the
-`Processed ...` line lands with no request identifier, no URI and no method.
+application calls it from. Without propagation, that thread carries none of the request's MDC: the library
+still logs its own `Processed ...` line with the entries it put for the request, but every other line logged
+while completing it - by a response filter or a message body writer of the application, for instance - lands
+with no request identifier, no URI and no method.
 
 Wrapping the response covers the completion however the application got there - a pool, a
 `CompletableFuture` chain, a callback from a client library - and covers the timeout handler too, which the

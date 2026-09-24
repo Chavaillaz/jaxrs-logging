@@ -48,6 +48,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -1603,6 +1605,88 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         // Then
         assertNull(MDC.get("header-User-Agent"));
+    }
+
+    @Test
+    @DisplayName("Check a request completed within another one is logged and answered as itself, leaving the other one intact")
+    void checkNestedCompletionLoggedAsItself() throws Exception {
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given: a request suspended earlier, left without being answered
+        PreMatchContainerRequestContext suspended = getRequestContext();
+        loggingFilter.filter(suspended);
+        String suspendedId = getMdc(REQUEST_ID);
+
+        // And: the request resuming it, on this same thread
+        PreMatchContainerRequestContext enclosing = new PreMatchContainerRequestContext(
+                MockHttpRequest.create("GET", "example.company.com/topics"));
+        loggingFilter.filter(enclosing);
+        String enclosingId = getMdc(REQUEST_ID);
+
+        // When: the suspended request completes within the enclosing one
+        ContainerResponseContextImpl suspendedResponse = getEmptyResponseContext(suspended);
+        loggingFilter.filter(suspended, suspendedResponse);
+
+        // Then: it is logged and answered under its own identifier, and the enclosing request keeps its own
+        assertEquals(List.of("Processed POST /service with status 204"), getProcessedMessages());
+        assertEquals(suspendedId, getMdcLogged(REQUEST_ID));
+        assertEquals(suspendedId, suspendedResponse.getHeaders().getFirst(LoggedFilter.REQUEST_ID_HEADER));
+        assertEquals(enclosingId, getMdc(REQUEST_ID));
+        assertEquals("/topics", getMdc(REQUEST_URI));
+
+        // When: the enclosing request completes in turn
+        loggingFilter.filter(enclosing, getEmptyResponseContext(enclosing));
+
+        // Then
+        assertEquals(List.of("Processed POST /service with status 204", "Processed GET /topics with status 204"),
+                getProcessedMessages());
+        assertEquals(enclosingId, listAppender.getMessages().getLast().getContextData().getValue(getMdcField(REQUEST_ID)));
+        Map<String, String> left = MDC.getCopyOfContextMap();
+        assertTrue(left == null || left.isEmpty(), () -> "Left in MDC: " + left);
+    }
+
+    @Test
+    @DisplayName("Check a request completed on another thread is logged as itself, leaving nothing on that thread")
+    void checkCompletionOnAnotherThreadLoggedAsItself() throws Exception {
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given: a request whose response is resumed from a worker, without MdcPropagation
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        loggingFilter.filter(requestContext);
+        String requestId = getMdc(REQUEST_ID);
+        ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext);
+        ExecutorService worker = Executors.newSingleThreadExecutor();
+
+        // When
+        Map<String, String> left;
+        try {
+            left = worker.submit(() -> {
+                loggingFilter.filter(requestContext, responseContext);
+                return MDC.getCopyOfContextMap();
+            }).get();
+        } finally {
+            worker.shutdown();
+        }
+
+        // Then
+        assertEquals(List.of("Processed POST /service with status 204"), getProcessedMessages());
+        assertEquals(requestId, getMdcLogged(REQUEST_ID));
+        assertEquals(requestId, responseContext.getHeaders().getFirst(LoggedFilter.REQUEST_ID_HEADER));
+        assertTrue(left == null || left.isEmpty(), () -> "Left on the worker: " + left);
+    }
+
+    /**
+     * Gets the {@code "Processed ..."} lines logged so far, in the order they were logged, without the
+     * duration they end with.
+     *
+     * @return The formatted messages of those lines
+     */
+    List<String> getProcessedMessages() {
+        return listAppender.getMessages().stream()
+                .map(event -> event.getMessage().getFormattedMessage())
+                .filter(message -> message.startsWith("Processed"))
+                .map(message -> message.replaceAll(" in \\d+ms$", ""))
+                .toList();
     }
 
     void checkRequestLogging(LogType[] expectedRequestLogging, Class<? extends LoggedBodyFilter>[] expectedBodyFilters) {

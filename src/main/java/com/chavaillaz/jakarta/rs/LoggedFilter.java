@@ -178,7 +178,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     /**
      * Puts a diagnostic context value identified by the given key into the current thread's context map,
-     * recording the key against the request whose entries this thread carries, so it is removed once that
+     * recording the entry against the request whose entries this thread carries, so it is removed once that
      * request has been fully processed (see {@link RequestMdc}).
      * <p>
      * Every MDC entry set by this provider, or a subclass extending it, should go through this method
@@ -611,7 +611,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     /**
      * Removes from the current thread's context map every entry put through {@link #putMdc(String, String)}
-     * for the given request (see {@link LoggedRequestState#getMdcKeys()}), which covers every entry put by
+     * for the given request (see {@link LoggedRequestState#getMdcEntries()}), which covers every entry put by
      * this provider itself as well as any subclass following the same convention.
      * <p>
      * Also sweeps the fields named by the configuration as a safety net, in case a subclass still puts one

@@ -3,7 +3,7 @@ package com.chavaillaz.jakarta.rs;
 import static java.lang.System.nanoTime;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
-import java.util.Set;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -61,22 +61,21 @@ public class LoggedRequestState {
     private final long startTime;
 
     /**
-     * Key of every {@link MDC} entry put for this request through {@link LoggedFilter#putMdc(String, String)},
-     * so the entries of the request are removed exactly once it is done (see {@link RequestMdc}).
+     * Every {@link MDC} entry put for this request through {@link LoggedFilter#putMdc(String, String)}, so a
+     * thread completing the request without carrying its entries can be lent them, and so they are removed
+     * exactly once the request is done (see {@link RequestMdc}).
      * <p>
-     * {@code putMdc} takes no request to record the key against, so that a subclass can call it from
-     * anywhere it describes a request: this very set is bound to the thread whose MDC holds the request's
-     * entries, and the key lands here. It is a set of strings rather than anything of this library's own for
-     * that reason: a value bound to a pooled thread outlives the request, and possibly the application, so it
-     * must not hold on to a class the application's class loader would then never be able to unload.
+     * {@code putMdc} takes no request to record the entry against, so that a subclass can call it from
+     * anywhere it describes a request: this very map is bound to the thread whose MDC holds the request's
+     * entries, and the entry lands here. It holds plain strings rather than anything of this library's own
+     * for that reason: a value bound to a pooled thread outlives the request, and possibly the application,
+     * so it must not hold on to a class the application's class loader would then never be able to unload.
      * <p>
-     * This does not by itself solve MDC being thread-local. A request completed on a different thread
-     * than the one that put the entries has them removed from the completing thread's MDC, not from the
-     * thread that actually set them, which is why the entries a request left on a thread are swept when the
-     * next request starts there. Concurrent for the same reason: keys can be recorded and read from different
-     * threads.
+     * Removing the entries of a request completed on a different thread than the one that put them does not
+     * reach that thread, which is why the entries a request left on a thread are swept when the next request
+     * starts there. Concurrent for the same reason: entries can be recorded and read from different threads.
      */
-    private final Set<String> mdcKeys = ConcurrentHashMap.newKeySet();
+    private final Map<String, String> mdcEntries = new ConcurrentHashMap<>();
 
     /**
      * Whether the {@code "Received ..."} line has already been logged for this request.
@@ -218,12 +217,12 @@ public class LoggedRequestState {
     }
 
     /**
-     * Gets the keys of the MDC entries put so far for this request, see {@link #mdcKeys}.
+     * Gets the MDC entries put so far for this request, see {@link #mdcEntries}.
      *
-     * @return The mutable, concurrent set of keys to be removed from MDC once the request is done
+     * @return The mutable, concurrent map of the entries to be removed from MDC once the request is done
      */
-    public Set<String> getMdcKeys() {
-        return mdcKeys;
+    public Map<String, String> getMdcEntries() {
+        return mdcEntries;
     }
 
     /**

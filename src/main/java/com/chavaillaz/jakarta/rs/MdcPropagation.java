@@ -32,11 +32,11 @@ import org.slf4j.MDC;
  * MDC is backed by a thread-local, so entries set by {@link LoggedFilter} (or by application code) on the
  * thread handling a request are not visible to a task submitted to an {@link ExecutorService}, a manually
  * started {@link Thread}, or any other thread hand-off - including a {@code @Suspended AsyncResponse} or a
- * reactive resource method resuming on a different worker thread, as already documented on
- * {@link LoggedRequestState#getMdcKeys()}. Wrap a task (or a whole {@link ExecutorService}) with this
- * class to copy the submitting thread's MDC context map onto the thread that actually runs it, and restore
- * that thread's own previous context map once the task completes - rather than merging into it, so a
- * pooled thread never leaks one task's MDC entries into the next one it happens to run.
+ * reactive resource method resuming on a different worker thread. Wrap a task (or a whole
+ * {@link ExecutorService}) with this class to copy the submitting thread's MDC context map onto the thread
+ * that actually runs it, and restore that thread's own previous context map once the task completes - rather
+ * than merging into it, so a pooled thread never leaks one task's MDC entries into the next one it happens
+ * to run.
  * <p>
  * Every method rejects a {@code null} argument with a {@link NullPointerException} right away, as the
  * {@link ExecutorService} contract has it for a task: a {@code null} wrapped into a task that is not
@@ -250,9 +250,10 @@ public final class MdcPropagation {
      * <p>
      * A resource method taking a {@code @Suspended AsyncResponse} returns before the response exists, and
      * the container only runs the response filters and writes the entity when {@code resume} is called -
-     * on whatever thread the application calls it from. Without this, that thread has none of the MDC
-     * this library established for the request, so the {@code Processed ...} line lands with no request
-     * identifier, no URI and no method, which is the one line those fields exist for.
+     * on whatever thread the application calls it from. Without this, that thread has none of the MDC of
+     * the request: {@link LoggedFilter} still logs its {@code Processed ...} line with the entries it put
+     * for the request, but every other line logged while completing it - by a response filter or a message
+     * body writer of the application, for instance - lands with no request identifier, no URI and no method.
      * <pre>{@code
      * @GET
      * public void get(@Suspended AsyncResponse response) {
