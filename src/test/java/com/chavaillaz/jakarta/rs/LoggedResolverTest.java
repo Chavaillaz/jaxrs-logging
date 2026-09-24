@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doReturn;
 
@@ -65,6 +66,9 @@ class LoggedResolverTest {
 
         @Logged({@LoggedBody(value = LOG, targets = REQUEST), @LoggedBody(value = MDC, targets = REQUEST)})
         void competingRequestOnlyMethod();
+
+        @LoggedBody(value = LOG, limit = -2)
+        void invalidLimitMethod();
 
     }
 
@@ -172,6 +176,21 @@ class LoggedResolverTest {
         assertSame(BodyConfiguration.NONE, first);
         assertSame(first, second);
         assertEquals(1, attempts.get());
+    }
+
+    @Test
+    @DisplayName("Check a body configuration with an invalid limit is rejected once, rather than on every request")
+    void checkInvalidLimitConfiguration() throws Exception {
+        // Accepted as resolved, it failed the creation of every capture it was given to, reported on every
+        // single request to the resource, without naming the resource whose annotation had to be fixed
+        setup("invalidLimitMethod");
+
+        // When
+        BodyConfiguration configuration = assertDoesNotThrow(() -> resolver.getBodyConfiguration(resourceInfo));
+
+        // Then
+        assertSame(BodyConfiguration.NONE, configuration);
+        assertThrows(IllegalArgumentException.class, () -> new LoggedBodyConfiguration(Set.of(LOG), -2, Set.of()));
     }
 
     @Test

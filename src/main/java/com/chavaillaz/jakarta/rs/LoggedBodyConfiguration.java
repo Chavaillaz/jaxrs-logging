@@ -1,5 +1,7 @@
 package com.chavaillaz.jakarta.rs;
 
+import static java.util.Objects.requireNonNull;
+
 import java.util.Set;
 
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
@@ -26,6 +28,23 @@ public record LoggedBodyConfiguration(Set<LogType> types, int limit, Set<LoggedB
      * Configuration logging nothing, used whenever no {@link LoggedBody} applies.
      */
     public static final LoggedBodyConfiguration NONE = new LoggedBodyConfiguration(Set.of(), -1, Set.of());
+
+    /**
+     * Creates a body logging configuration, rejecting one that could never capture anything.
+     * <p>
+     * A limit below {@code -1} is rejected here, as a resource's configuration is resolved - once, and
+     * reported along with the resource it was declared on (see {@link LoggedResolver}) - rather than by the
+     * capture it would be given to, which failed on every request to that resource without naming it.
+     *
+     * @throws IllegalArgumentException if the limit is lower than {@code -1}
+     */
+    public LoggedBodyConfiguration {
+        requireNonNull(types, "The types of body logging are required");
+        requireNonNull(filters, "The body filters are required");
+        if (limit < BoundedOutputStream.NO_LIMIT) {
+            throw new IllegalArgumentException("Limit must be -1 (unlimited) or a positive value, but was " + limit);
+        }
+    }
 
     /**
      * Indicates whether the body must be captured at all for this direction.
