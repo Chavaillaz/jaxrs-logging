@@ -1,8 +1,8 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.emptySet;
-import static org.apache.commons.lang3.ArrayUtils.containsAny;
 import static org.apache.commons.lang3.ClassUtils.getAllInterfaces;
 
 import java.lang.annotation.Annotation;
@@ -13,6 +13,7 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.BiPredicate;
 import java.util.function.Function;
 
 import jakarta.ws.rs.container.ResourceInfo;
@@ -54,7 +55,9 @@ public class LoggedUtils {
     }
 
     /**
-     * Adds the given mappings to the merged mappings if they are not already present.
+     * Adds the given mappings to the merged mappings, except those competing for a parameter with a
+     * mapping already merged (see {@link #areConflicting(LoggedMapping, LoggedMapping)}), which was
+     * declared closer to the resource method.
      *
      * @param mergedMappings The set of merged mappings
      * @param mappings       The mappings to add
@@ -62,12 +65,35 @@ public class LoggedUtils {
     public static void mergeMappings(Set<LoggedMapping> mergedMappings, LoggedMapping... mappings) {
         Arrays.stream(mappings)
                 .filter(newMapping -> mergedMappings.stream()
-                        .noneMatch(existingMapping -> newMapping.type() == existingMapping.type()
-                                && (containsAny(newMapping.paramNames(), (Object[]) existingMapping.paramNames())
-                                // Two automatic mappings of the same type would otherwise both apply, as
-                                // neither declares any parameter name to detect the conflict with
-                                || (newMapping.auto() && existingMapping.auto()))))
+                        .noneMatch(existingMapping -> areConflicting(newMapping, existingMapping)))
                 .forEach(mergedMappings::add);
+    }
+
+    /**
+     * Indicates whether the two given mappings compete for the same parameters, so that only one of them
+     * can apply.
+     * <p>
+     * Header names are compared without regard to case, as HTTP defines them that way, and the way the
+     * filter matches them against the request (see {@link LoggedFilter#newExclusion}). Compared as
+     * written, a header a method maps as {@code User-Agent} and its class as {@code user-agent} was kept
+     * twice, and the mapping applied was then whichever sorted first rather than the one declared closest
+     * to the resource method.
+     *
+     * @param first  The first mapping
+     * @param second The second mapping
+     * @return {@code true} if the mappings compete for a parameter, {@code false} otherwise
+     */
+    private static boolean areConflicting(LoggedMapping first, LoggedMapping second) {
+        if (first.type() != second.type()) {
+            return false;
+        } else if (first.auto() && second.auto()) {
+            // Two automatic mappings of the same type would otherwise both apply, as neither declares
+            // any parameter name to detect the conflict with
+            return true;
+        }
+        BiPredicate<String, String> sameName = first.type() == HEADER ? String::equalsIgnoreCase : String::equals;
+        return Arrays.stream(first.paramNames())
+                .anyMatch(name -> Arrays.stream(second.paramNames()).anyMatch(other -> sameName.test(name, other)));
     }
 
     /**

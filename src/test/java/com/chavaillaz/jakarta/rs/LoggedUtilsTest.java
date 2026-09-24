@@ -69,6 +69,37 @@ class LoggedUtilsTest {
         assertTrue(mdcKeys.contains("class-level"));
     }
 
+    // The class maps the header and the query parameter the method maps, in other casings, under keys
+    // sorting first: only the declaration priority, not the order mappings are applied in, can make the
+    // method-level ones win
+    @LoggedMapping(type = HEADER, mdcKey = "agent", paramNames = "user-agent")
+    @LoggedMapping(type = QUERY, mdcKey = "class-topic", paramNames = "Topic")
+    static class CasingResource {
+
+        @LoggedMapping(type = HEADER, mdcKey = "ua", paramNames = "User-Agent")
+        @LoggedMapping(type = QUERY, mdcKey = "topic", paramNames = "topic")
+        public void method() {
+            // No-op
+        }
+
+    }
+
+    @Test
+    @DisplayName("Check a header mapped at two levels in different casings is only mapped by the most specific one")
+    void checkHeaderMappingsMergedWhateverTheirCasing() throws Exception {
+        // Given
+        doReturn(CasingResource.class).when(resourceInfo).getResourceClass();
+        doReturn(CasingResource.class.getMethod("method")).when(resourceInfo).getResourceMethod();
+
+        // When
+        Set<LoggedMapping> mappings = getMergedMappings(resourceInfo);
+
+        // Then: header names are case-insensitive, query parameter names are not
+        assertEquals(Set.of("ua", "topic", "class-topic"), mappings.stream()
+                .map(LoggedMapping::mdcKey)
+                .collect(Collectors.toSet()));
+    }
+
     // Class-level configuration applying (by default) to both request and response
     @Logged(@LoggedBody(MDC))
     interface ConflictingAnnotationsInterface {
