@@ -317,6 +317,11 @@ predictably. They work on the captured text rather than on a parsed document on 
 filter may have been cut by `limit`, or be malformed - which is exactly when the logs matter most - and a
 parser would reject both.
 
+A filter of your own only has to implement `filter(StringBuilder)`, which is given a copy of the body. If it
+has nothing to change in most bodies, also override `apply(CharSequence)` to return the body it is given as
+it is in that case, as the ready-made filters do: that spares copying every body logged just to find there
+was nothing to filter in it.
+
 A filter that throws never reaches the application: the body is dropped and logged as
 `[body dropped: a filter failed]`, and the failure is reported on the library's own logger. Dropping it
 rather than falling back to the captured text is deliberate - a filter that threw has by definition not

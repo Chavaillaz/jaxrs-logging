@@ -1,5 +1,7 @@
 package com.chavaillaz.jakarta.rs;
 
+import static java.nio.charset.StandardCharsets.ISO_8859_1;
+import static java.nio.charset.StandardCharsets.US_ASCII;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import java.io.OutputStream;
@@ -120,41 +122,42 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
         return content(filters, null);
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * The body is copied no more than it has to be, as a large one is copied in full each time: it is
+     * decoded once, straight from the array it was captured in, and each filter either hands it back as it
+     * is or produces its filtered copy (see {@link LoggedBodyFilter#apply(CharSequence)}), the result being
+     * turned into a string once, at the end. Decoding it from a copy of the captured bytes, then copying it
+     * into a builder for the filters, back out of it, and once more to append the truncation marker used to
+     * allocate eight times the size of a body with one masking filter; it now takes about three.
+     */
     @Override
     public String content(Set<LoggedBodyFilter> filters, MediaType mediaType) {
-        // Read in place: the buffer hands out the array it filled, only its first bytes being the body
         byte[] bytes = buffer.array();
         int size = buffer.size();
         boolean truncated = buffer.isTruncated();
-        String body;
+        CharSequence body = isBinary(mediaType)
+                ? HexFormat.of().formatHex(bytes, 0, size)
+                : decode(bytes, size, charsetOf(mediaType), truncated);
 
-        if (isBinary(mediaType)) {
-            body = HexFormat.of().formatHex(bytes, 0, size);
-        } else {
-            Charset charset = charsetOf(mediaType);
-            // A limit reached mid-character would otherwise decode to a trailing replacement character
-            int end = truncated ? completeLength(bytes, size, charset) : size;
-            body = new String(bytes, 0, end, charset);
-        }
-
-        if (!filters.isEmpty()) {
-            StringBuilder bodyBuilder = new StringBuilder(body);
-            try {
-                filters.forEach(filter -> filter.filter(bodyBuilder));
-            } catch (Exception | StackOverflowError e) {
-                // StackOverflowError is the one Error caught: it is how java.util.regex fails on a payload
-                // large enough for the pattern it runs, filters are regular expressions more often than not,
-                // and nothing is left behind once it has unwound. Letting it out instead would fail the
-                // exchange this capture is only observing, which no Exception thrown here is allowed to do.
-                log.error("A body filter failed, the body is dropped rather than logged unfiltered", e);
-                return FILTERING_FAILURE_MARKER;
+        try {
+            for (LoggedBodyFilter filter : filters) {
+                body = filter.apply(body);
             }
-            body = bodyBuilder.toString();
+        } catch (Exception | StackOverflowError e) {
+            // StackOverflowError is the one Error caught: it is how java.util.regex fails on a payload
+            // large enough for the pattern it runs, filters are regular expressions more often than not,
+            // and nothing is left behind once it has unwound. Letting it out instead would fail the
+            // exchange this capture is only observing, which no Exception thrown here is allowed to do.
+            log.error("A body filter failed, the body is dropped rather than logged unfiltered", e);
+            return FILTERING_FAILURE_MARKER;
         }
 
         // Appended after filtering, so a filter neither has to preserve the marker nor can mistake it
         // for part of the payload it is inspecting
-        return truncated && !body.isEmpty() ? body + TRUNCATION_MARKER : body;
+        String rendered = body.toString();
+        return truncated && !rendered.isEmpty() ? rendered + TRUNCATION_MARKER : rendered;
     }
 
     /**
@@ -171,31 +174,77 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
     }
 
     /**
-     * Gets how many of the given bytes form complete characters in the given charset, so that a character
-     * the limit cut in the middle of can be left out rather than decoded to a replacement character.
+     * Decodes the given bytes as text, once, straight from the array they were captured in.
      * <p>
-     * Decoding as if more input were to follow is what makes a decoder stop in front of an incomplete
-     * sequence instead of reporting it as malformed, which answers the question for any charset: a UTF-8
-     * sequence, a UTF-16 surrogate pair or a Shift_JIS double byte alike. A single-byte charset has nothing
-     * to cut, so every byte counts, which a rule written for UTF-8 alone got wrong by reading the last
-     * byte of an ISO-8859-1 {@code é} as the start of a longer sequence and dropping it.
+     * A body cut short by the limit may end in the middle of a character, which must be left out rather than
+     * decoded to a trailing replacement character. How that character is found depends on the charset, and
+     * the common ones are spared a decoding pass of their own:
+     * <ul>
+     *     <li>a single-byte charset has nothing to cut, every byte being a whole character - a rule written
+     *     for UTF-8 got that wrong once, by reading the last byte of an ISO-8859-1 {@code é} as the start of
+     *     a longer sequence and dropping it;</li>
+     *     <li>UTF-8 tells from the last few bytes alone where its last character starts, and how long it is
+     *     (see {@link #completeUtf8Length(byte[], int)});</li>
+     *     <li>any other charset is decoded as if more input were to follow, which makes a decoder stop in
+     *     front of an incomplete sequence instead of reporting it as malformed - a UTF-16 surrogate pair or a
+     *     Shift_JIS double byte alike - and the characters it decoded are the result.</li>
+     * </ul>
      *
-     * @param bytes   The bytes captured, possibly cut in the middle of a character
-     * @param size    The number of bytes captured, at the start of the array
-     * @param charset The charset the bytes are encoded with
-     * @return The number of leading bytes forming complete characters
+     * @param bytes     The bytes captured, possibly cut in the middle of a character
+     * @param size      The number of bytes captured, at the start of the array
+     * @param charset   The charset the bytes are encoded with
+     * @param truncated Whether the limit dropped bytes, and may therefore have cut a character in half
+     * @return The text the bytes decode to, without any character the limit cut in half
      */
-    protected static int completeLength(byte[] bytes, int size, Charset charset) {
-        ByteBuffer input = ByteBuffer.wrap(bytes, 0, size);
+    protected static CharSequence decode(byte[] bytes, int size, Charset charset, boolean truncated) {
+        if (!truncated || ISO_8859_1.equals(charset) || US_ASCII.equals(charset)) {
+            return new String(bytes, 0, size, charset);
+        } else if (UTF_8.equals(charset)) {
+            return new String(bytes, 0, completeUtf8Length(bytes, size), UTF_8);
+        }
+
         CharsetDecoder decoder = charset.newDecoder()
                 .onMalformedInput(CodingErrorAction.REPLACE)
                 .onUnmappableCharacter(CodingErrorAction.REPLACE);
-        // Only how far the decoder gets matters here, not the characters it decodes along the way
-        CharBuffer discarded = CharBuffer.allocate(CaptureBuffer.INITIAL_CAPACITY);
-        while (decoder.decode(input, discarded, false).isOverflow()) {
-            discarded.clear();
+        // Sized for the most characters the bytes can decode to, so decoding never has to stop and grow it
+        CharBuffer decoded = CharBuffer.allocate((int) Math.min(CaptureBuffer.MAX_CAPACITY,
+                (long) Math.ceil(size * (double) decoder.maxCharsPerByte())));
+        decoder.decode(ByteBuffer.wrap(bytes, 0, size), decoded, false);
+        return decoded.flip();
+    }
+
+    /**
+     * Gets how many of the given UTF-8 bytes form complete characters, so that a character the limit cut in
+     * the middle of can be left out.
+     * <p>
+     * UTF-8 marks the first byte of each character, and tells from it how many bytes the character takes,
+     * so only the last few bytes need to be read: the last one not continuing a character is where the last
+     * character starts. Bytes that are not valid UTF-8 are left in place, for the decoding that follows to
+     * replace as it would anywhere else in the body.
+     *
+     * @param bytes The bytes captured, encoded in UTF-8
+     * @param size  The number of bytes captured, at the start of the array
+     * @return The number of leading bytes forming complete characters
+     */
+    private static int completeUtf8Length(byte[] bytes, int size) {
+        for (int i = size - 1; i >= Math.max(0, size - 4); i--) {
+            int lead = bytes[i] & 0xFF;
+            if ((lead & 0xC0) != 0x80) {
+                int length;
+                if (lead >= 0xF8 || lead < 0xC0) {
+                    length = 1;
+                } else if (lead >= 0xF0) {
+                    length = 4;
+                } else if (lead >= 0xE0) {
+                    length = 3;
+                } else {
+                    length = 2;
+                }
+                return i + length > size ? i : size;
+            }
         }
-        return input.position();
+        // Nothing but continuation bytes at the end: malformed rather than cut, left for the decoding
+        return size;
     }
 
     /**

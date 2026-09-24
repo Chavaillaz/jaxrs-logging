@@ -41,9 +41,20 @@ public class LoggedBodyFilterFactory {
      * {@code null} on failure would cause the reflective instantiation (and the {@code log.error} call)
      * to be repeated on every request instead of once.
      */
-    protected static final LoggedBodyFilter FAILED_BODY_FILTER = body -> {
-        body.setLength(0);
-        body.append(BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER);
+    protected static final LoggedBodyFilter FAILED_BODY_FILTER = new LoggedBodyFilter() {
+
+        @Override
+        public void filter(StringBuilder body) {
+            body.setLength(0);
+            body.append(BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER);
+        }
+
+        @Override
+        public CharSequence apply(CharSequence body) {
+            // Dropped without being copied first only to be thrown away
+            return BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER;
+        }
+
     };
 
     /**

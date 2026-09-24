@@ -67,39 +67,39 @@ public abstract class MaskingBodyFilter implements LoggedBodyFilter {
 
     @Override
     public void filter(StringBuilder body) {
-        Matcher matcher = pattern.matcher(body);
-        if (!matcher.find()) {
-            // Leaves the body untouched, and allocates nothing, for the common case of a payload
-            // carrying none of the values this filter masks
-            return;
+        CharSequence masked = apply(body);
+        if (masked != body) {
+            body.setLength(0);
+            body.append(masked);
         }
-
-        StringBuilder masked = new StringBuilder(body.length());
-        do {
-            matcher.appendReplacement(masked, replacement(matcher));
-        } while (matcher.find());
-        matcher.appendTail(masked);
-
-        body.setLength(0);
-        body.append(masked);
     }
 
     /**
-     * Builds the text replacing one whole match, that is the match with its {@link #group} replaced by
-     * {@link #mask}, so what surrounds the value (a JSON property name, a parameter name, ...) is kept.
-     *
-     * @param matcher The matcher positioned on the match to replace
-     * @return The replacement, already escaped for {@link Matcher#appendReplacement}
+     * {@inheritDoc}
+     * <p>
+     * Hands the body back as it is, without allocating anything, for the common case of a payload carrying
+     * none of the values this filter masks. Otherwise, builds the masked body in a single pass, copying the
+     * text between the values to mask - what surrounds a value, a JSON property name or a parameter name,
+     * being kept - and writing the mask in place of each value, rather than building a string per match.
      */
-    protected String replacement(Matcher matcher) {
-        String match = matcher.group();
-        if (matcher.start(group) < 0) {
-            // Optional group that did not take part in this match: nothing to mask
-            return Matcher.quoteReplacement(match);
+    @Override
+    public CharSequence apply(CharSequence body) {
+        Matcher matcher = pattern.matcher(body);
+        if (!matcher.find()) {
+            return body;
         }
-        int start = matcher.start(group) - matcher.start();
-        int end = matcher.end(group) - matcher.start();
-        return Matcher.quoteReplacement(match.substring(0, start) + mask + match.substring(end));
+
+        StringBuilder masked = new StringBuilder(body.length());
+        int copied = 0;
+        do {
+            // An optional group that did not take part in this match has nothing to mask: the match is then
+            // copied along with the text following it
+            if (matcher.start(group) >= 0) {
+                masked.append(body, copied, matcher.start(group)).append(mask);
+                copied = matcher.end(group);
+            }
+        } while (matcher.find());
+        return masked.append(body, copied, body.length());
     }
 
 }

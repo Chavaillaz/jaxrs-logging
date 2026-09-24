@@ -12,14 +12,19 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.nio.charset.Charset;
 import java.util.Set;
 
+import com.sun.management.ThreadMXBean;
 import jakarta.ws.rs.core.MediaType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 @DisplayName("Bounded logged body capture")
@@ -181,6 +186,84 @@ class BoundedLoggedBodyCaptureTest {
 
         // Then: a single-byte charset has no character to cut in half, so the é is complete and kept
         assertEquals("Café" + BoundedLoggedBodyCapture.TRUNCATION_MARKER, result);
+    }
+
+    @ParameterizedTest(name = "limit={0}")
+    @ValueSource(ints = {2, 3, 4})
+    @DisplayName("Check content leaves out a four-byte UTF-8 character the limit cut, wherever it cut it")
+    void checkContentTrimsTruncatedFourByteCharacter(int limit) throws IOException {
+        // Given: "a😀" in UTF-8 (5 bytes: a, then the emoji on 4 bytes), cut after 1, 2 or 3 of the emoji's bytes
+        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(limit);
+        capture.sink().write("a😀".getBytes(UTF_8));
+
+        // When
+        String result = capture.content(Set.of());
+
+        // Then
+        assertEquals("a" + BoundedLoggedBodyCapture.TRUNCATION_MARKER, result);
+    }
+
+    @Test
+    @DisplayName("Check content keeps a byte that is not UTF-8 at the cut, replaced as it would be anywhere else")
+    void checkContentKeepsMalformedByteAtTheCut() throws IOException {
+        // Given: a byte that cannot start a UTF-8 character, right where the limit cut
+        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(2);
+        capture.sink().write(new byte[]{'a', (byte) 0xFF, 'b'});
+
+        // When
+        String result = capture.content(Set.of());
+
+        // Then: malformed rather than cut in half, it is decoded the way the rest of the body is
+        assertEquals("a�" + BoundedLoggedBodyCapture.TRUNCATION_MARKER, result);
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @CsvSource({"windows-1252, Café!, 4, Café", "Shift_JIS, 日本語, 3, 日", "UTF-16LE, Café, 7, Caf"})
+    @DisplayName("Check content leaves out a character the limit cut in any other charset, and only that one")
+    void checkContentTrimsTruncatedCharacterOfOtherCharsets(String charset, String text, int limit, String expected) throws IOException {
+        // Given
+        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(limit);
+        capture.sink().write(text.getBytes(Charset.forName(charset)));
+
+        // When
+        String result = capture.content(Set.of(), TEXT_PLAIN_TYPE.withCharset(charset));
+
+        // Then
+        assertEquals(expected + BoundedLoggedBodyCapture.TRUNCATION_MARKER, result);
+    }
+
+    @Test
+    @DisplayName("Check rendering a large masked body copies it no more than it has to")
+    void checkRenderingLargeBodyCopiesLittle() throws IOException {
+        // A large body is copied in full each time it is copied: decoded from a copy of the captured bytes,
+        // then copied into a builder for the filters, back out of it and into the string logged, a body
+        // masked by one filter used to take eight times its size
+        ThreadMXBean threads = (ThreadMXBean) ManagementFactory.getThreadMXBean();
+        assumeTrue(threads.isThreadAllocatedMemorySupported() && threads.isThreadAllocatedMemoryEnabled());
+
+        // Given: 1 MB of JSON carrying a password every hundred bytes or so
+        StringBuilder json = new StringBuilder();
+        for (int i = 0; json.length() < 1 << 20; i++) {
+            json.append("{\"id\":").append(i).append(",\"name\":\"user-").append(i)
+                    .append("\",\"password\":\"secret-").append(i).append("\"},");
+        }
+        byte[] body = json.toString().getBytes(UTF_8);
+        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(LoggedBodyCapture.NO_LIMIT);
+        capture.sink().write(body);
+        Set<LoggedBodyFilter> filters = Set.of(new JsonMaskingBodyFilter("password"));
+        for (int i = 0; i < 3; i++) {
+            // Rendered first, so what is measured below is the rendering rather than loading its classes
+            capture.content(filters, APPLICATION_JSON_TYPE);
+        }
+
+        // When
+        long before = threads.getCurrentThreadAllocatedBytes();
+        String result = capture.content(filters, APPLICATION_JSON_TYPE);
+        long allocated = threads.getCurrentThreadAllocatedBytes() - before;
+
+        // Then: decoded once, masked once and turned into a string once, which is about three times its size
+        assertFalse(result.contains("secret-"));
+        assertTrue(allocated < 4L * body.length, () -> "Allocated " + allocated + " bytes for a body of " + body.length);
     }
 
     @Test

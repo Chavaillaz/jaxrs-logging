@@ -215,6 +215,30 @@ class MaskingBodyFilterTest {
         }
 
         @Test
+        @DisplayName("Check a body with nothing to mask is handed back as it is, without being copied")
+        void checkUnaffectedBodyNotCopied() {
+            // Every filter declared runs on every body logged, and most bodies carry none of the values a
+            // masking filter looks for: copying each of them for nothing is a copy of every payload
+            CharSequence body = """
+                    {"user":"jane"}""";
+            assertSame(body, new JsonMaskingBodyFilter("password").apply(body));
+        }
+
+        @Test
+        @DisplayName("Check masking a body produces a masked copy and leaves the body given as it was")
+        void checkMaskingLeavesBodyGivenUntouched() {
+            StringBuilder body = new StringBuilder("""
+                    {"password":"hunter2","user":"jane"}""");
+
+            CharSequence masked = new JsonMaskingBodyFilter("password").apply(body);
+
+            assertEquals("""
+                    {"password":"***","user":"jane"}""", masked.toString());
+            assertEquals("""
+                    {"password":"hunter2","user":"jane"}""", body.toString());
+        }
+
+        @Test
         @DisplayName("Check a filter leaving a body untouched does not replace its content")
         void checkUntouchedBodyKeepsItsBuilder() {
             // The filter must be able to run on every request without allocating a copy of a payload it
