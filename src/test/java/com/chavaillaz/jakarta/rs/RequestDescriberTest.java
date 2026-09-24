@@ -144,4 +144,13 @@ class RequestDescriberTest {
         assertNull(RequestDescriber.sanitize(null));
     }
 
+    @Test
+    @DisplayName("Check sanitizing replaces the control characters outside ASCII, and only those")
+    void checkSanitizeC1() {
+        // CSI starts a terminal escape sequence the way ESC [ does, and PAD opens the C1 set; both are what
+        // an ISO-8859-1 header decodes the bytes 0x9B and 0x80 to
+        assertEquals("a 31mb c", RequestDescriber.sanitize("a\u009B31mb\u0080c"));
+        assertEquals("caf\u00e9 \u00e0 5 \u20ac", RequestDescriber.sanitize("caf\u00e9 \u00e0 5 \u20ac"));
+    }
+
 }

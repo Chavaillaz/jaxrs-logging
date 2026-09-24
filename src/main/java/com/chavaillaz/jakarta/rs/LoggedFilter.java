@@ -215,7 +215,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Removes control characters (e.g. CR, LF) from the given value.
+     * Replaces the control characters (e.g. CR, LF) of the given value with spaces.
      * <p>
      * Meant to be applied to values sourced from client-controlled input (headers, query or path
      * parameters) before storing them in MDC, to prevent log injection (an attacker forging fake log

@@ -51,10 +51,13 @@ final class RequestDescriber {
      * input (headers, query or path parameters) before it is stored in MDC, to prevent an attacker
      * from forging fake log entries or corrupting the log line (log injection).
      * <p>
-     * Includes the Unicode line separators a plain {@code \p{Cntrl}} (ASCII-only) misses, as several
-     * log viewers and JavaScript-based log pipelines treat {@code U+2028}/{@code U+2029} as line breaks.
+     * Covers every control character Unicode defines, and not only the ASCII ones {@code \p{Cntrl}} stands
+     * for: the C1 set is what the bytes {@code 0x80} to {@code 0x9F} of an ISO-8859-1 header decode to, and
+     * holds {@code U+0085}, a line break to some log viewers, and {@code U+009B}, which terminals read as the
+     * start of an escape sequence. Also covers {@code U+2028}/{@code U+2029}, which several log viewers and
+     * JavaScript-based log pipelines treat as line breaks.
      */
-    private static final Pattern CONTROL_CHARACTERS = Pattern.compile("[\\p{Cntrl}\\u0085\\u2028\\u2029]");
+    private static final Pattern CONTROL_CHARACTERS = Pattern.compile("[\\p{Cc}\\u2028\\u2029]");
 
     private final BiPredicate<MappingType, String> sensitive;
 
@@ -68,7 +71,8 @@ final class RequestDescriber {
     }
 
     /**
-     * Removes control characters (e.g. CR, LF) from the given value, see {@link LoggedFilter#sanitize(String)}.
+     * Replaces the control characters (e.g. CR, LF) of the given value with spaces, see
+     * {@link LoggedFilter#sanitize(String)}.
      *
      * @param value The value to sanitize
      * @return The sanitized value, or {@code null} if the given value was {@code null}
