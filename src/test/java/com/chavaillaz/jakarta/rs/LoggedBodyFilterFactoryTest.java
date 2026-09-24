@@ -1,6 +1,7 @@
 package com.chavaillaz.jakarta.rs;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
 
@@ -105,6 +106,38 @@ class LoggedBodyFilterFactoryTest {
 
         // Then
         assertEquals(BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER, result);
+    }
+
+    @Test
+    @DisplayName("Check a body filter whose class fails to initialize is cached as failed rather than failing the caller")
+    void checkFailedClassInitializationIsCachedAsFailed() {
+        // A static initializer that throws - a pattern constant that does not compile - fails with an Error
+        // rather than an Exception, the first time and every time after, which escaped every guard between
+        // the filter and the exchange and failed every request to the resources declaring it
+        Class<BrokenClassBodyFilter> type = BrokenClassBodyFilter.class;
+
+        // When
+        LoggedBodyFilter first = assertDoesNotThrow(() -> factory.getInstance(type));
+        LoggedBodyFilter second = assertDoesNotThrow(() -> factory.getInstance(type));
+
+        // Then
+        assertSame(LoggedBodyFilterFactory.FAILED_BODY_FILTER, first);
+        assertSame(first, second);
+    }
+
+    public static class BrokenClassBodyFilter implements LoggedBodyFilter {
+
+        private static final Object BROKEN = fail();
+
+        private static Object fail() {
+            throw new IllegalStateException("Broken static initializer");
+        }
+
+        @Override
+        public void filter(StringBuilder body) {
+            // Never reached, the class never initializes
+        }
+
     }
 
     static class UninstantiableBodyFilter implements LoggedBodyFilter {

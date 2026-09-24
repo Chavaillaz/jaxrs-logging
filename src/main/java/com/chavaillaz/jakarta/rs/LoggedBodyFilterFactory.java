@@ -84,6 +84,12 @@ public class LoggedBodyFilterFactory {
 
     /**
      * Gets (instantiating and caching if not already done) the instance for the given filter class.
+     * <p>
+     * A class that cannot be initialized fails with a {@link LinkageError} rather than an exception - an
+     * {@link ExceptionInInitializerError} the first time, as when a pattern constant does not compile, and a
+     * {@link NoClassDefFoundError} every time after - which is treated like any other failure to instantiate
+     * the filter: letting it out escaped every guard between the filter and the exchange, and failed every
+     * request to the resources declaring it.
      *
      * @param type The body filter class to be instantiated
      * @param <T>  The body filter type
@@ -93,7 +99,7 @@ public class LoggedBodyFilterFactory {
         return cache.computeIfAbsent(type, ignored -> {
             try {
                 return type.getConstructor().newInstance();
-            } catch (Exception e) {
+            } catch (Exception | LinkageError e) {
                 log.error("Unable to instantiate body filter {}, the bodies it applies to are dropped rather than logged unfiltered", type, e);
                 return FAILED_BODY_FILTER;
             }
