@@ -19,6 +19,8 @@ import java.util.Set;
 import jakarta.ws.rs.core.MediaType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 @DisplayName("Bounded logged body capture")
 class BoundedLoggedBodyCaptureTest {
@@ -224,6 +226,15 @@ class BoundedLoggedBodyCaptureTest {
         assertFalse(BoundedLoggedBodyCapture.isBinary(new MediaType("application", "hal+json")));
         assertFalse(BoundedLoggedBodyCapture.isBinary(new MediaType("application", "x-www-form-urlencoded")));
         assertFalse(BoundedLoggedBodyCapture.isBinary(null));
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {"application/x-ndjson", "application/json-seq", "application/yaml",
+            "application/x-yaml", "application/openapi+yaml", "application/graphql"})
+    @DisplayName("Check the text formats of streaming and configuration APIs are not treated as binary")
+    void checkStructuredTextMediaTypesAreNotBinary(String mediaType) {
+        // Logged as hexadecimal, a bulk request of newline-delimited JSON is as good as unlogged
+        assertFalse(BoundedLoggedBodyCapture.isBinary(MediaType.valueOf(mediaType)));
     }
 
     @Test

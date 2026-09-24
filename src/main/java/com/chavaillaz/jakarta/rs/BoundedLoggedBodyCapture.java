@@ -71,12 +71,30 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
      * definition, and everything else ({@code image}, {@code audio}, {@code video}, {@code multipart})
      * is not. Subtypes ending in a structured syntax suffix are recognized separately, see
      * {@link #isTextualApplicationSubtype(String)}.
+     * <p>
+     * Besides the usual structured and form text, the list covers the text formats of streaming and
+     * configuration APIs - newline-delimited JSON of a bulk request, JSON text sequences, YAML, GraphQL -
+     * which, logged as hexadecimal, are as good as unlogged.
      */
     protected static final Set<String> TEXTUAL_APPLICATION_SUBTYPES = Set.of(
             "json",
             "xml",
             "javascript",
-            "x-www-form-urlencoded");
+            "x-www-form-urlencoded",
+            "x-ndjson",
+            "json-seq",
+            "yaml",
+            "x-yaml",
+            "graphql");
+
+    /**
+     * The structured syntax suffixes (RFC 6838) of the {@code application} subtypes that carry text, in
+     * lower case, see {@link #isTextualApplicationSubtype(String)}.
+     */
+    protected static final Set<String> TEXTUAL_SUFFIXES = Set.of(
+            "+json",
+            "+xml",
+            "+yaml");
 
     /**
      * Initial capacity of the buffer, also used as its upper bound when a limit is configured, so a
@@ -192,8 +210,8 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
      * as hexadecimal rather than decoded as text).
      * <p>
      * Textual: any {@code text/*} type, and the {@code application} subtypes commonly used for
-     * structured or form text ({@code json}, {@code xml}, {@code javascript}, {@code x-www-form-urlencoded},
-     * and any {@code +json}/{@code +xml} structured syntax suffix, e.g. {@code application/hal+json}).
+     * structured or form text (see {@link #TEXTUAL_APPLICATION_SUBTYPES}), including any with a
+     * {@code +json}, {@code +xml} or {@code +yaml} structured syntax suffix, e.g. {@code application/hal+json}.
      * Binary: everything else, notably {@code application/octet-stream}, {@code application/pdf},
      * {@code application/protobuf}, {@code image/*}, {@code audio/*}, {@code video/*} and {@code multipart/*}.
      * A missing media type is treated as textual, to keep the historical behavior of this class where
@@ -221,9 +239,9 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
         // A structured syntax suffix (RFC 6838) is what makes a vendor-specific type readable without
         // knowing the vendor: application/hal+json and application/vnd.acme.order+xml are text, whatever
         // precedes the suffix
+        int suffix = subtype.lastIndexOf('+');
         return TEXTUAL_APPLICATION_SUBTYPES.contains(subtype)
-                || subtype.endsWith("+json")
-                || subtype.endsWith("+xml");
+                || (suffix >= 0 && TEXTUAL_SUFFIXES.contains(subtype.substring(suffix)));
     }
 
 }
