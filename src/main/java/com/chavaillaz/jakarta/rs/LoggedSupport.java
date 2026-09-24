@@ -79,6 +79,26 @@ public final class LoggedSupport {
     }
 
     /**
+     * Gets a value through the given action, reporting anything it throws on the given logger and falling
+     * back to the given value instead, for the same reason as {@link #safely(Logger, String, Runnable)}.
+     *
+     * @param log      The logger to report a failure on
+     * @param message  The message to report a failure with
+     * @param action   The action getting the value
+     * @param fallback The value to use if the action fails
+     * @param <T>      The type of the value
+     * @return The value the action got, or the fallback value if it failed
+     */
+    public static <T> T safely(Logger log, String message, Supplier<T> action, T fallback) {
+        try {
+            return action.get();
+        } catch (Exception e) {
+            report(log, message, e);
+            return fallback;
+        }
+    }
+
+    /**
      * Reports the given failure on the given logger, swallowing a logger that cannot even do that.
      *
      * @param log     The logger to report the failure on

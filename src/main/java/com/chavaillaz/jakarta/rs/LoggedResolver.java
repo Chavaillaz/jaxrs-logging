@@ -16,6 +16,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
 import jakarta.ws.rs.container.ResourceInfo;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Resolves which {@link LoggedMapping} and {@link LoggedBody} configuration applies to a given resource
@@ -42,6 +44,8 @@ import jakarta.ws.rs.container.ResourceInfo;
  * without needing to mock a whole request/response context.
  */
 public class LoggedResolver {
+
+    protected static final Logger log = LoggerFactory.getLogger(LoggedResolver.class);
 
     /**
      * Key identifying the resource a configuration was resolved for.
@@ -178,9 +182,31 @@ public class LoggedResolver {
         ResourceKey key = ResourceKey.of(resourceInfo);
         return key == null
                 ? BodyConfiguration.NONE
-                : bodyConfigurationCache.computeIfAbsent(key, ignored -> new BodyConfiguration(
-                        resolve(resourceInfo, REQUEST),
-                        resolve(resourceInfo, RESPONSE)));
+                : bodyConfigurationCache.computeIfAbsent(key, ignored -> resolve(key, resourceInfo));
+    }
+
+    /**
+     * Resolves the body logging configuration of both directions of the given resource into its
+     * ready-to-use form, or into {@link BodyConfiguration#NONE} if it cannot be.
+     * <p>
+     * Resolving can fail on an annotation the application compiled against but cannot load at runtime - a
+     * {@link LoggedBody#filters()} naming a class missing from the deployment throws a
+     * {@link TypeNotPresentException} the moment it is read - which no later request will resolve any
+     * better. Such a failure is therefore reported once and remembered, the way a filter class that cannot
+     * be instantiated is (see {@link LoggedBodyFilterFactory}), and the resource logs no body at all: a body
+     * whose filters cannot even be determined is one whose redaction cannot be guaranteed.
+     *
+     * @param key          The key identifying the resource, for the report of a failure
+     * @param resourceInfo The instance to access resource class and method
+     * @return The body logging configuration, or {@link BodyConfiguration#NONE} if it cannot be resolved
+     */
+    protected BodyConfiguration resolve(ResourceKey key, ResourceInfo resourceInfo) {
+        try {
+            return new BodyConfiguration(resolve(resourceInfo, REQUEST), resolve(resourceInfo, RESPONSE));
+        } catch (RuntimeException e) {
+            log.error("Unable to resolve the body logging configuration of {}, no body of it is logged", key, e);
+            return BodyConfiguration.NONE;
+        }
     }
 
     /**

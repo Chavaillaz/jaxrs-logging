@@ -5,13 +5,17 @@ import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.RESPONSE;
 import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.LOG;
 import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.MDC;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doReturn;
 
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
+import com.chavaillaz.jakarta.rs.LoggedResolver.BodyConfiguration;
 import jakarta.ws.rs.container.ResourceInfo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -103,6 +107,34 @@ class LoggedResolverTest {
         resolver.getBodyConfiguration(resourceInfo, RESPONSE);
 
         assertEquals(1, resolver.bodyConfigurationCache.size());
+    }
+
+    @Test
+    @DisplayName("Check a body configuration that cannot be resolved logs no body, and is not resolved again")
+    void checkUnresolvableBodyConfiguration() throws Exception {
+        setup("bothMethod");
+
+        // Given: filters that cannot even be determined, as a @LoggedBody naming a class missing at runtime
+        // throws a TypeNotPresentException the moment it is read
+        AtomicInteger attempts = new AtomicInteger();
+        LoggedResolver failingResolver = new LoggedResolver(new LoggedBodyFilterFactory() {
+
+            @Override
+            public Set<LoggedBodyFilter> getInstances(Class<? extends LoggedBodyFilter>[] filterTypes) {
+                attempts.incrementAndGet();
+                throw new TypeNotPresentException("com.company.MissingFilter", null);
+            }
+
+        });
+
+        // When
+        BodyConfiguration first = assertDoesNotThrow(() -> failingResolver.getBodyConfiguration(resourceInfo));
+        BodyConfiguration second = failingResolver.getBodyConfiguration(resourceInfo);
+
+        // Then: no later request resolves it any better, so it is neither retried nor logged each time
+        assertSame(BodyConfiguration.NONE, first);
+        assertSame(first, second);
+        assertEquals(1, attempts.get());
     }
 
     @Test

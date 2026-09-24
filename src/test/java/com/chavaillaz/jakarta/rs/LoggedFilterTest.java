@@ -53,6 +53,7 @@ import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
+import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerResponseContext;
@@ -1034,6 +1035,44 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         // Then: the entity was read as if nothing had been asked of it, only without a body in the logs
         assertEquals(INPUT, entityRead.get());
+    }
+
+    @Test
+    @DisplayName("Check a body configuration that cannot be resolved breaks neither reading nor writing the entity")
+    void checkUnresolvableBodyConfigurationDoesNotBreakExchange() throws Exception {
+        // Deciding whether to capture a body happens before proceed() too, where a failure prevents the
+        // entity from being read or written at all
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+
+        // Given: a configuration failing to resolve, standing in for a container's ResourceInfo failing
+        // outside of the request scope it expects, or a subclass overriding the resolution
+        LoggedFilter failingFilter = new LoggedFilter() {
+
+            @Override
+            protected LoggedBodyConfiguration getBodyConfiguration(LoggedRequestState state, Direction target) {
+                throw new IllegalStateException("Not inside a request scope");
+            }
+
+        };
+        failingFilter.resourceInfo = resourceInfo;
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        AtomicReference<String> entityRead = new AtomicReference<>();
+        ReaderInterceptorContext requestInterceptorContext = readerContext(
+                requestContext, requestContext.getEntityStream(),
+                stream -> entityRead.set(new String(stream.readAllBytes(), UTF_8)));
+        ByteArrayOutputStream written = new ByteArrayOutputStream();
+        WriterInterceptorContext responseInterceptorContext = writerContext(
+                requestContext, output -> written.write(OUTPUT.getBytes(UTF_8)));
+
+        // When
+        failingFilter.filter(requestContext);
+        assertDoesNotThrow(() -> failingFilter.aroundReadFrom(requestInterceptorContext));
+        failingFilter.filter(requestContext, getResponseContext(requestContext));
+        assertDoesNotThrow(() -> failingFilter.aroundWriteTo(responseInterceptorContext));
+
+        // Then
+        assertEquals(INPUT, entityRead.get());
+        assertEquals(OUTPUT, written.toString(UTF_8));
     }
 
     @Test
