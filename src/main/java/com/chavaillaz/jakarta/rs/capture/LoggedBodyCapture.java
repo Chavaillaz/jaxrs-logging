@@ -41,7 +41,7 @@ public interface LoggedBodyCapture extends AutoCloseable {
      */
     static int checkLimit(int limit) {
         if (limit < NO_LIMIT) {
-            throw new IllegalArgumentException("Limit must be -1 (unlimited) or a positive value, but was " + limit);
+            throw new IllegalArgumentException("Limit must be -1 (no limit) or a number of bytes, 0 included, but was " + limit);
         }
         return limit;
     }

@@ -33,7 +33,7 @@ class CaptureBufferTest {
     @DisplayName("Check a limit lower than -1 is rejected, naming what has to be fixed")
     void checkInvalidLimitRejected(int limit) {
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class, () -> new CaptureBuffer(limit));
-        assertTrue(thrown.getMessage().contains("Limit must be -1 (unlimited) or a positive value"));
+        assertTrue(thrown.getMessage().contains("Limit must be -1 (no limit) or a number of bytes, 0 included"));
     }
 
     @Test

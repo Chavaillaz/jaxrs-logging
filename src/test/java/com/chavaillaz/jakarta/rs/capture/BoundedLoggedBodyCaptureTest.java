@@ -63,7 +63,7 @@ class BoundedLoggedBodyCaptureTest {
                 () -> new BoundedLoggedBodyCapture(-2));
 
         // Then
-        assertTrue(thrown.getMessage().contains("Limit must be -1 (unlimited) or a positive value"));
+        assertTrue(thrown.getMessage().contains("Limit must be -1 (no limit) or a number of bytes, 0 included"));
     }
 
     @Test
