@@ -130,8 +130,14 @@ public final class LoggedUtils {
      * @param <A>            The annotation type
      * @param <W>            The wrapper annotation type
      * @return The annotations found, or an empty list otherwise
+     * @throws IllegalArgumentException if only one of the wrapper type and the mapper is given, which would
+     *                                  otherwise go unnoticed until a resource declares the wrapper
      */
     public static <A extends Annotation, W extends Annotation> List<A> getAnnotation(ResourceInfo resourceInfo, Class<A> annotationType, @Nullable Class<W> wrapperType, @Nullable Function<W, A[]> mapper) {
+        if ((wrapperType == null) != (mapper == null)) {
+            throw new IllegalArgumentException("A wrapper type and the mapper extracting the annotations from it go together");
+        }
+
         Class<?> resourceClass = resourceInfo.getResourceClass();
         Method resourceMethod = resourceInfo.getResourceMethod();
         if (resourceClass == null && resourceMethod == null) {

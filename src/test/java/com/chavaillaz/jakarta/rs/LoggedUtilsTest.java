@@ -9,6 +9,7 @@ import static com.chavaillaz.jakarta.rs.LoggedUtils.getAnnotation;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.getMergedMappings;
 import static java.util.stream.Collectors.toSet;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doReturn;
 
@@ -234,6 +235,13 @@ class LoggedUtilsTest {
 
         // Then
         assertTrue(result.isEmpty());
+    }
+
+    @Test
+    @DisplayName("Check a wrapper type given without its mapper, or the other way round, is rejected")
+    void checkWrapperWithoutMapperRejected() {
+        assertThrows(IllegalArgumentException.class, () -> getAnnotation(resourceInfo, LoggedBody.class, Logged.class, null));
+        assertThrows(IllegalArgumentException.class, () -> getAnnotation(resourceInfo, LoggedBody.class, null, Logged::value));
     }
 
 }
