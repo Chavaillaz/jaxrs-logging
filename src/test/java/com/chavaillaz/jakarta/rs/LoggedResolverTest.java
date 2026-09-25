@@ -14,6 +14,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doReturn;
 
 import jakarta.ws.rs.container.ResourceInfo;
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -213,6 +214,28 @@ class LoggedResolverTest {
 
         assertEquals(1, mappings.size());
         assertEquals("topic", mappings.iterator().next().mdcKey());
+    }
+
+    @Test
+    @DisplayName("Check mappings that cannot be resolved map nothing, and are not resolved again")
+    void checkUnresolvableMappings() throws Exception {
+        // Given: a resource whose declaration sites cannot be walked, as reflection parsing a generic signature
+        // that names a type missing at runtime throws - here, when the resolution asks for the resource method,
+        // the cache asking for it first to key the resource on
+        Method method = Resource.class.getMethod("mappedMethod");
+        doReturn(Resource.class).when(resourceInfo).getResourceClass();
+        doReturn(method)
+                .doThrow(new TypeNotPresentException("com.company.MissingType", null))
+                .doReturn(method)
+                .when(resourceInfo).getResourceMethod();
+
+        // When
+        List<LoggedMapping> first = assertDoesNotThrow(() -> resolver.getMappings(resourceInfo));
+        List<LoggedMapping> second = resolver.getMappings(resourceInfo);
+
+        // Then: no later request resolves them any better, so they are neither retried nor reported each time
+        assertTrue(first.isEmpty());
+        assertSame(first, second);
     }
 
     @Test

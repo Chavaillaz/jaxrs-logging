@@ -149,7 +149,30 @@ final class LoggedResolver {
         if (key == null) {
             return List.of();
         }
-        return mappingsCache.computeIfAbsent(key, ignored -> MappingApplier.inApplicationOrder(LoggedUtils.getMergedMappings(resourceInfo)));
+        return mappingsCache.computeIfAbsent(key, ignored -> resolveMappings(key, resourceInfo));
+    }
+
+    /**
+     * Resolves the mappings of the given resource in the order they apply in, or into none if they cannot be.
+     * <p>
+     * Walking the declaration sites of a resource method reflects on the interfaces of its class, which fails
+     * the same way every time it does - a generic signature naming a type missing at runtime throws a
+     * {@link TypeNotPresentException} once parsed. Such a failure is therefore reported once and remembered,
+     * like one resolving the body logging configuration (see {@link #resolve(ResourceKey, ResourceInfo)}),
+     * rather than failing the description of every request to the resource.
+     *
+     * @param key          The key identifying the resource, for the report of a failure
+     * @param resourceInfo The instance to access resource class and method
+     * @return The mappings applicable to the resource method, in the order they apply in, or none if they
+     * cannot be resolved
+     */
+    private List<LoggedMapping> resolveMappings(ResourceKey key, ResourceInfo resourceInfo) {
+        try {
+            return MappingApplier.inApplicationOrder(LoggedUtils.getMergedMappings(resourceInfo));
+        } catch (RuntimeException e) {
+            log.error("Unable to resolve the MDC mappings of {}, none of them is applied", key, e);
+            return List.of();
+        }
     }
 
     /**
