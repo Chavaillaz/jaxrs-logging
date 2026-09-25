@@ -9,10 +9,10 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.Mockito.doReturn;
 
+import jakarta.ws.rs.container.ResourceInfo;
 import java.lang.reflect.Method;
 import java.net.URISyntaxException;
 
-import jakarta.ws.rs.container.ResourceInfo;
 import org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext;
 import org.jboss.resteasy.mock.MockHttpRequest;
 import org.junit.jupiter.api.BeforeEach;

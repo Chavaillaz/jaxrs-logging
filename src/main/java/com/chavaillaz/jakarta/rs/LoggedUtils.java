@@ -7,6 +7,7 @@ import static java.util.Collections.emptyList;
 import static java.util.Collections.emptySet;
 import static org.apache.commons.lang3.ClassUtils.getAllInterfaces;
 
+import jakarta.ws.rs.container.ResourceInfo;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Method;
@@ -21,7 +22,6 @@ import java.util.Set;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 
-import jakarta.ws.rs.container.ResourceInfo;
 import org.apache.commons.lang3.reflect.TypeUtils;
 import org.jspecify.annotations.Nullable;
 

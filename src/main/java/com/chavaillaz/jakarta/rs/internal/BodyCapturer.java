@@ -3,21 +3,22 @@ package com.chavaillaz.jakarta.rs.internal;
 import static com.chavaillaz.jakarta.rs.internal.LoggingGuard.report;
 import static com.chavaillaz.jakarta.rs.internal.LoggingGuard.safely;
 
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.ext.InterceptorContext;
+import jakarta.ws.rs.ext.ReaderInterceptorContext;
+import jakarta.ws.rs.ext.WriterInterceptorContext;
 import java.io.IOException;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
+
+import org.apache.commons.io.output.TeeOutputStream;
+import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
 
 import com.chavaillaz.jakarta.rs.LoggedFilter;
 import com.chavaillaz.jakarta.rs.LoggedFilterConfiguration;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.client.LoggedClientFilter;
-import jakarta.ws.rs.WebApplicationException;
-import jakarta.ws.rs.ext.InterceptorContext;
-import jakarta.ws.rs.ext.ReaderInterceptorContext;
-import jakarta.ws.rs.ext.WriterInterceptorContext;
-import org.apache.commons.io.output.TeeOutputStream;
-import org.jspecify.annotations.Nullable;
-import org.slf4j.Logger;
 
 /**
  * Captures the body of an entity as it is read or written, for a provider to log: copies the entity stream to

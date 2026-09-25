@@ -15,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+import jakarta.ws.rs.container.ResourceInfo;
 import java.lang.reflect.Method;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -23,7 +24,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
-import jakarta.ws.rs.container.ResourceInfo;
 import org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext;
 import org.jboss.resteasy.mock.MockHttpRequest;
 import org.junit.jupiter.api.DisplayName;

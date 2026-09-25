@@ -13,15 +13,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doReturn;
 
+import jakarta.ws.rs.container.ResourceInfo;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import com.chavaillaz.jakarta.rs.LoggedResolver.BodyConfiguration;
-import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
-import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
-import com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory;
-import jakarta.ws.rs.container.ResourceInfo;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,6 +25,11 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+
+import com.chavaillaz.jakarta.rs.LoggedResolver.BodyConfiguration;
+import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
+import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
+import com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory;
 
 /**
  * Exercises {@link LoggedResolver} directly, without going through {@link LoggedFilter}: since

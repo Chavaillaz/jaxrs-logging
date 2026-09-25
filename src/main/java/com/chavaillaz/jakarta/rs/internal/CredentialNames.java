@@ -3,10 +3,11 @@ package com.chavaillaz.jakarta.rs.internal;
 import java.util.Locale;
 import java.util.Set;
 
+import org.jspecify.annotations.Nullable;
+
 import com.chavaillaz.jakarta.rs.LoggedField;
 import com.chavaillaz.jakarta.rs.LoggedFilterConfiguration;
 import com.chavaillaz.jakarta.rs.LoggedMapping;
-import org.jspecify.annotations.Nullable;
 
 /**
  * The header and query parameter names that carry a credential often enough to be kept out of the logs

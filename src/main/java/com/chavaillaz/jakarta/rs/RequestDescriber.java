@@ -16,6 +16,9 @@ import static java.util.stream.Collectors.joining;
 import static org.apache.commons.lang3.StringUtils.EMPTY;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
+import jakarta.ws.rs.container.ContainerRequestContext;
+import jakarta.ws.rs.container.ResourceInfo;
+import jakarta.ws.rs.core.UriInfo;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
@@ -23,11 +26,9 @@ import java.util.function.BiConsumer;
 import java.util.function.BiPredicate;
 import java.util.regex.Pattern;
 
-import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
-import jakarta.ws.rs.container.ContainerRequestContext;
-import jakarta.ws.rs.container.ResourceInfo;
-import jakarta.ws.rs.core.UriInfo;
 import org.jspecify.annotations.Nullable;
+
+import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
 
 /**
  * Describes a request received and the resource matched for it, as the fields of {@link LoggedField}

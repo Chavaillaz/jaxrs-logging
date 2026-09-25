@@ -3,15 +3,16 @@ package com.chavaillaz.jakarta.rs;
 import static java.lang.System.nanoTime;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 
+import jakarta.ws.rs.container.ContainerRequestContext;
+import jakarta.ws.rs.ext.InterceptorContext;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import com.chavaillaz.jakarta.rs.LoggedResolver.BodyConfiguration;
-import jakarta.ws.rs.container.ContainerRequestContext;
-import jakarta.ws.rs.ext.InterceptorContext;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.MDC;
+
+import com.chavaillaz.jakarta.rs.LoggedResolver.BodyConfiguration;
 
 /**
  * Everything {@link LoggedFilter} remembers about one request while it is being processed.

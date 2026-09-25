@@ -19,8 +19,9 @@ import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.Predicate;
 
-import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
 import org.jspecify.annotations.Nullable;
+
+import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
 
 /**
  * Works out the MDC entries the {@link LoggedMapping} annotations of a resource method ask for, from the

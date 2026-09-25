@@ -2,8 +2,6 @@ package com.chavaillaz.jakarta.rs;
 
 import static jakarta.ws.rs.RuntimeType.SERVER;
 
-import java.io.IOException;
-
 import jakarta.annotation.Priority;
 import jakarta.ws.rs.ConstrainedTo;
 import jakarta.ws.rs.Priorities;
@@ -14,6 +12,8 @@ import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
 import jakarta.ws.rs.ext.WriterInterceptor;
 import jakarta.ws.rs.ext.WriterInterceptorContext;
+import java.io.IOException;
+
 import org.jspecify.annotations.Nullable;
 
 /**

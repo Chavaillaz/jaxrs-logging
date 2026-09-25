@@ -2,6 +2,8 @@ package com.chavaillaz.jakarta.rs.mdc;
 
 import static java.util.Objects.requireNonNull;
 
+import jakarta.ws.rs.container.AsyncResponse;
+import jakarta.ws.rs.container.TimeoutHandler;
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
@@ -22,11 +24,10 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
-import com.chavaillaz.jakarta.rs.LoggedFilter;
-import jakarta.ws.rs.container.AsyncResponse;
-import jakarta.ws.rs.container.TimeoutHandler;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.MDC;
+
+import com.chavaillaz.jakarta.rs.LoggedFilter;
 
 /**
  * Propagates the calling thread's MDC context map to a task run on another thread.

@@ -7,6 +7,7 @@ import static java.nio.charset.StandardCharsets.ISO_8859_1;
 import static java.nio.charset.StandardCharsets.US_ASCII;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import jakarta.ws.rs.core.MediaType;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
@@ -17,11 +18,11 @@ import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Set;
 
-import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
-import jakarta.ws.rs.core.MediaType;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
 /**
  * Default {@link LoggedBodyCapture} implementation, capturing at most a configured number of bytes in

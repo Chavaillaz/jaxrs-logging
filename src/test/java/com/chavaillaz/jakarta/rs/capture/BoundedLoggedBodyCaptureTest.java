@@ -17,22 +17,23 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
+import jakarta.ws.rs.core.MediaType;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.nio.charset.Charset;
 import java.util.Set;
 
-import com.chavaillaz.jakarta.rs.SensitiveBodyFilter;
-import com.chavaillaz.jakarta.rs.filter.JsonMaskingBodyFilter;
-import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
-import com.chavaillaz.jakarta.rs.filter.RegexMaskingBodyFilter;
 import com.sun.management.ThreadMXBean;
-import jakarta.ws.rs.core.MediaType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
+
+import com.chavaillaz.jakarta.rs.SensitiveBodyFilter;
+import com.chavaillaz.jakarta.rs.filter.JsonMaskingBodyFilter;
+import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
+import com.chavaillaz.jakarta.rs.filter.RegexMaskingBodyFilter;
 
 @DisplayName("Bounded logged body capture")
 class BoundedLoggedBodyCaptureTest {

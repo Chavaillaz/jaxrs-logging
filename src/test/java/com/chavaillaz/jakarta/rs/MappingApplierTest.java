@@ -12,9 +12,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
 
-import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
 
 /**
  * Exercises {@link MappingApplier} on plain maps, without any request context: the mapping behaviour seen

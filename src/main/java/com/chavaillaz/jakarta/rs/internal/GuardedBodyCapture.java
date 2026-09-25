@@ -2,16 +2,17 @@ package com.chavaillaz.jakarta.rs.internal;
 
 import static com.chavaillaz.jakarta.rs.internal.LoggingGuard.report;
 
+import jakarta.ws.rs.core.MediaType;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Set;
 
+import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+
 import com.chavaillaz.jakarta.rs.LoggedFilterConfiguration;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
-import jakarta.ws.rs.core.MediaType;
-import org.jspecify.annotations.Nullable;
-import org.slf4j.Logger;
 
 /**
  * Decorates a {@link LoggedBodyCapture} so that its sink failing does not fail the exchange it observes.

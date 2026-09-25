@@ -17,20 +17,6 @@ import static java.util.Objects.requireNonNullElse;
 import static org.apache.commons.lang3.StringUtils.EMPTY;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
-import java.io.IOException;
-import java.util.List;
-import java.util.Map;
-
-import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
-import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
-import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
-import com.chavaillaz.jakarta.rs.LoggedResolver.BodyConfiguration;
-import com.chavaillaz.jakarta.rs.client.LoggedClientFilter;
-import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
-import com.chavaillaz.jakarta.rs.internal.BodyCapturer;
-import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
-import com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory;
-import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
 import jakarta.annotation.Priority;
 import jakarta.ws.rs.ConstrainedTo;
 import jakarta.ws.rs.Priorities;
@@ -46,10 +32,25 @@ import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
 import jakarta.ws.rs.ext.WriterInterceptor;
 import jakarta.ws.rs.ext.WriterInterceptorContext;
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+
+import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
+import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
+import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
+import com.chavaillaz.jakarta.rs.LoggedResolver.BodyConfiguration;
+import com.chavaillaz.jakarta.rs.client.LoggedClientFilter;
+import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
+import com.chavaillaz.jakarta.rs.internal.BodyCapturer;
+import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
+import com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory;
+import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
 
 /**
  * Provider logging the requests received by the resources annotated with {@link Logged}, and describing each

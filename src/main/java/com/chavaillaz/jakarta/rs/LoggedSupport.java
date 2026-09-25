@@ -1,7 +1,8 @@
 package com.chavaillaz.jakarta.rs;
 
-import com.chavaillaz.jakarta.rs.client.LoggedClientFilter;
 import org.slf4j.event.Level;
+
+import com.chavaillaz.jakarta.rs.client.LoggedClientFilter;
 
 /**
  * The level {@link LoggedFilter} and {@link LoggedClientFilter} log an exchange at by default, given the

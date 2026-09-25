@@ -16,10 +16,9 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import jakarta.ws.rs.container.ContainerRequestContext;
 import java.util.Arrays;
 
-import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
-import jakarta.ws.rs.container.ContainerRequestContext;
 import org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext;
 import org.jboss.resteasy.mock.MockHttpRequest;
 import org.junit.jupiter.api.DisplayName;
@@ -27,6 +26,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.event.Level;
+
+import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 
 @DisplayName("Logged filter configuration")
 class LoggedFilterConfigurationTest {

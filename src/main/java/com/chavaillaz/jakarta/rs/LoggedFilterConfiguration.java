@@ -7,6 +7,8 @@ import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElseGet;
 import static org.apache.commons.lang3.StringUtils.isBlank;
 
+import jakarta.ws.rs.container.ContainerRequestContext;
+import jakarta.ws.rs.core.MultivaluedMap;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
@@ -14,15 +16,14 @@ import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 
+import org.jspecify.annotations.Nullable;
+import org.slf4j.event.Level;
+
 import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
 import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import com.chavaillaz.jakarta.rs.internal.CredentialNames;
-import jakarta.ws.rs.container.ContainerRequestContext;
-import jakarta.ws.rs.core.MultivaluedMap;
-import org.jspecify.annotations.Nullable;
-import org.slf4j.event.Level;
 
 /**
  * Configuration of a {@link LoggedFilter}: the names of its MDC entries, how it identifies a request and

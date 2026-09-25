@@ -13,14 +13,15 @@ import java.io.OutputStream;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-import com.chavaillaz.jakarta.rs.AbstractFilterTest;
-import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.chavaillaz.jakarta.rs.AbstractFilterTest;
+import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 
 @DisplayName("Guarded body capture")
 class GuardedBodyCaptureTest extends AbstractFilterTest {

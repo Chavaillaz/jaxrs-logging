@@ -19,26 +19,6 @@ import static java.util.stream.Collectors.joining;
 import static org.apache.commons.lang3.StringUtils.LF;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
-import java.io.IOException;
-import java.net.URI;
-import java.net.URLDecoder;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
-
-import com.chavaillaz.jakarta.rs.LoggedBody;
-import com.chavaillaz.jakarta.rs.LoggedField;
-import com.chavaillaz.jakarta.rs.LoggedFilter;
-import com.chavaillaz.jakarta.rs.LoggedFilterConfiguration;
-import com.chavaillaz.jakarta.rs.LoggedSupport;
-import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
-import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
-import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
-import com.chavaillaz.jakarta.rs.internal.BodyCapturer;
-import com.chavaillaz.jakarta.rs.internal.CredentialNames;
-import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
-import com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory;
-import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
 import jakarta.annotation.Priority;
 import jakarta.ws.rs.ConstrainedTo;
 import jakarta.ws.rs.Priorities;
@@ -54,11 +34,32 @@ import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
 import jakarta.ws.rs.ext.WriterInterceptor;
 import jakarta.ws.rs.ext.WriterInterceptorContext;
+import java.io.IOException;
+import java.net.URI;
+import java.net.URLDecoder;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 import org.slf4j.event.Level;
+
+import com.chavaillaz.jakarta.rs.LoggedBody;
+import com.chavaillaz.jakarta.rs.LoggedField;
+import com.chavaillaz.jakarta.rs.LoggedFilter;
+import com.chavaillaz.jakarta.rs.LoggedFilterConfiguration;
+import com.chavaillaz.jakarta.rs.LoggedSupport;
+import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
+import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
+import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
+import com.chavaillaz.jakarta.rs.internal.BodyCapturer;
+import com.chavaillaz.jakarta.rs.internal.CredentialNames;
+import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
+import com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory;
+import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
 
 /**
  * Client-side counterpart of {@link LoggedFilter}, logging the calls made through a JAX-RS {@code Client}

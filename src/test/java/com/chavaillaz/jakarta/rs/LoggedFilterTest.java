@@ -37,6 +37,14 @@ import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 
+import jakarta.ws.rs.container.ContainerRequestContext;
+import jakarta.ws.rs.container.ResourceInfo;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.ext.InterceptorContext;
+import jakarta.ws.rs.ext.ReaderInterceptor;
+import jakarta.ws.rs.ext.ReaderInterceptorContext;
+import jakarta.ws.rs.ext.WriterInterceptor;
+import jakarta.ws.rs.ext.WriterInterceptorContext;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -59,20 +67,6 @@ import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
-import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
-import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
-import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
-import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
-import com.chavaillaz.jakarta.rs.internal.BodyCapturer;
-import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
-import jakarta.ws.rs.container.ContainerRequestContext;
-import jakarta.ws.rs.container.ResourceInfo;
-import jakarta.ws.rs.core.MediaType;
-import jakarta.ws.rs.ext.InterceptorContext;
-import jakarta.ws.rs.ext.ReaderInterceptor;
-import jakarta.ws.rs.ext.ReaderInterceptorContext;
-import jakarta.ws.rs.ext.WriterInterceptor;
-import jakarta.ws.rs.ext.WriterInterceptorContext;
 import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.core.LogEvent;
 import org.jboss.resteasy.core.Headers;
@@ -96,6 +90,13 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.MDC;
 import org.slf4j.event.Level;
+
+import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
+import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
+import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
+import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
+import com.chavaillaz.jakarta.rs.internal.BodyCapturer;
+import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
 
 @DisplayName("Original filter")
 @ExtendWith(MockitoExtension.class)
