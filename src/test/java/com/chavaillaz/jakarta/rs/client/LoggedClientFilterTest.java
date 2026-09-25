@@ -38,6 +38,7 @@ import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.apache.commons.io.IOUtils;
@@ -108,6 +109,19 @@ class LoggedClientFilterTest extends AbstractFilterTest {
 
         // Then
         assertNotNull(headers.getFirst(REQUEST_ID_HEADER));
+    }
+
+    @Test
+    @DisplayName("Check a random correlation identifier is generated when blank in MDC")
+    void checkCorrelationIdGeneratedWhenBlank() {
+        // Given: an identifier the application put in MDC, blank, which would correlate nothing
+        MDC.put("request-id", " ");
+
+        // When
+        filter.filter(requestContext);
+
+        // Then
+        assertDoesNotThrow(() -> UUID.fromString((String) headers.getFirst(REQUEST_ID_HEADER)));
     }
 
     @Test

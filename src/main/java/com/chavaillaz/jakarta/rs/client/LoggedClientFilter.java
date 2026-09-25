@@ -12,11 +12,11 @@ import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
 import static java.util.Collections.unmodifiableSet;
 import static java.util.Objects.requireNonNull;
-import static java.util.Objects.requireNonNullElseGet;
 import static java.util.UUID.randomUUID;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.stream.Collectors.joining;
 import static org.apache.commons.lang3.StringUtils.LF;
+import static org.apache.commons.lang3.StringUtils.isBlank;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
 import jakarta.annotation.Priority;
@@ -205,8 +205,8 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         /**
          * Sets the MDC key read to obtain the identifier propagated as {@value LoggedFilter#REQUEST_ID_HEADER}
          * on outgoing requests, falling back to a random one when absent from MDC (e.g. no {@link LoggedFilter}
-         * is active on the calling thread). Defaults to {@code request-id}; change it to match a renamed
-         * {@link LoggedField#REQUEST_ID} MDC key (see
+         * is active on the calling thread) or blank. Defaults to {@code request-id}; change it to match a
+         * renamed {@link LoggedField#REQUEST_ID} MDC key (see
          * {@link LoggedFilterConfiguration.Builder#fieldName(LoggedField, String)}).
          *
          * @param mdcKey The MDC key to read the correlation identifier from
@@ -377,8 +377,9 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         // is a plain MultivaluedMap in the JAX-RS Client API), so a caller having already set the header under
         // a different casing would otherwise get it sent twice with two different values
         if (requestContext.getHeaders().keySet().stream().noneMatch(REQUEST_ID_HEADER::equalsIgnoreCase)) {
-            String correlationId = requireNonNullElseGet(MDC.get(correlationIdMdcKey), () -> randomUUID().toString());
-            requestContext.getHeaders().putSingle(REQUEST_ID_HEADER, correlationId);
+            // A blank identifier correlates nothing, and is replaced as a missing one is
+            String correlationId = MDC.get(correlationIdMdcKey);
+            requestContext.getHeaders().putSingle(REQUEST_ID_HEADER, isBlank(correlationId) ? randomUUID().toString() : correlationId);
         }
     }
 
