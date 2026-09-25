@@ -7,9 +7,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import java.util.Arrays;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -124,12 +126,43 @@ class CaptureBufferTest {
     @Test
     @DisplayName("Check a body larger than an array can hold is cut and reported as truncated rather than failing")
     void checkBodyBeyondCapacityCut() {
-        // Without a limit, a body of more than two gigabytes used to fail the exchange with an
+        // Without a limit, a body of more than two gigabytes would otherwise fail the exchange with an
         // OutOfMemoryError from the buffer growing past what an array can hold
-        CaptureBuffer buffer = new CaptureBuffer(NO_LIMIT, 16);
+        CaptureBuffer buffer = new CaptureBuffer(NO_LIMIT, 16, Arrays::copyOf);
         buffer.write(DATA, 0, DATA.length);
         assertEquals("If debugging is ", content(buffer));
         assertTrue(buffer.isTruncated());
+    }
+
+    @Test
+    @DisplayName("Check a body the heap cannot spare a larger array for is cut there and reported as truncated")
+    void checkBodyBeyondHeapCut() {
+        // Given: arrays of more than 4 KiB failing the way they do once the heap is short of memory
+        AtomicInteger resizes = new AtomicInteger();
+        CaptureBuffer buffer = new CaptureBuffer(NO_LIMIT, CaptureBuffer.MAX_CAPACITY, (bytes, length) -> {
+            resizes.incrementAndGet();
+            if (length > 4096) {
+                throw new OutOfMemoryError("Java heap space");
+            }
+            return Arrays.copyOf(bytes, length);
+        });
+        byte[] large = new byte[10_000];
+        new Random(42).nextBytes(large);
+
+        // When: an error escaping would be rethrown by JUnit as unrecoverable, crashing the whole test run
+        try {
+            for (int off = 0; off < large.length; off += 100) {
+                buffer.write(large, off, 100);
+            }
+            buffer.write('!');
+        } catch (OutOfMemoryError e) {
+            fail("The capture failed with the allocation of its array", e);
+        }
+
+        // Then: the body is kept as far as the array holds, which is not asked to grow again after failing to
+        assertArrayEquals(Arrays.copyOf(large, 4096), Arrays.copyOf(buffer.array(), buffer.size()));
+        assertTrue(buffer.isTruncated());
+        assertEquals(3, resizes.get());
     }
 
     @Test

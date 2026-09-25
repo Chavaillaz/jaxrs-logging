@@ -3,10 +3,11 @@ package com.chavaillaz.jakarta.rs;
 import static com.chavaillaz.jakarta.rs.LoggedBodyCapture.NO_LIMIT;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
-import static java.util.Arrays.copyOf;
 import static java.util.Objects.checkFromIndexSize;
 
 import java.io.OutputStream;
+import java.util.Arrays;
+import java.util.function.BiFunction;
 
 /**
  * Buffer keeping, in memory, at most a given number of the bytes written to it: the bytes of a body a
@@ -19,6 +20,10 @@ import java.io.OutputStream;
  * <p>
  * It hands out the array it fills rather than a copy of it (see {@link #array()}), so the captured body can
  * be decoded straight from where it was written.
+ * <p>
+ * A body is cut and reported as truncated wherever the buffer stops growing: at the limit, at the largest
+ * array the JVM can allocate, or where the heap cannot spare a larger array. In none of these cases does the
+ * capture fail the exchange it only observes.
  */
 final class CaptureBuffer extends OutputStream {
 
@@ -36,9 +41,16 @@ final class CaptureBuffer extends OutputStream {
     static final int INITIAL_CAPACITY = 1024;
 
     /**
-     * Most bytes this buffer ever keeps: the limit it was given, or {@link #MAX_CAPACITY} without one.
+     * Grows the array to a given length, keeping its content: {@link Arrays#copyOf(byte[], int)}, which a test
+     * replaces with an allocation failing the way it does once the heap cannot spare the array.
      */
-    private final int capacityLimit;
+    private final BiFunction<byte[], Integer, byte[]> resize;
+
+    /**
+     * Most bytes this buffer ever keeps: the limit it was given, or {@link #MAX_CAPACITY} without one - or the
+     * length of the array once the heap could not spare a larger one.
+     */
+    private int capacityLimit;
 
     private byte[] bytes;
     private int size;
@@ -51,22 +63,22 @@ final class CaptureBuffer extends OutputStream {
      * @throws IllegalArgumentException if the limit is lower than {@link LoggedBodyCapture#NO_LIMIT}
      */
     CaptureBuffer(int limit) {
-        this(limit, MAX_CAPACITY);
+        this(limit, MAX_CAPACITY, Arrays::copyOf);
     }
 
     /**
-     * Creates a buffer keeping at most the given number of bytes, and never more than the given capacity.
-     * <p>
-     * A body larger than the capacity is kept up to it and reported as truncated, as a body larger than the
-     * limit is, rather than failing with an {@link OutOfMemoryError} once the array cannot grow any further.
-     * The capacity is a parameter so that can be tested without such a body.
+     * Creates a buffer keeping at most the given number of bytes, never more than the given capacity, and
+     * growing its array with the given function: the parameters that let a body larger than the capacity, or
+     * than the heap can hold, be tested without such a body.
      *
      * @param limit       The maximum number of bytes to keep, or {@link LoggedBodyCapture#NO_LIMIT} for no limit
      * @param maxCapacity The maximum number of bytes to keep whatever the limit
+     * @param resize      The growth of an array to a given length, keeping its content
      * @throws IllegalArgumentException if the limit is lower than {@link LoggedBodyCapture#NO_LIMIT}
      */
-    CaptureBuffer(int limit, int maxCapacity) {
+    CaptureBuffer(int limit, int maxCapacity, BiFunction<byte[], Integer, byte[]> resize) {
         checkLimit(limit);
+        this.resize = resize;
         this.capacityLimit = limit == NO_LIMIT ? maxCapacity : min(limit, maxCapacity);
         this.bytes = new byte[min(capacityLimit, INITIAL_CAPACITY)];
     }
@@ -88,43 +100,60 @@ final class CaptureBuffer extends OutputStream {
 
     @Override
     public void write(int b) {
-        if (size == capacityLimit) {
+        if (size < bytes.length || reserve(1) == 1) {
+            bytes[size++] = (byte) b;
+        } else {
             truncated = true;
-            return;
         }
-        if (size == bytes.length) {
-            grow(size + 1);
-        }
-        bytes[size++] = (byte) b;
     }
 
     @Override
     public void write(byte[] b, int off, int len) {
         checkFromIndexSize(off, len, b.length);
-        int kept = min(len, capacityLimit - size);
+        int kept = reserve(len);
         if (kept < len) {
             // Reported only when bytes were actually dropped, not when the limit was merely reached: a body
             // exactly as long as the limit is complete, and must not be logged as if part of it were missing
             truncated = true;
         }
         if (kept > 0) {
-            if (size + kept > bytes.length) {
-                grow(size + kept);
-            }
             System.arraycopy(b, off, bytes, size, kept);
             size += kept;
         }
     }
 
     /**
+     * Makes room in the array for up to the given number of bytes, growing it if this buffer can keep more.
+     *
+     * @param wanted The number of bytes about to be written
+     * @return How many of them the array can take, fewer than wanted once this buffer is full
+     */
+    private int reserve(int wanted) {
+        int kept = min(wanted, capacityLimit - size);
+        if (size + kept > bytes.length) {
+            grow(size + kept);
+        }
+        return min(kept, bytes.length - size);
+    }
+
+    /**
      * Grows the array to hold at least the given number of bytes, doubling its size so a body written in
      * small chunks is copied a logarithmic number of times, but never beyond what this buffer can keep.
+     * <p>
+     * A heap that cannot spare the larger array leaves the body kept as far as the current one holds, and
+     * reported as truncated as it would be at the limit: only the allocation failed, and the capture must not
+     * fail the exchange it observes. The array is not asked to grow again, as the JVM runs a full garbage
+     * collection before each allocation it then fails.
      *
      * @param minCapacity The number of bytes the array must be able to hold
      */
     private void grow(int minCapacity) {
         int doubled = (int) min((long) bytes.length * 2, capacityLimit);
-        bytes = copyOf(bytes, max(doubled, minCapacity));
+        try {
+            bytes = resize.apply(bytes, max(doubled, minCapacity));
+        } catch (OutOfMemoryError e) {
+            capacityLimit = bytes.length;
+        }
     }
 
     /**
