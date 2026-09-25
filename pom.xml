@@ -41,6 +41,12 @@
         <mockito.version>5.20.0</mockito.version>
         <!-- Set by the JaCoCo agent in the coverage profile, empty otherwise (see maven-surefire-plugin) -->
         <argLine/>
+        <!-- Modules the tests, compiled into the module and run in it, read beyond what the module does: the
+             management API of the JDK, which measures what a capture allocates, and - once run - Log4j, which
+             captures the lines logged, and which the module path then holds as the provider of SLF4J -->
+        <module.test.modules>java.management,jdk.management</module.test.modules>
+        <module.test.reads>com.chavaillaz.jaxrs.logging=${module.test.modules}</module.test.reads>
+        <module.test.run.reads>${module.test.reads},org.apache.logging.log4j,org.apache.logging.log4j.core</module.test.run.reads>
     </properties>
 
     <dependencyManagement>
@@ -64,9 +70,16 @@
 
     <dependencies>
         <dependency>
-            <groupId>jakarta.platform</groupId>
-            <artifactId>jakarta.jakartaee-web-api</artifactId>
-            <version>10.0.0</version>
+            <groupId>jakarta.ws.rs</groupId>
+            <artifactId>jakarta.ws.rs-api</artifactId>
+            <version>3.1.0</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>jakarta.annotation</groupId>
+            <artifactId>jakarta.annotation-api</artifactId>
+            <version>2.1.1</version>
             <scope>provided</scope>
         </dependency>
 
@@ -89,6 +102,13 @@
         </dependency>
 
         <!-- Test dependencies -->
+
+        <dependency>
+            <groupId>jakarta.inject</groupId>
+            <artifactId>jakarta.inject-api</artifactId>
+            <version>2.0.1</version>
+            <scope>test</scope>
+        </dependency>
 
         <dependency>
             <groupId>org.jboss.resteasy</groupId>
@@ -138,21 +158,25 @@
                 <configuration>
                     <release>21</release>
                 </configuration>
+                <executions>
+                    <execution>
+                        <id>default-testCompile</id>
+                        <configuration>
+                            <compilerArgs>
+                                <arg>--add-modules</arg>
+                                <arg>${module.test.modules}</arg>
+                                <arg>--add-reads</arg>
+                                <arg>${module.test.reads}</arg>
+                            </compilerArgs>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
 
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>
                 <version>3.5.0</version>
-                <configuration>
-                    <archive>
-                        <manifestEntries>
-                            <!-- Named module for consumers running on the module path, which would
-                                 otherwise derive an unstable automatic name from the jar file name -->
-                            <Automatic-Module-Name>com.chavaillaz.jaxrs.logging</Automatic-Module-Name>
-                        </manifestEntries>
-                    </archive>
-                </configuration>
             </plugin>
 
             <plugin>
@@ -181,7 +205,7 @@
                     <!-- Extends the argLine the JaCoCo agent sets rather than replacing it, which left the
                          coverage profile without any execution data to report on -->
                     <argLine>
-                        @{argLine} -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar
+                        @{argLine} --add-modules ${module.test.modules} --add-reads ${module.test.run.reads} -javaagent:${settings.localRepository}/org/mockito/mockito-core/${mockito.version}/mockito-core-${mockito.version}.jar
                     </argLine>
                 </configuration>
             </plugin>
@@ -244,6 +268,10 @@
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-javadoc-plugin</artifactId>
                         <version>3.11.3</version>
+                        <configuration>
+                            <!-- Not exported by the module, and no part of the API -->
+                            <excludePackageNames>com.chavaillaz.jakarta.rs.internal</excludePackageNames>
+                        </configuration>
                         <executions>
                             <execution>
                                 <id>attach-javadocs</id>

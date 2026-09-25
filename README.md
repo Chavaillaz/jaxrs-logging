@@ -17,6 +17,19 @@ The dependency is available in maven central (see badge for version):
 </dependency>
 ```
 
+The jar is a named module, `com.chavaillaz.jaxrs.logging`, exporting the following packages:
+
+| Package                             | Content                                                                    |
+|-------------------------------------|----------------------------------------------------------------------------|
+| `com.chavaillaz.jakarta.rs`         | Annotations activating and configuring the logging, and the providers      |
+| `com.chavaillaz.jakarta.rs.client`  | Logging of the calls made through a JAX-RS client                          |
+| `com.chavaillaz.jakarta.rs.filter`  | Filters keeping values out of the bodies logged                            |
+| `com.chavaillaz.jakarta.rs.capture` | How the bodies logged are captured                                         |
+| `com.chavaillaz.jakarta.rs.mdc`     | Propagation of MDC to the threads a task is handed to                      |
+
+On the module path, export the package of the body filter classes your resources name to this module, which
+instantiates them by reflection.
+
 ## Usage
 
 The logging of requests and responses is done through a filter that can be activated on a resource with:
