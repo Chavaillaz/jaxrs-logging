@@ -23,9 +23,8 @@ import java.util.regex.Pattern;
  * {@link MaskingBodyFilter} for why the body is not parsed); mask the scalar properties inside it
  * instead, or use {@link LoggedBody#limit()} to keep it out of the logs altogether.
  * <p>
- * A string value cut short by {@link LoggedBody#limit()} is masked too. The body a filter receives ends
- * wherever the limit fell, so a secret straddling that point lacks the closing quote a complete string
- * ends with; requiring one left the part of the secret before the cut in the logs, in the clear.
+ * A string value cut short by {@link LoggedBody#limit()} is masked too, although it lacks the closing
+ * quote a complete string ends with, so no part of a secret straddling the limit is logged in the clear.
  */
 public class JsonMaskingBodyFilter extends MaskingBodyFilter {
 
@@ -35,11 +34,9 @@ public class JsonMaskingBodyFilter extends MaskingBodyFilter {
      * <p>
      * A string is matched as runs of plain characters separated by escapes, rather than as a repetition
      * of "one plain character or one escape": {@link java.util.regex} recurses once per repetition of a
-     * group like the latter, which overflowed the stack on a value a few thousand characters long - a JWT
-     * carrying a handful of claims, for instance - with a {@link StackOverflowError} that, not being an
-     * {@link Exception}, escaped every guard between this filter and the exchange it was only observing.
-     * A run of plain characters is matched iteratively, which leaves one level of recursion per escape
-     * sequence rather than per character.
+     * group like the latter, which overflows the stack on a value a few thousand characters long - a JWT
+     * carrying a handful of claims, for instance. A run of plain characters is matched iteratively, which
+     * leaves one level of recursion per escape sequence rather than per character.
      * <p>
      * A string also ends at the very end of the body, possibly right after the backslash of an escape
      * sequence cut in half, so a value truncated by the body limit is masked as well (see the class

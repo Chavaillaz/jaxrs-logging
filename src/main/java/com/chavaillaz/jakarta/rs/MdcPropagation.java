@@ -114,10 +114,8 @@ public final class MdcPropagation {
      * <p>
      * For a periodic task ({@link ScheduledExecutorService#scheduleAtFixedRate} or
      * {@link ScheduledExecutorService#scheduleWithFixedDelay}), the context map is captured once, when the
-     * task is scheduled, and that same snapshot is applied to every execution of it - consistent with how
-     * every other method here captures context at wrap/submission time rather than at run time (see
-     * {@link #wrap(Runnable)}). A later change to the scheduling thread's MDC context is not picked up by
-     * executions that already started running before that change.
+     * task is scheduled, and that snapshot is applied to every execution of it: a later change to the MDC of
+     * the scheduling thread is not picked up.
      * <p>
      * Lifecycle methods ({@link ExecutorService#shutdown()}, {@link ExecutorService#awaitTermination}, ...)
      * are delegated as-is to the given executor.

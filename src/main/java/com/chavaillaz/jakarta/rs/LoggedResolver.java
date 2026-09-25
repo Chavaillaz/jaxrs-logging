@@ -24,28 +24,19 @@ import org.slf4j.LoggerFactory;
  * Resolves which {@link LoggedMapping} and {@link LoggedBody} configuration applies to a given resource
  * method, by walking the annotations present on its class, its interfaces and the method itself.
  * <p>
- * Resolution only depends on the (immutable) annotations present on a resource method, not on any
- * request data, so results are cached once resolved, avoiding a reflection-based annotation lookup on
- * every single request to the same resource method. Body configurations are moreover cached in their
- * fully resolved form ({@link LoggedBodyConfiguration}, holding a {@link Set} of log types and already
- * instantiated {@link LoggedBodyFilter}s) rather than as the raw annotation, so a request costs one map
- * lookup instead of rebuilding those collections.
+ * Resolution only depends on those annotations, so it is cached - body configurations in their ready-to-use
+ * form ({@link LoggedBodyConfiguration}, filters instantiated) - keyed on the resource class and method
+ * together, as the same {@link Method} of a shared interface can be matched for several resource classes.
+ * The caches are never evicted, which suits the fixed set of resources of an application but not one
+ * generating resource classes at runtime.
  * <p>
- * The cache is keyed on the resource <em>class and method</em> together, not on the method alone: the
- * same {@link Method} object can be matched for two different resource classes (a container handing out
- * the interface method for several implementations of a shared JAX-RS interface), and resolution walks
- * the resource class too, so keying on the method alone would serve one class's configuration for another.
- * <p>
- * The caches below are never evicted, which assumes a bounded, stable set of resource methods, as is the
- * case for a typical application with a fixed set of JAX-RS endpoints; this resolver is not suited to
- * applications that generate new resource classes at runtime (e.g. per-tenant code generation).
- * <p>
- * Deliberately independent of any request-scoped state (a {@link ResourceInfo} is taken as a parameter
- * rather than injected as a field), so resolution can be unit-tested, or reused from another provider,
- * without needing to mock a whole request/response context.
+ * A {@link ResourceInfo} is taken as a parameter rather than injected, so resolution depends on no request.
  */
 public class LoggedResolver {
 
+    /**
+     * Logger reporting a configuration that cannot be resolved.
+     */
     protected static final Logger log = LoggerFactory.getLogger(LoggedResolver.class);
 
     /**
@@ -142,8 +133,8 @@ public class LoggedResolver {
      * The mappings declared on the several declaration sites of the method are merged (see
      * {@link LoggedUtils#getMergedMappings(ResourceInfo)}), then sorted in the order they apply in: the
      * explicit ones before the automatic ones, and on their MDC key within each, which puts the exclusions
-     * - declaring none - first. Sorting is part of the resolution, as it only depends on the annotations
-     * as well: done on each request, it cost every request to a mapped resource a sort of its mappings.
+     * - declaring none - first. Sorting is part of the resolution, done once per resource rather than on
+     * every request.
      *
      * @param resourceInfo The instance to access resource class and method
      * @return The mappings applicable to the resource method, in the order they apply in
@@ -178,10 +169,8 @@ public class LoggedResolver {
      * Gets the body logging configuration for both directions of the resource method matched by the
      * given resource, resolving and caching them together the first time either is requested.
      * <p>
-     * Preferred by a caller needing the configuration more than once for the same request: obtaining
-     * both directions in one call means one lookup keyed on the resource - and therefore one pair of
-     * calls into the (usually proxied, request-scoped) {@link ResourceInfo} - instead of one per
-     * direction per callback.
+     * Preferred by a caller needing the configuration more than once for the same request, which can then
+     * look it up - and call the (usually proxied) {@link ResourceInfo} - once rather than per direction.
      *
      * @param resourceInfo The instance to access resource class and method
      * @return The body logging configuration of both directions, never {@code null}
@@ -239,8 +228,7 @@ public class LoggedResolver {
      * <p>
      * An annotation targeting the given direction alone wins over one targeting both, and among several
      * as specific as one another, the first one declared wins. The directions an annotation targets are
-     * read as a set: counted instead, one naming its direction twice applied to neither, and the last
-     * annotation targeting both directions won where the first one targeting a single direction did.
+     * read as a set, so naming one twice changes nothing.
      *
      * @param resourceInfo The instance to access resource class and method
      * @param target       The target for which to find the body logging configuration

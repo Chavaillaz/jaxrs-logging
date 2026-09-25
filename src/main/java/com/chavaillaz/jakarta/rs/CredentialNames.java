@@ -13,17 +13,10 @@ import java.util.Set;
  * {@link LoggedFilterConfiguration.Builder#sensitiveParameters(java.util.function.BiPredicate)} to raise it for a
  * particular application.
  * <p>
- * Kept apart from {@link LoggedFilter} because it is data, not behaviour: which names are secrets is a
- * question about the world (what OAuth, HTTP authentication and the average internal API call things),
- * answered the same way regardless of what the provider does with the answer, and it is the part of this
- * library most likely to be read on its own by someone asking "is my token in the logs?".
- * <p>
  * Every name here is lower case and every lookup lower-cases what it is given, which is why the sets are
  * only reachable through {@link #isHeader(String)} and {@link #isQueryParameter(String)}: HTTP header
  * names are case-insensitive, and a query parameter carrying a secret does not become safe by being
- * spelled {@code Access_Token}. Leaving the sets directly readable invited a caller to test membership
- * without normalizing first, which is a check that passes every test written against lower-case names
- * and misses the real request.
+ * spelled {@code Access_Token}.
  */
 public final class CredentialNames {
 

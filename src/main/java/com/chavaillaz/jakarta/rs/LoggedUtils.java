@@ -51,13 +51,9 @@ public final class LoggedUtils {
             return emptySet();
         }
 
-        // Priority: Method annotations > Interfaces annotations > Class annotation
-        // Uses getAnnotationsByType() throughout, as it is the only lookup that correctly finds a
-        // @LoggedMapping regardless of whether it is declared once or repeated (java.lang.annotation.Repeatable
-        // only synthesizes the @LoggedMappings container when 2+ instances are present, so a single
-        // annotation would be missed by a plain getAnnotation(LoggedMappings.class) lookup).
-        // Iterates the declaration sites in priority order (see declarationSites), which is deterministic,
-        // so a mapping declared closer to the resource method always wins over a competing one.
+        // The declaration sites come most specific first, so a mapping declared closer to the resource method
+        // wins over a competing one; getAnnotationsByType finds a mapping whether it is repeated or not, the
+        // compiler only wrapping two or more of them into @LoggedMappings
         Set<LoggedMapping> mergedMappings = new LinkedHashSet<>();
         for (AnnotatedElement site : declarationSites(resourceClass, resourceMethod)) {
             mergeMappings(mergedMappings, site.getAnnotationsByType(LoggedMapping.class));
@@ -85,9 +81,7 @@ public final class LoggedUtils {
      * can apply.
      * <p>
      * Header names are compared without regard to case, as HTTP defines them that way, and as they are
-     * matched against the request (see {@link MappingApplier}). Compared as written, a header a method maps
-     * as {@code User-Agent} and its class as {@code user-agent} was kept twice, and the mapping applied was
-     * then whichever sorted first rather than the one declared closest to the resource method.
+     * matched against the request (see {@link MappingApplier}).
      *
      * @param first  The first mapping
      * @param second The second mapping
@@ -188,14 +182,12 @@ public final class LoggedUtils {
      *     <li>the interfaces implemented by the resource class</li>
      *     <li>the resource class itself</li>
      * </ol>
-     * Interfaces deliberately rank above the resource class, keeping the "method &gt; interfaces &gt; class"
-     * priority this library has always documented: an API contract declared on an interface is not silently
-     * overridden by a broad annotation on the class implementing it.
+     * Interfaces deliberately rank above the resource class, so an API contract declared on an interface is
+     * not silently overridden by a broad annotation on the class implementing it.
      * <p>
      * The order within a level follows {@link org.apache.commons.lang3.ClassUtils#getAllInterfaces(Class)},
      * which is deterministic (declaration order, depth first), so a resource class implementing several
-     * interfaces that each declare a competing annotation always resolves the same way, rather than
-     * depending on the iteration order of a hash-based collection as it used to.
+     * interfaces that each declare a competing annotation always resolves the same way.
      *
      * @param resourceClass  The resource class matched by the current request, possibly {@code null}
      * @param resourceMethod The resource method matched by the current request, possibly {@code null}

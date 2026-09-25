@@ -12,16 +12,12 @@ import org.slf4j.Logger;
 /**
  * Decorates a {@link LoggedBodyCapture} so that its sink failing does not fail the exchange it observes.
  * <p>
- * A capture's sink is written to as a branch of the entity stream itself, by the stream copying the entity
- * to it, so whatever it throws surfaces in the middle of reading or writing the entity, and fails the
- * exchange with an error having nothing to do with it. The in-memory
- * capture this library ships cannot fail that way, but the documented use of a capture of one's own is
- * precisely one that can (see {@link LoggedFilterConfiguration.Builder#bodyCapture}): a capture spilling large bodies to a temporary file fails the way file system
- * access does, a full disk included.
- * <p>
- * The first failure of the sink is therefore reported and swallowed, and the sink receives nothing from then
- * on. What it collected until then is not logged at all: a body missing an arbitrary part of it reads, in the
- * logs, as the one the application actually handled, which is worse than no body.
+ * The sink is written to along with the entity stream, so whatever it throws - a capture of the application's
+ * own spilling to a temporary file on a full disk, for instance (see
+ * {@link LoggedFilterConfiguration.Builder#bodyCapture}) - would surface in the middle of reading or writing
+ * the entity. Its first failure is reported and swallowed instead, and the sink receives nothing from then on.
+ * What it collected until then is not logged at all: a body missing an arbitrary part reads, in the logs, as
+ * the one the application handled, which is worse than no body.
  *
  * @see BodyCapturer
  */

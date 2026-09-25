@@ -15,23 +15,14 @@ import org.slf4j.MDC;
 /**
  * Everything {@link LoggedFilter} remembers about one request while it is being processed.
  * <p>
- * A JAX-RS provider is a singleton shared by every concurrent request, so anything it needs to carry
- * from one callback to the next has to live on the request rather than on the provider. The container
- * offers exactly one place for that, the untyped {@code String -> Object} property map, which is why
- * this used to be eight separate property-name constants read back through casts and
- * {@code Boolean.TRUE.equals} checks. Gathering them into one object stored under one property gives
- * them a type, a name, and somewhere to state the invariants they share; it also lets the provider read
- * as the sequence of decisions it makes rather than as bookkeeping.
+ * A JAX-RS provider is shared by every concurrent request, so what it carries from one callback to the next
+ * lives on the request, in its property map, under a single property. Every callback reaches it through the
+ * context it is handed - a filter's request context or an interceptor's context, which share that map -
+ * rather than through an injected {@code @Context ContainerRequestContext}, which the JAX-RS contract does
+ * not provide for, and RESTEasy refuses.
  * <p>
- * Every callback reaches it through the context it is handed - a filter's request context or an
- * interceptor's context, which share the request's property map - rather than through an injected
- * {@code @Context ContainerRequestContext}: the JAX-RS contract does not list that type among the ones
- * a provider can have injected, and RESTEasy indeed refuses it, failing every single request.
- * <p>
- * The request rather than the thread is deliberate throughout: a request can be started on one thread
- * and completed on another (a {@code @Suspended} response resumed from a worker, a reactive resource
- * method), so the flags are atomic and the mutable fields volatile. The state is created on the thread
- * handling the start of the request, before any hand-off can have happened.
+ * A request can start on one thread and complete on another (a {@code @Suspended} response resumed from a
+ * worker, a reactive resource method), so the flags are atomic and the mutable fields volatile.
  *
  * @see #of(ContainerRequestContext, LoggedFilter)
  */
@@ -46,12 +37,9 @@ public class LoggedRequestState {
     protected static final String PROPERTY = LoggedRequestState.class.getName();
 
     /**
-     * Provider handling this request, handed to {@link LoggedBodyInterceptor}, which captures the bodies
-     * from a later position in the interceptor chain but delegates every decision about them back here.
-     * <p>
-     * Passed through the request rather than injected there, so the capture is handed back to the exact
-     * instance - possibly one of several registered, each with its own configuration - that is handling this
-     * particular request.
+     * Provider handling this request, which {@link LoggedBodyInterceptor} hands the bodies it captures back
+     * to: read from the request rather than injected there, as several providers, each configured its own
+     * way, can be registered.
      */
     private final LoggedFilter provider;
 
@@ -63,29 +51,22 @@ public class LoggedRequestState {
     /**
      * Every {@link MDC} entry put for this request through {@link LoggedFilter#putMdc(String, String)}, so a
      * thread completing the request without carrying its entries can be lent them, and so they are removed
-     * exactly once the request is done (see {@link RequestMdc}).
+     * once the request is done (see {@link RequestMdc}).
      * <p>
-     * {@code putMdc} takes no request to record the entry against, so that a subclass can call it from
-     * anywhere it describes a request: this very map is bound to the thread whose MDC holds the request's
-     * entries, and the entry lands here. It holds plain strings rather than anything of this library's own
-     * for that reason: a value bound to a pooled thread outlives the request, and possibly the application,
-     * so it must not hold on to a class the application's class loader would then never be able to unload.
-     * <p>
-     * Removing the entries of a request completed on a different thread than the one that put them does not
-     * reach that thread, which is why the entries a request left on a thread are swept when the next request
-     * starts there. Concurrent for the same reason: entries can be recorded and read from different threads.
+     * This map is bound to the thread carrying the request, which is how {@code putMdc} records an entry
+     * without being told which request it belongs to. It holds nothing but strings, as a value bound to a
+     * pooled thread can outlive the application and must not pin its class loader, and is concurrent, as
+     * entries can be recorded and read from different threads.
      */
     private final Map<String, String> mdcEntries = new ConcurrentHashMap<>();
 
     /**
      * Whether the {@code "Received ..."} line has already been logged for this request.
      * <p>
-     * That line is normally emitted either directly from {@link LoggedFilter#filter(ContainerRequestContext)}
-     * (no entity expected) or from {@link LoggedFilter#aroundReadFrom(jakarta.ws.rs.ext.ReaderInterceptorContext)}
-     * (entity read). However, most JAX-RS implementations only invoke the latter when the resource method
-     * actually reads the request entity: a request that has a body but whose resource method declares no
-     * parameter consuming it hits neither path, and without this flag the response filter could not tell
-     * whether it still has to emit the line - so it would either be lost or logged twice.
+     * The line is logged by {@link LoggedFilter#filter(ContainerRequestContext)} for a request without an
+     * entity, by {@link LoggedFilter#aroundReadFrom(jakarta.ws.rs.ext.ReaderInterceptorContext)} once the
+     * entity is read, and otherwise - for a resource method that never reads it - by the response filter,
+     * which this tells whether the line is still due.
      */
     private final AtomicBoolean requestLogged = new AtomicBoolean();
 
@@ -93,13 +74,10 @@ public class LoggedRequestState {
      * Whether the {@code "Received ..."} line has already been logged with the request body, see
      * {@link #markRequestLogged(boolean)}.
      * <p>
-     * Tracked apart from {@link #requestLogged}, as the two do not repeat each other. The entity of a
-     * request can be read more than once - a buffered entity read by a filter validating its signature,
-     * then by the resource method - and every read goes through the interceptors again, so only a body
-     * already logged makes a line carrying it a repetition. A body read after the line announcing the
-     * request without one, on the other hand, is precisely what that line lacked: whether a request has a
-     * body is decided before it is read, by some containers from its {@code Content-Type} header alone, so
-     * a body sent without one is announced as absent before the resource method reads it after all.
+     * Tracked apart from {@link #requestLogged}: an entity read several times - by a filter validating its
+     * signature, then by the resource method - goes through the interceptors each time, and only a body
+     * already logged makes a line carrying it a repetition. A body read after the line announced the request
+     * without one - as some containers decide from the {@code Content-Type} header alone - is still logged.
      */
     private final AtomicBoolean requestBodyLogged = new AtomicBoolean();
 
@@ -107,12 +85,8 @@ public class LoggedRequestState {
      * Whether the request has already been completed, guarding
      * {@link LoggedFilter#logResponse(LoggedRequestState, String)} against running more than once.
      * <p>
-     * Depending on whether the response has an entity, the end of a request/response cycle can be reached
-     * from two different callbacks: the response filter (no entity) or the writer interceptor (entity
-     * present). Rather than relying on the conditions in those two callbacks to always stay perfectly
-     * mutually exclusive - which is what let the "Processed" log line and the MDC cleanup silently
-     * disappear for entity-less responses in the past - completion is centralized and made idempotent:
-     * whichever callback gets there first wins, and the other becomes a no-op.
+     * A request completes in the response filter when the response has no entity, and in the writer
+     * interceptor otherwise: whichever callback gets there first completes it, and the other does nothing.
      */
     private final AtomicBoolean completed = new AtomicBoolean();
 
@@ -171,9 +145,8 @@ public class LoggedRequestState {
     /**
      * Gets the state of the request carried by the given context, without creating one.
      * <p>
-     * The overload an interceptor uses: {@link InterceptorContext} exposes the same request-scoped
-     * property map, but the JAX-RS API gives it no supertype in common with
-     * {@link ContainerRequestContext} to read it through.
+     * The overload an interceptor uses: {@link InterceptorContext} shares the property map of the request,
+     * but has no supertype in common with {@link ContainerRequestContext} to read it through.
      *
      * @param context The context of the entity being read or written
      * @return The state of the request, or {@code null} if no {@link LoggedFilter} is active on it
@@ -205,10 +178,6 @@ public class LoggedRequestState {
 
     /**
      * Gets how long this request has been running, in milliseconds.
-     * <p>
-     * Read once the response has been written rather than when the response filter runs, so it covers
-     * serializing and writing the entity too: a response whose body takes 200ms to render used to be
-     * reported as having been processed in the handful of milliseconds preceding it.
      *
      * @return The time elapsed since the request started, in milliseconds
      */

@@ -12,14 +12,10 @@ import java.io.OutputStream;
  * Buffer keeping, in memory, at most a given number of the bytes written to it: the bytes of a body a
  * {@link BoundedLoggedBodyCapture} captures.
  * <p>
- * It is written to as the branch of the entity stream being read or written, once per chunk the message
- * body reader or writer handles - and once per byte for one reading a byte at a time - so it does as little
- * per write as it can. It takes no lock, where a {@link java.io.ByteArrayOutputStream} takes one on every
- * write, and it is its own limit, where a bounded stream in front of it added a layer to go through. Neither
- * bought anything: an entity stream is read or written by one thread at a time, and what was captured is
- * read back once that is done, by the very callback that captured it, so a capture never has two threads to
- * arbitrate between. This class is therefore not thread-safe, and relies on being confined to the thread
- * reading or writing the entity.
+ * It is written to along with the entity stream, once per chunk read or written - once per byte for a reader
+ * reading a byte at a time - so it does as little per write as it can: it applies its limit itself, and takes
+ * no lock, as a {@link java.io.ByteArrayOutputStream} does on every write. It is not thread-safe, a capture
+ * being confined to the thread reading or writing the entity, and read back by the callback that made it.
  * <p>
  * It hands out the array it fills rather than a copy of it (see {@link #array()}), so the captured body can
  * be decoded straight from where it was written.
@@ -61,10 +57,9 @@ final class CaptureBuffer extends OutputStream {
     /**
      * Creates a buffer keeping at most the given number of bytes, and never more than the given capacity.
      * <p>
-     * A body larger than the capacity is kept up to it and reported as truncated, as any body larger than
-     * the limit is, instead of the array failing to grow any further: without a limit, a body of more than
-     * two gigabytes otherwise failed the exchange with an {@link OutOfMemoryError} from the buffer growing
-     * to capture it. Taking the capacity as a parameter is what lets that be tested without such a body.
+     * A body larger than the capacity is kept up to it and reported as truncated, as a body larger than the
+     * limit is, rather than failing with an {@link OutOfMemoryError} once the array cannot grow any further.
+     * The capacity is a parameter so that can be tested without such a body.
      *
      * @param limit       The maximum number of bytes to keep, or {@link LoggedBodyCapture#NO_LIMIT} for no limit
      * @param maxCapacity The maximum number of bytes to keep whatever the limit

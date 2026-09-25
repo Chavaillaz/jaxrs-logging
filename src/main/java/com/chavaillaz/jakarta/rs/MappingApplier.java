@@ -101,10 +101,9 @@ final class MappingApplier {
      * <p>
      * Header names are compared without regard to case, as HTTP defines them that way and nothing makes
      * a client spell one the way the annotation naming it does - HTTP/2 and HTTP/3 send every header
-     * name lower cased, whatever the application wrote. A case-sensitive set therefore let an automatic
-     * mapping map again, under its own key, a header a named mapping had already claimed, and - worse -
-     * let it map the value of a header a mapping had explicitly excluded precisely to keep it out of the
-     * logs. Path and query parameter names are case-sensitive and are matched as written.
+     * name lower cased, whatever the application wrote - so a header a mapping names, or excludes, is never
+     * mapped again by an automatic mapping. Path and query parameter names are case-sensitive and are matched
+     * as written.
      *
      * @param type The type of parameter the mappings read
      * @return The (empty) set to record claimed names in

@@ -47,82 +47,72 @@ import org.slf4j.MDC;
 import org.slf4j.event.Level;
 
 /**
- * Client-side counterpart of {@link LoggedFilter}, logging outgoing JAX-RS Client calls and
- * propagating the current request identifier (see {@link LoggedField#REQUEST_ID}) to the downstream
- * service, so a client calling another service exposing its own {@link LoggedFilter} produces a single,
- * correlated identifier across both sides of the call.
+ * Client-side counterpart of {@link LoggedFilter}, logging the calls made through a JAX-RS {@code Client}
+ * and propagating the identifier of the current request (see {@link LoggedField#REQUEST_ID}) to the service
+ * called, as {@value LoggedFilter#REQUEST_ID_HEADER}, so both sides of a call are logged under one identifier.
  * <p>
- * Unlike {@link LoggedFilter}, this provider has no resource method (and therefore no {@link Logged} /
- * {@link LoggedBody} annotations) to resolve configuration from: an instance is configured once, through
- * {@link #builder()}, and applies uniformly to every call made through the {@code Client}/{@code WebTarget}
- * it is registered on. Register a differently configured instance per target for different needs.
- * <p>
- * Logs the following lines, with the credentials the URI may carry masked (see {@link #getLoggedUri(URI)}):
+ * Having no resource method to read annotations from, it is configured through {@link #builder()}, and
+ * applies to every call made through the {@code Client} or {@code WebTarget} it is registered on. It logs,
+ * with the credentials the URI of a call may carry masked (see {@link #getLoggedUri(URI)}):
  * <ul>
  *     <li>{@code Calling [method] [uri]}, once the request is about to be sent</li>
- *     <li>{@code Called [method] [uri] with status [status] in [duration]ms}, once the response is
- *     received - unconditionally, exactly once per call, regardless of body logging</li>
+ *     <li>{@code Called [method] [uri] with status [status] in [duration]ms}, once the response is received</li>
  * </ul>
- * If body logging is enabled, the request/response body is logged as a further, separate line rather
- * than being merged into the lines above (unlike {@link LoggedFilter}): the response body is only
- * available if/when the calling code actually reads the response entity (see
- * {@link #captureResponseBody(ReaderInterceptorContext)}, mirroring the equivalent, well-known limitation
- * on {@link LoggedFilter#aroundReadFrom} for the request body), which can happen after - or not at all
- * after - the "Called ..." line above already logged, so there is no single point at which both the
- * status line and the body are guaranteed to be available together to merge into one line the way the
- * server-side filter does.
- * <p>
- * Only {@link LoggedBody.LogType#LOG} is supported (a separate log line), not
- * {@link LoggedBody.LogType#MDC}: the server-side filter can attach the body to
- * MDC because it owns a single, well-defined completion point for the whole request ({@code logResponse},
- * see its Javadoc); this provider deliberately does not reproduce that coordination (for the reason above),
- * so there is no single point to scope such an MDC entry to.
+ * A body is logged on a line of its own: the response body is only read if and when the calling code reads
+ * the entity (see {@link #captureResponseBody(ReaderInterceptorContext)}), possibly long after the
+ * {@code "Called ..."} line, and possibly never. For the same reason, only {@link LoggedBody.LogType#LOG} is
+ * supported, as nothing marks the end of a call that an MDC entry holding the body could be scoped to.
  */
 @Provider
 @ConstrainedTo(CLIENT)
 @Priority(Priorities.HEADER_DECORATOR)
 public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFilter, Feature {
 
+    /**
+     * Logger the calls, their bodies and the failures to log them are written to.
+     */
     protected static final Logger log = LoggerFactory.getLogger(LoggedClientFilter.class);
 
     /**
-     * Name of the property stored in request context to compute the duration time.
+     * Name of the request property holding the moment the call started, to compute its duration.
      */
     protected static final String REQUEST_TIME_PROPERTY = LoggedClientFilter.class.getName() + ".requestTime";
 
     /**
-     * Name of the property stored in request context to retrieve the request method when logging the
-     * request body from {@link #captureRequestBody(WriterInterceptorContext)}, which has no direct
-     * access to the {@link ClientRequestContext} the method was read from.
+     * Name of the request property holding the method of the call, for the lines logging its bodies, which an
+     * interceptor context does not give access to.
      */
     protected static final String REQUEST_METHOD_PROPERTY = LoggedClientFilter.class.getName() + ".requestMethod";
 
     /**
-     * Name of the property stored in request context to retrieve the request URI as it is logged (see
-     * {@link #getLoggedUri(URI)}), for the same reason as {@link #REQUEST_METHOD_PROPERTY}.
+     * Name of the request property holding the URI of the call as it is logged (see {@link #getLoggedUri(URI)}),
+     * for the same reason as {@link #REQUEST_METHOD_PROPERTY}.
      */
     protected static final String REQUEST_URI_PROPERTY = LoggedClientFilter.class.getName() + ".requestUri";
 
     /**
-     * Name of the property stored in request context to record that the response body of the call has been
-     * logged, see {@link #captureResponseBody(ReaderInterceptorContext)}.
+     * Name of the request property recording that the response body of the call has been logged, see
+     * {@link #captureResponseBody(ReaderInterceptorContext)}.
      */
     protected static final String RESPONSE_BODY_LOGGED_PROPERTY = LoggedClientFilter.class.getName() + ".responseBodyLogged";
 
+    /**
+     * Instantiates and caches the body filters given as classes.
+     */
     protected final LoggedBodyFilterFactory bodyFilterFactory = new LoggedBodyFilterFactory();
 
+    /**
+     * Key of the MDC entry holding the identifier propagated to the services called.
+     */
     protected final String correlationIdMdcKey;
 
     /**
-     * Body logging configuration of the requests sent, resolved once here rather than on every call:
-     * unlike {@link LoggedFilter}, whose configuration depends on the resource method matched by each
-     * request, this provider's configuration is fixed at build time, so there is nothing about it left to
-     * resolve per call.
+     * Body logging configuration of the requests sent, fixed when this provider is built.
      */
     protected final LoggedBodyConfiguration requestBody;
 
     /**
-     * Body logging configuration of the responses received, resolved once here, see {@link #requestBody}.
+     * Body logging configuration of the responses received, fixed when this provider is built.
      */
     protected final LoggedBodyConfiguration responseBody;
 
@@ -140,6 +130,11 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         this(builder());
     }
 
+    /**
+     * Creates a client filter configured by the given builder, for a subclass to call from its constructors.
+     *
+     * @param builder The builder holding the configuration
+     */
     protected LoggedClientFilter(Builder builder) {
         this.correlationIdMdcKey = builder.correlationIdMdcKey;
         // Classes first, then instances, keeping the declaration order within each: a filter given as a
@@ -336,11 +331,8 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     /**
      * {@inheritDoc}
      * <p>
-     * Guarded like everything else this provider does (see {@link LoggedSupport#safely}): a call is not
-     * worth failing over the line announcing it, over the identifier correlating it with the service it
-     * reaches, or over a {@code Client} implementation returning something unexpected about the request
-     * it is about to send. A call this provider could not describe is a call still made, only logged
-     * with less.
+     * Propagates the correlation identifier and logs the {@code "Calling ..."} line. Nothing done here can
+     * fail the call, which is made all the same when it cannot be described.
      */
     @Override
     public void filter(ClientRequestContext requestContext) {
@@ -372,18 +364,14 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     }
 
     /**
-     * Renders the given URI the way it is logged, with the credentials it may carry masked.
+     * Renders the given URI the way it is logged, with the credentials it may carry masked: the password of
+     * its user information ({@code https://user:secret@host}), the {@code access_token} of an OAuth call, the
+     * signature of a presigned URL.
      * <p>
-     * Unlike {@link LoggedFilter}, which logs the path of a request and its query parameters apart and can
-     * mask the latter one by one, this provider logs the URI of a call whole - and a URI is a common place
-     * for a credential to travel in: the password of its user information ({@code https://user:secret@host}),
-     * the {@code access_token} of an OAuth call, the signature of a presigned URL. Logging it as-is wrote
-     * all of them to the logs of every call made, with nothing to configure to prevent it.
-     * <p>
-     * The user information is therefore replaced as a whole, since it is either a credential or the name
-     * going with one, and the value of every query parameter {@link #isSensitiveQueryParameter(String)}
-     * reports is masked while its name stays visible, the way {@link LoggedFilter} masks the query
-     * parameters of the requests it receives. Everything else is left exactly as it was given.
+     * The user information is replaced as a whole, being either a credential or the name going with one,
+     * and the value of every query parameter {@link #isSensitiveQueryParameter(String)} reports is masked
+     * while its name stays visible, as {@link LoggedFilter} does for the requests it receives. Everything else
+     * is left exactly as it was given.
      *
      * @param uri The URI of the call
      * @return The URI as it must be logged
@@ -461,18 +449,15 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     }
 
     /**
-     * Captures and logs the request body while the entity is being written.
-     * <p>
-     * Note that this is only invoked when the request actually has an entity to write, which is the
-     * common case for a client call built with an entity (e.g. {@code target.request().post(entity)}).
+     * Captures and logs the request body while the entity is being written, which only happens for a call
+     * made with an entity (e.g. {@code target.request().post(entity)}). What was written is logged even when
+     * writing the rest failed.
      *
      * @param context The context of the entity being written
      * @throws IOException             if an IO error arises while writing the entity
      * @throws WebApplicationException if the entity cannot be written
      */
     protected void captureRequestBody(WriterInterceptorContext context) throws IOException, WebApplicationException {
-        // Logs whatever was captured even if writing the entity failed (e.g. connection reset before the
-        // body was fully sent), the way the response body is logged even if reading it failed
         bodyCapturer.write(context, isLoggingEnabled() ? requestBody : LoggedBodyConfiguration.NONE, body -> {
             if (isNotBlank(body)) {
                 log.info("Request body {} {}{}{}",
@@ -487,15 +472,11 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     /**
      * {@inheritDoc}
      * <p>
-     * Falls back to a zero duration when {@link #REQUEST_TIME_PROPERTY} was never set, which happens
-     * when a client request filter running before this one (lower {@link Priority} value) aborts the
-     * request with {@link ClientRequestContext#abortWith(jakarta.ws.rs.core.Response)}: response filters
-     * still run for an aborted request, but {@link #filter(ClientRequestContext)} above, where this
-     * provider would otherwise have recorded the start time, never does.
+     * Logs the {@code "Called ..."} line, at the level {@link #getResponseLevel(int)} gives the status. Nothing
+     * done here can fail the call, whose response has been received.
      * <p>
-     * Guarded like everything else this provider does (see {@link LoggedSupport#safely}): a response
-     * already received is not worth turning into a failed call because the line reporting it could not
-     * be written.
+     * A call aborted by a request filter running earlier ({@link ClientRequestContext#abortWith}) never
+     * reaches {@link #filter(ClientRequestContext)}, where it starts, and is logged with a zero duration.
      */
     @Override
     public void filter(ClientRequestContext requestContext, ClientResponseContext responseContext) {
@@ -528,17 +509,12 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     }
 
     /**
-     * Captures and logs the response body while the entity is being read.
+     * Captures and logs the response body while the entity is being read, which only happens when the calling
+     * code reads it (e.g. {@code response.readEntity(MyType.class)}): a response whose entity is never read has
+     * its body never logged.
      * <p>
-     * Note that this is only invoked when the calling code actually reads the response entity (e.g.
-     * {@code response.readEntity(MyType.class)}), which can happen after - or not at all after - the
-     * "Called ..." line has already been logged by {@link #filter(ClientRequestContext, ClientResponseContext)}.
-     * If the entity is never read, the response body is never logged, even if activated.
-     * <p>
-     * A buffered entity can be read any number of times - {@code bufferEntity()} then {@code readEntity()}
-     * once per type the calling code tries - and every read goes through the interceptors again, so a body
-     * already logged for the call (see {@link #RESPONSE_BODY_LOGGED_PROPERTY}) is neither captured nor
-     * logged again.
+     * A buffered entity can be read any number of times, each read going through the interceptors again: a
+     * body already logged for the call (see {@link #RESPONSE_BODY_LOGGED_PROPERTY}) is not logged again.
      *
      * @param context The context of the entity being read
      * @return The entity read
@@ -563,11 +539,9 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     /**
      * {@inheritDoc}
      * <p>
-     * Registering this provider also registers {@link BodyInterceptor}, so a single
-     * {@code client.register(...)} keeps covering bodies. The two cannot be the same provider because
-     * they need different priorities: the filters above must run early on the request and late on the
-     * response, which places them outside any entity coder, while capturing a body requires running
-     * inside it (see {@link BodyInterceptor}).
+     * Registers the {@link BodyInterceptor} capturing the bodies of the calls along with this provider, so
+     * registering this provider is enough. The two need priorities of their own: the filters run first on
+     * the request and last on the response, outside any entity coder, while a body is captured inside it.
      */
     @Override
     public boolean configure(FeatureContext context) {
@@ -576,25 +550,20 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     }
 
     /**
-     * Captures the bodies logged by the {@link LoggedClientFilter} that registered it, from a position in
-     * the interceptor chain where they are readable.
+     * Captures the bodies logged by the {@link LoggedClientFilter} that registered it, from after any entity
+     * coder ({@link Priorities#ENTITY_CODER}), so what it captures is the entity rather than its transfer
+     * encoding - a {@code Content-Encoding: gzip} body is logged as the payload, not as compressed bytes.
      * <p>
-     * Interceptors are invoked in ascending priority order and each one wraps the stream for those that
-     * run after it, so the first to run sits closest to the network and an entity coder
-     * ({@link Priorities#ENTITY_CODER}) registered after it compresses on the way out and decompresses on
-     * the way in, between that interceptor and the entity itself. Capturing from the enclosing filter's
-     * own priority therefore captured the compressed bytes: a {@code Content-Encoding: gzip} request or
-     * response was logged as gzip noise rather than as the payload the application actually sent or read.
-     * <p>
-     * Running after the entity coder instead, what is captured is the entity's own representation,
-     * whatever transfer encoding was applied around it. Every decision about it stays on the enclosing
-     * filter, which this interceptor calls back into, so a subclass overriding
-     * {@link #createBodyCapture(int)} or either capture method stays in control.
+     * Every decision about a body stays with the filter, which this interceptor calls back, so a subclass
+     * overriding {@link #createBodyCapture(int)} or either capture method stays in control.
      */
     @ConstrainedTo(CLIENT)
     @Priority(Priorities.ENTITY_CODER + 100)
     public static class BodyInterceptor implements ReaderInterceptor, WriterInterceptor {
 
+        /**
+         * Filter the bodies captured are handed back to.
+         */
         protected final LoggedClientFilter filter;
 
         /**
@@ -642,10 +611,8 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     }
 
     /**
-     * Indicates whether anything this provider writes would actually reach an appender.
-     * <p>
-     * Used to skip body capture entirely when it would be thrown away: buffering (and filtering, and
-     * decoding) every body of an application whose logger is configured above {@code INFO} is pure overhead.
+     * Indicates whether the lines this provider writes are enabled, bodies being neither captured nor
+     * filtered for lines that are not.
      *
      * @return {@code true} if the log lines written by this provider are enabled, {@code false} otherwise
      */

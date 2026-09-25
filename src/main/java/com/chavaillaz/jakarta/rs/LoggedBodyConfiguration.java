@@ -12,13 +12,10 @@ import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
  * Body logging configuration resolved for one direction (request or response) of one resource method,
  * or for one side of a {@link LoggedClientFilter}.
  * <p>
- * Deliberately holds ready-to-use values rather than the {@link LoggedBody} annotation it is usually
- * derived from: resolving an annotation into a {@link Set} of {@link LogType} and into instantiated
- * {@link LoggedBodyFilter}s is pure, request-independent work, so it is done once per resource method
- * (see {@link LoggedResolver}) instead of on every request. This matters because the filter asks for
- * this configuration several times per request, on the hot path of every single call the application
- * serves; building a fresh {@code Set} through a stream each time was, in aggregate, more allocation
- * than the logging itself.
+ * Holds ready-to-use values rather than the {@link LoggedBody} annotation it is usually derived from, as it
+ * is read several times per request: resolving an annotation into a {@link Set} of {@link LogType} and
+ * instantiated {@link LoggedBodyFilter}s depends on no request, and is done once per resource method (see
+ * {@link LoggedResolver}).
  *
  * @param types   The types of logging to apply to the body, empty for no body logging at all
  * @param limit   The maximum number of bytes of the body to log, or {@code -1} for no limit
@@ -34,9 +31,9 @@ public record LoggedBodyConfiguration(Set<LogType> types, int limit, Set<LoggedB
     /**
      * Creates a body logging configuration, rejecting one that could never capture anything.
      * <p>
-     * A limit below {@code -1} is rejected here, as a resource's configuration is resolved - once, and
-     * reported along with the resource it was declared on (see {@link LoggedResolver}) - rather than by the
-     * capture it would be given to, which failed on every request to that resource without naming it.
+     * A limit below {@code -1} is rejected here, where the configuration of a resource is resolved - once, and
+     * reported along with the resource it was declared on (see {@link LoggedResolver}) - rather than by every
+     * capture it would be given to.
      *
      * @throws IllegalArgumentException if the limit is lower than {@code -1}
      */

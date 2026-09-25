@@ -38,16 +38,26 @@ public abstract class MaskingBodyFilter implements LoggedBodyFilter {
      */
     public static final String DEFAULT_MASK = "***";
 
+    /**
+     * Pattern matching the values to mask, along with enough of their surroundings to identify them.
+     */
     protected final Pattern pattern;
+
+    /**
+     * Number of the capturing group of {@link #pattern} replaced within each match.
+     */
     protected final int group;
+
+    /**
+     * Replacement written in place of each value masked.
+     */
     protected final String mask;
 
     /**
      * Creates a filter masking the given group of every match of the given pattern.
      * <p>
-     * A group the pattern does not have is rejected here: accepted, it failed on the first match of every
-     * body filtered, and a filter that throws has the body dropped, so every payload the filter was declared
-     * for ended up out of the logs, one reported error at a time.
+     * A group the pattern does not have is rejected here, rather than failing on every body filtered, each
+     * of which would then be dropped.
      *
      * @param pattern The pattern matching the values to mask
      * @param group   The number of the capturing group to replace within each match

@@ -17,27 +17,20 @@ import org.slf4j.Logger;
 /**
  * Captures the body of an entity as it is read or written, for a provider to log: copies the entity stream to
  * a {@link LoggedBodyCapture}, and hands over the body it renders once the entity is done, without any of it
- * being allowed to fail the exchange it observes.
+ * being allowed to fail the exchange it observes. Shared by {@link LoggedFilter} and
+ * {@link LoggedClientFilter}, which differ only in what they do with a body once captured.
  * <p>
- * Shared by {@link LoggedFilter} and {@link LoggedClientFilter}, which capture bodies the same way on both
- * sides of the JAX-RS API - the request read and the response written on the server, the request written
- * and the response read on the client - and differ only in what they do with the body once captured.
- * <p>
- * Two steps of a capture are guarded apart, because they fail in different places:
+ * Each step is guarded, as a capture of the application's own (see
+ * {@link LoggedFilterConfiguration.Builder#bodyCapture}) - one spilling to a temporary file, say - can fail
+ * the way file system access does:
  * <ul>
- *     <li>putting the capture in place happens <em>before</em> {@code proceed()}, so a failure there does
- *     not merely lose a log line, it keeps the entity from being read or written at all - and a capture
- *     that was created and could then not be wired in is one holding whatever it reserved, with nobody left
- *     to release it but this class;</li>
- *     <li>rendering what was captured and releasing the capture happen once the entity is done, rendering
- *     being exactly the step that fails on a payload nobody expected, which is precisely when a capture
- *     holding more than memory - a temporary file - must not be left behind.</li>
+ *     <li>putting the capture in place happens before the entity is read or written, which a failure must
+ *     not prevent, and a capture created but not wired in is released right away;</li>
+ *     <li>rendering what was captured happens once the entity is done, and the capture is released whether
+ *     that worked or not;</li>
+ *     <li>the sink of the capture, written to along with the entity stream, is guarded by
+ *     {@link GuardedBodyCapture}.</li>
  * </ul>
- * That is not hypothetical: a capture of one's own (see {@link LoggedFilterConfiguration.Builder#bodyCapture})
- * is the documented extension point for the mechanics of capture, spilling to a temporary file for instance,
- * which fails the way file system access does.
- * The capture put in place also guards its own sink (see {@link GuardedBodyCapture}), written to as a
- * branch of the entity stream itself.
  */
 final class BodyCapturer {
 

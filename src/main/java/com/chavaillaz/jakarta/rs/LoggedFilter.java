@@ -45,48 +45,30 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
 /**
- * Provider adding the following request information to {@link MDC} (see {@link LoggedField}):
+ * Provider logging the requests received by the resources annotated with {@link Logged}, and describing each
+ * of them in {@link MDC} for every line logged while it is processed (see {@link LoggedField}):
  * <ul>
  *     <li>Request identifier (from the {@value #REQUEST_ID_HEADER} header, or a random UUID)</li>
- *     <li>Request method (see {@link jakarta.ws.rs.HttpMethod})</li>
- *     <li>Request URI path relative to the base URI</li>
+ *     <li>Request method and URI path relative to the base URI</li>
  *     <li>Request query parameters, credentials masked (see
  *     {@link LoggedFilterConfiguration.Builder#sensitiveParameters(java.util.function.BiPredicate)})</li>
- *     <li>Resource class matched by the current request</li>
- *     <li>Resource method matched by the current request</li>
+ *     <li>Resource class and method matched by the request</li>
  *     <li>Whatever the {@link LoggedMapping} annotations of the resource ask for</li>
  * </ul>
- * Once the response is computed, the request will be logged using the format
+ * Once the response is written, the request is logged as
  * <code>Processed [method] [URI] with status [status] in [duration]ms</code>, at a level derived from the
- * status (see {@link LoggedFilterConfiguration.Builder#responseLevel(java.util.function.IntFunction)}), with the
- * following {@link MDC}:
- * <ul>
- *     <li>Response status (see {@link jakarta.ws.rs.core.Response.Status})</li>
- *     <li>Response duration in milliseconds</li>
- *     <li>Request and response body (if activated in annotation)</li>
- * </ul>
- * This provider can be activated using the annotation {@link Logged} on resources. It captures bodies
- * through {@link LoggedBodyInterceptor}, which an application registering its providers explicitly must
- * register along with it.
+ * status (see {@link LoggedFilterConfiguration.Builder#responseLevel(java.util.function.IntFunction)}), with
+ * the status, the duration and - if {@link LoggedBody} asks for them - the bodies in {@link MDC} as well.
  * <p>
- * Resolved annotation configurations are delegated to {@link #resolver}, and body filter instances to
- * {@link #bodyFilterFactory}: both cache their results per resource / filter class and never evict them.
- * This assumes a bounded, stable set of resource methods and {@link LoggedBodyFilter} classes, as is the
- * case for a typical application with a fixed set of JAX-RS endpoints; it is not suited to applications
- * that generate new resource classes at runtime (e.g. per-tenant code generation).
+ * Its low priority ({@link Priorities#HEADER_DECORATOR}) runs its filters first on the request and last on
+ * the response, so the {@link MDC} entries it puts cover the other providers; a subclass can declare a
+ * {@link Priority} of its own. Bodies are captured by {@link LoggedBodyInterceptor} instead, whose priority
+ * places it after any entity coder, so it captures the entity rather than its transfer encoding: an
+ * application registering its providers explicitly registers both.
  * <p>
- * Declares a priority lower than the JAX-RS default ({@link Priorities#USER}) so this provider runs as
- * early as possible among request filters/interceptors and, symmetrically, as late as possible among
- * response filters/interceptors. Without it, ordering relative to other unprioritized providers is left
- * to the container, which can leave the MDC context this provider establishes (request identifier,
- * method, URI, ...) unavailable to another filter/interceptor that runs before it, or have another
- * provider observe a request/response body already altered by this one's stream wrapping (or vice versa).
- * A subclass can override this by declaring its own {@link Priority}.
- * <p>
- * That low priority is the right one for the filters but the wrong one for capturing bodies, as it places
- * this provider's interceptors outside any entity coder and therefore in front of the compressed bytes
- * rather than the entity itself. Capture is consequently delegated to {@link LoggedBodyInterceptor},
- * which runs after the coder and hands what it captures back here; see that class for the details.
+ * The configuration resolved from the annotations of a resource method, and the body filters it names, are
+ * cached for the lifetime of the provider, which suits the fixed set of resources of an application but not
+ * one generating resource classes at runtime.
  */
 @Logged
 @Provider
@@ -94,12 +76,14 @@ import org.slf4j.MDC;
 @Priority(Priorities.HEADER_DECORATOR)
 public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFilter, ReaderInterceptor, WriterInterceptor {
 
+    /**
+     * Logger the requests, their bodies and the failures to log them are written to.
+     */
     protected static final Logger log = LoggerFactory.getLogger(LoggedFilter.class);
 
     /**
-     * Name of the header carrying the request identifier, read here from an incoming request and
-     * written by {@link LoggedClientFilter} on an outgoing one, so a client using both ends up with the
-     * same identifier in MDC on both sides of the call.
+     * Name of the header carrying the request identifier, read from the requests received and set by
+     * {@link LoggedClientFilter} on the calls made, so both sides of a call are logged under one identifier.
      */
     public static final String REQUEST_ID_HEADER = "X-Request-ID";
 
@@ -218,10 +202,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     /**
      * Replaces the control characters (e.g. CR, LF) of the given value with spaces.
      * <p>
-     * Meant to be applied to values sourced from client-controlled input (headers, query or path
-     * parameters) before storing them in MDC, to prevent log injection (an attacker forging fake log
-     * entries by including line breaks in a header, query or path parameter value). Not applied to
-     * logged request/response bodies, as those are expected to legitimately contain line breaks.
+     * Meant for the values a client controls (headers, query or path parameters) before they are put in MDC,
+     * so a client cannot forge log lines with them. Bodies are logged as they are, line breaks included.
      *
      * @param value The value to sanitize
      * @return The sanitized value, or {@code null} if the given value was {@code null}
@@ -244,11 +226,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * Gets the configuration a body about to be read or written is captured with, which is
      * {@link LoggedBodyConfiguration#NONE} when nothing is to be captured at all.
      * <p>
-     * Guarded like the rest of the capture setup (see {@link BodyCapturer}), and for the same reason:
-     * deciding whether to capture happens before {@code proceed()}, so a configuration that cannot be
-     * resolved - the container's {@link ResourceInfo} failing outside of the request scope it expects, a
-     * subclass overriding the resolution - would otherwise fail the read or the write of the entity itself,
-     * leaving the exchange broken over a body nobody was going to log.
+     * Guarded like the rest of the capture setup (see {@link BodyCapturer}): it runs before the entity is read
+     * or written, which a configuration that cannot be resolved must not prevent.
      *
      * @param state  The state of the request, or {@code null} if this provider never saw it start
      * @param target The direction of the body about to be read or written
@@ -263,17 +242,18 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         return LoggedSupport.safely(log, BodyCapturer.CAPTURE_FAILURE, () -> getBodyConfiguration(state, target), LoggedBodyConfiguration.NONE);
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Starts the request: attaches its state, puts the MDC entries describing it, and logs its
+     * {@code "Received ..."} line right away when it has no entity to read. Nothing done here can fail the
+     * request, which the resource method has yet to serve.
+     */
     @Override
     public void filter(ContainerRequestContext requestContext) {
-        // Guarded the way every other callback of this provider is (see LoggedSupport#safely). This one
-        // was the exception, and the only one whose failure costs more than a log line: it runs before
-        // the resource method does, so a subclass overriding one of the methods below, a container
-        // returning an unexpected null from the request it describes, or an appender that ran out of
-        // disk did not merely lose the "Received ..." line, it answered a perfectly serviceable request
-        // with an error having nothing to do with it.
         safely(() -> {
-            // Attaches the state to the request, which starts measuring its duration and records this
-            // instance as the one handling it, for LoggedBodyInterceptor to hand its captures back to
+            // Starts measuring the duration, and records this instance as the one handling the request, for
+            // LoggedBodyInterceptor to hand its captures back to
             LoggedRequestState state = LoggedRequestState.of(requestContext, this);
             // From here on, the entries this thread carries are this request's
             mdc.start(state);
@@ -281,7 +261,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             putMdcFromRequest(requestContext);
             putMdcFromMappings(requestContext);
 
-            // Logs directly from filter in case no request body is expected as aroundReadFrom will not be called
+            // Without an entity to read, aroundReadFrom is never called
             if (getBodyConfiguration(state, REQUEST).logs(LOG) && !(requestContext.hasEntity() && requestContext.getLength() != 0)) {
                 logRequest(state, EMPTY);
             }
@@ -332,20 +312,13 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Indicates whether anything this provider writes would actually reach an appender.
+     * Indicates whether the lines this provider writes are enabled, bodies being neither captured nor
+     * filtered for lines that are not.
      * <p>
-     * Used to skip body capture entirely when it would be thrown away: buffering (and filtering, and
-     * decoding) every request and response body of an application whose logger is configured above
-     * {@code INFO} is pure overhead, and is exactly the kind of cost that is invisible until it shows
-     * up as allocation pressure in production.
-     * <p>
-     * Checks {@code INFO}, the lowest level this provider writes at, and not the level the completion of
-     * this particular request will end up being logged at (see
-     * {@link LoggedFilterConfiguration.Builder#responseLevel(java.util.function.IntFunction)}): whether a
-     * request failed is only known once it has been answered, long after the decision to capture its body
-     * had to be made. An application configured above {@code INFO} therefore gets its failures logged at
-     * {@code WARN}/{@code ERROR} but without bodies, which is the deliberate trade: the alternative is
-     * buffering every body of every request in case it turns out to fail.
+     * Checks {@code INFO}, the lowest level this provider writes at, rather than the level the request will
+     * be logged at, which depends on a status unknown until the request is answered: an application logging
+     * above {@code INFO} gets its failures logged without their bodies, rather than every body of every
+     * request buffered in case it fails.
      *
      * @return {@code true} if the log lines written by this provider are enabled, {@code false} otherwise
      */
@@ -356,20 +329,16 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     /**
      * {@inheritDoc}
      * <p>
-     * Note that most JAX-RS implementations only invoke this interceptor when the resource method
-     * actually reads the request entity (for example, when it declares an entity parameter). If a
-     * request has a body but no resource method parameter consumes it, this method is never called, so
-     * the request body will not be logged, even if activated in the annotation. The {@code "Received ..."}
-     * line itself is still logged (without a body) by the fallback in
-     * {@link #filter(ContainerRequestContext, ContainerResponseContext)}, see {@link LoggedRequestState#isRequestLogged()}.
+     * Logs the {@code "Received ..."} line with the body captured, even when reading the entity failed.
+     * Most JAX-RS implementations only call this when the resource method reads the entity: when it does not,
+     * the line is logged without a body by {@link #filter(ContainerRequestContext, ContainerResponseContext)}
+     * instead (see {@link LoggedRequestState#isRequestLogged()}).
      */
     @Override
     public Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
         try {
             return context.proceed();
         } finally {
-            // Logs whatever was captured even if reading the entity failed (e.g. malformed payload),
-            // so a deserialization error does not leave the request entirely unlogged
             safely(() -> {
                 LoggedRequestState state = LoggedRequestState.find(context);
                 String body = state == null ? null : state.getRequestBody();
@@ -385,9 +354,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * {@link LoggedRequestState#getRequestBody()} for {@link #aroundReadFrom(ReaderInterceptorContext)} and
      * {@link #logResponse(LoggedRequestState, String)} to log.
      * <p>
-     * Called by {@link LoggedBodyInterceptor} rather than from this provider's own interceptor position,
-     * so what is captured is the entity's own representation rather than the transfer-encoded bytes on
-     * the wire (see that class for why the two positions differ).
+     * Called by {@link LoggedBodyInterceptor}, which runs after any entity coder, so what is captured is the
+     * entity rather than its transfer encoding.
      *
      * @param context The context of the entity being read
      * @return The entity read
@@ -401,12 +369,11 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Logs the request received by the server.
-     * Note that the request method and URI must have been stored in MDC before calling this method.
+     * Logs the request received by the server, unless the line would repeat one already logged for it (see
+     * {@link LoggedRequestState#markRequestLogged(boolean)}), as several callbacks can reach this for the same
+     * request - one per read of its entity, for instance.
      * <p>
-     * Several callbacks can reach this for the same request, so a line repeating one already logged is
-     * skipped (see {@link LoggedRequestState#markRequestLogged(boolean)}): a request whose entity was read
-     * twice used to be logged twice, body included.
+     * Note that the request method and URI must have been stored in MDC before calling this method.
      *
      * @param state       The state of the request being logged
      * @param requestBody The request body to be logged
@@ -417,13 +384,15 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         }
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Describes the response, and completes the request right away when it has no entity to write. Nothing
+     * done here can fail the response: the resource method has already served the request, and a 500 would
+     * invite the client to repeat it.
+     */
     @Override
     public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext) {
-        // Guarded the way every other callback of this provider is (see LoggedSupport#safely). The resource
-        // method has already run by the time this one does, so anything escaping it - a subclass overriding
-        // one of the methods below, the appender the lines are written to, a body configuration that cannot
-        // be resolved - does not merely lose a log line: it answers with a 500 a request the application
-        // served successfully, which a client is then free to retry, repeating whatever the request did.
         safely(() -> {
             LoggedRequestState state = startedState(requestContext);
             if (state != null) {
@@ -434,16 +403,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     /**
      * Gets the state of the given request, first establishing it for a request whose start this provider
-     * never saw.
-     * <p>
-     * That happens whenever a filter running earlier - an authentication one sits at
-     * {@link Priorities#AUTHENTICATION}, well below this provider's priority - aborts the request, which
-     * skips the rest of the request filter chain while the container still runs every response filter.
-     * Every 401 or 403 an application rejects that way was consequently logged with none of the fields
-     * describing the request it answers, and with whatever a previous request left behind on this (pooled)
-     * thread rather than with nothing at all. Establishing the context here is the same work, only late:
-     * the duration starts counting from this point, as there is nothing left to say when the request
-     * actually arrived.
+     * never saw: one aborted by a filter running earlier, as an authentication filter at
+     * {@link Priorities#AUTHENTICATION} does, skips the remaining request filters but not the response filters.
+     * Its duration then counts from this point.
      *
      * @param requestContext The context of the request received
      * @return The state of the request, or {@code null} if even establishing it failed
@@ -465,10 +427,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      */
     private void describeResponse(LoggedRequestState state, ContainerResponseContext responseContext) {
         try {
-            // Fallback for a request that has a body but whose resource method never reads it: neither
-            // the immediate path in filter(ContainerRequestContext) nor aroundReadFrom logged the request
-            // in that case (see LoggedRequestState#isRequestLogged), so without this the "Received ..."
-            // line would never appear even though LogType.LOG is configured
+            // A request whose resource method never read its entity has not been logged yet
             if (getBodyConfiguration(state, REQUEST).logs(LOG) && !state.isRequestLogged()) {
                 logRequest(state, EMPTY);
             }
@@ -476,27 +435,25 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             putMdc(RESPONSE_STATUS, valueOf(responseContext.getStatus()));
             exchangeLogger.returnRequestId(responseContext.getHeaders(), getMdc(REQUEST_ID));
         } finally {
-            // Logs directly from filter in case no response body is present, as aroundWriteTo will not
-            // be called by the container in that case (e.g. 204 No Content, HEAD requests). This must
-            // happen unconditionally (not just when body logging is configured, nor only when describing
-            // the response above worked), as this is also where the MDC context for the request is
-            // cleaned up; skipping it here would silently drop the "Processed" log line and leak MDC
-            // fields onto the thread (which is normally pooled and reused) for as long as it takes
-            // another request handled by that same thread to overwrite them.
+            // Without an entity to write (204 No Content, HEAD), aroundWriteTo is never called: the request is
+            // completed here whatever happened above, as completing it is what removes its MDC entries
             if (!responseContext.hasEntity()) {
                 logResponse(state, EMPTY);
             }
         }
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Completes the request once its entity is written, or failed to be, so it is logged either way and its
+     * MDC entries do not stay behind on a pooled thread.
+     */
     @Override
     public void aroundWriteTo(WriterInterceptorContext context) throws IOException, WebApplicationException {
         try {
             context.proceed();
         } finally {
-            // Always log and clean up MDC, even if writing the response body fails (e.g. client
-            // disconnection, serialization error), to avoid leaking context fields onto a pooled thread
-            // and to avoid leaving the response entirely unlogged
             safely(() -> {
                 LoggedRequestState state = LoggedRequestState.find(context);
                 if (state != null) {
@@ -527,8 +484,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             }
             logResponse(state, bodyConfiguration.logs(LOG) ? requireNonNullElse(body, EMPTY) : EMPTY);
         } catch (RuntimeException e) {
-            // Completion is what cleans MDC up, so it must still happen when assembling the log
-            // line above failed, or the fields would stay behind on this (pooled) thread
+            // Completing the request is what removes its MDC entries, so it must happen all the same
             logResponse(state, EMPTY);
             throw e;
         }
@@ -552,16 +508,12 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Logs the response sent by the server and completes the request/response cycle for this provider
-     * (see {@link LoggedRequestState#markCompleted()}).
+     * Logs the response sent by the server and completes the request (see
+     * {@link LoggedRequestState#markCompleted()}), removing its MDC entries.
      * <p>
-     * This is the single completion point for a request: idempotent, so it is safe to call from more
-     * than one callback without risking a duplicate "Processed" line, and unconditional, so cleanup
-     * always happens even when nothing about body logging applies to this request.
-     * <p>
-     * The duration is measured here rather than when the response filter runs, so it covers serializing
-     * and writing the entity too: a response whose body takes 200ms to render used to be reported as
-     * having been processed in the handful of milliseconds preceding it.
+     * This is the single completion point of a request: idempotent, so the callbacks that can reach it do not
+     * log the request twice, and unconditional, so its MDC entries are removed whatever else applies to it.
+     * The duration is measured here, and therefore covers serializing and writing the entity.
      * <p>
      * Note that the response status must have been stored in MDC before calling this method.
      *
