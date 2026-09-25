@@ -5,6 +5,8 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
+
 /**
  * Example of body filter removing the secret code in JSON bodies.
  */

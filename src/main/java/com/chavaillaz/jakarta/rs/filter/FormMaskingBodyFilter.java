@@ -1,4 +1,4 @@
-package com.chavaillaz.jakarta.rs;
+package com.chavaillaz.jakarta.rs.filter;
 
 import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.joining;

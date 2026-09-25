@@ -3,6 +3,7 @@ package com.chavaillaz.jakarta.rs;
 import java.io.OutputStream;
 import java.util.Set;
 
+import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import jakarta.ws.rs.core.MediaType;
 
 /**

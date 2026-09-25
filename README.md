@@ -77,7 +77,7 @@ Additional logging features can be activated by adding `@LoggedBody` (repeatable
       appended to `Processed ...` for the response)
     * `MDC`: Logging the body as MDC only, included in the `Processed ...` log line
 * **filters**: Classes implementing the functional interface
-  [LoggedBodyFilter](src/main/java/com/chavaillaz/jakarta/rs/LoggedBodyFilter.java) to filter any body
+  [LoggedBodyFilter](src/main/java/com/chavaillaz/jakarta/rs/filter/LoggedBodyFilter.java) to filter any body
   before writing it in logs, for example to remove sensitive data that could be present
   (see [Body filters](#body-filters) for the ready-made ones).
 * **limit**: Size limit in bytes of the body logged (not limited by default).
@@ -280,11 +280,11 @@ application calls, such as the key a partner API expects in its query string.
 A body filter rewrites a captured body before it is logged, which is how a value that must never reach the
 logs is kept out of them. Three ready-made ones cover the usual cases:
 
-| Filter                                                                                       | Masks                                                                     |
-|----------------------------------------------------------------------------------------------|---------------------------------------------------------------------------|
-| [JsonMaskingBodyFilter](src/main/java/com/chavaillaz/jakarta/rs/JsonMaskingBodyFilter.java)     | The value of the named JSON properties, at any depth                       |
-| [FormMaskingBodyFilter](src/main/java/com/chavaillaz/jakarta/rs/FormMaskingBodyFilter.java)     | The value of the named `application/x-www-form-urlencoded` parameters      |
-| [RegexMaskingBodyFilter](src/main/java/com/chavaillaz/jakarta/rs/RegexMaskingBodyFilter.java)   | Whatever a given regular expression captures, for any other format         |
+| Filter                                                                                               | Masks                                                                 |
+|------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------|
+| [JsonMaskingBodyFilter](src/main/java/com/chavaillaz/jakarta/rs/filter/JsonMaskingBodyFilter.java)   | The value of the named JSON properties, at any depth                  |
+| [FormMaskingBodyFilter](src/main/java/com/chavaillaz/jakarta/rs/filter/FormMaskingBodyFilter.java)   | The value of the named `application/x-www-form-urlencoded` parameters |
+| [RegexMaskingBodyFilter](src/main/java/com/chavaillaz/jakarta/rs/filter/RegexMaskingBodyFilter.java) | Whatever a given regular expression captures, for any other format    |
 
 ```
 {"user":"jane","password":"hunter2"}   ->  {"user":"jane","password":"***"}

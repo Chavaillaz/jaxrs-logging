@@ -1,10 +1,12 @@
-package com.chavaillaz.jakarta.rs;
+package com.chavaillaz.jakarta.rs.filter;
 
 import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.joining;
 
 import java.util.Collection;
 import java.util.regex.Pattern;
+
+import com.chavaillaz.jakarta.rs.LoggedBody;
 
 /**
  * Masks the value of the named properties of a JSON body, keeping the rest of the payload readable.

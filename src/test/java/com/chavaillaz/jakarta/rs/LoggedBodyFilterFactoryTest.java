@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Set;
 
+import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

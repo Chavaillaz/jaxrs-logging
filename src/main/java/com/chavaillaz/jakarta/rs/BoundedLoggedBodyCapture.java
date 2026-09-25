@@ -17,6 +17,7 @@ import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Set;
 
+import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import jakarta.ws.rs.core.MediaType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

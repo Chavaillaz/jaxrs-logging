@@ -7,6 +7,7 @@ import static java.util.Objects.requireNonNull;
 import java.util.Set;
 
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
+import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
 /**
  * Body logging configuration resolved for one direction (request or response) of one resource method,

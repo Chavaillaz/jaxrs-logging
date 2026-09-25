@@ -15,6 +15,7 @@ import java.util.function.Function;
 import java.util.function.IntFunction;
 
 import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
+import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.core.MultivaluedMap;
 import org.slf4j.event.Level;

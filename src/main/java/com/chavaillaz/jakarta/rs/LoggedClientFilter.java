@@ -4,7 +4,7 @@ import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.LOG;
 import static com.chavaillaz.jakarta.rs.LoggedBodyCapture.NO_LIMIT;
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedSupport.levelOf;
-import static com.chavaillaz.jakarta.rs.MaskingBodyFilter.DEFAULT_MASK;
+import static com.chavaillaz.jakarta.rs.filter.MaskingBodyFilter.DEFAULT_MASK;
 import static jakarta.ws.rs.RuntimeType.CLIENT;
 import static java.lang.System.nanoTime;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -26,6 +26,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import jakarta.annotation.Priority;
 import jakarta.ws.rs.ConstrainedTo;
 import jakarta.ws.rs.Priorities;

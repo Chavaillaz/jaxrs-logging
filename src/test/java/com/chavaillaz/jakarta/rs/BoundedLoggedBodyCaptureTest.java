@@ -22,6 +22,9 @@ import java.lang.management.ManagementFactory;
 import java.nio.charset.Charset;
 import java.util.Set;
 
+import com.chavaillaz.jakarta.rs.filter.JsonMaskingBodyFilter;
+import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
+import com.chavaillaz.jakarta.rs.filter.RegexMaskingBodyFilter;
 import com.sun.management.ThreadMXBean;
 import jakarta.ws.rs.core.MediaType;
 import org.junit.jupiter.api.DisplayName;

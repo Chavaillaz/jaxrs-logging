@@ -16,6 +16,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
+import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import jakarta.ws.rs.container.ResourceInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

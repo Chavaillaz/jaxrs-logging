@@ -11,6 +11,8 @@ import java.lang.annotation.Repeatable;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
+import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
+
 /**
  * Configuration for body logging of HTTP requests or responses.
  * <p>

@@ -7,7 +7,7 @@ import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_URI;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_CLASS;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
-import static com.chavaillaz.jakarta.rs.MaskingBodyFilter.DEFAULT_MASK;
+import static com.chavaillaz.jakarta.rs.filter.MaskingBodyFilter.DEFAULT_MASK;
 import static java.lang.Character.isHighSurrogate;
 import static java.lang.String.join;
 import static java.util.Map.Entry.comparingByKey;

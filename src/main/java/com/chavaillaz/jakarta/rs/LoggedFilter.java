@@ -25,6 +25,7 @@ import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
 import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
 import com.chavaillaz.jakarta.rs.LoggedResolver.BodyConfiguration;
+import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import jakarta.annotation.Priority;
 import jakarta.ws.rs.ConstrainedTo;
 import jakarta.ws.rs.Priorities;

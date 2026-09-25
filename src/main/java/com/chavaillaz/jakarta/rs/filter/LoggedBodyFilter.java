@@ -1,4 +1,4 @@
-package com.chavaillaz.jakarta.rs;
+package com.chavaillaz.jakarta.rs.filter;
 
 /**
  * Functional interface to filter the content of a request and response body.
