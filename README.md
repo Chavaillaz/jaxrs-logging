@@ -1,7 +1,7 @@
 # JAX-RS Requests Logging
 
-![Dependency Check](https://github.com/chavaillaz/jaxrs-logging/actions/workflows/system-tests.yml/badge.svg)
-[![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.chavaillaz/jaxrs-logging/badge.svg)](https://maven-badges.herokuapp.com/maven-central/com.chavaillaz/jaxrs-logging)
+[![System tests](https://github.com/chavaillaz/jaxrs-logging/actions/workflows/system-tests.yml/badge.svg)](https://github.com/chavaillaz/jaxrs-logging/actions/workflows/system-tests.yml)
+[![Maven Central](https://img.shields.io/maven-central/v/com.chavaillaz/jaxrs-logging)](https://central.sonatype.com/artifact/com.chavaillaz/jaxrs-logging)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 This library allows you to easily log (with MDC) requests and responses by annotation of JAX-RS resources.
