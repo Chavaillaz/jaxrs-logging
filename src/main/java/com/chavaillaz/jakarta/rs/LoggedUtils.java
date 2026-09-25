@@ -64,17 +64,18 @@ public final class LoggedUtils {
 
     /**
      * Adds the given mappings to the merged mappings, except those competing for a parameter with a
-     * mapping already merged (see {@link #areConflicting(LoggedMapping, LoggedMapping)}), which was
-     * declared closer to the resource method.
+     * mapping already merged (see {@link #areConflicting(LoggedMapping, LoggedMapping)}): one declared
+     * closer to the resource method, or before it on the same site.
      *
      * @param mergedMappings The set of merged mappings
-     * @param mappings       The mappings to add
+     * @param mappings       The mappings to add, in the order they are declared in
      */
     public static void mergeMappings(Set<LoggedMapping> mergedMappings, LoggedMapping... mappings) {
-        stream(mappings)
-                .filter(newMapping -> mergedMappings.stream()
-                        .noneMatch(existingMapping -> areConflicting(newMapping, existingMapping)))
-                .forEach(mergedMappings::add);
+        for (LoggedMapping mapping : mappings) {
+            if (mergedMappings.stream().noneMatch(merged -> areConflicting(mapping, merged))) {
+                mergedMappings.add(mapping);
+            }
+        }
     }
 
     /**
