@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 
 import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
+import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
 import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
 import com.chavaillaz.jakarta.rs.LoggedResolver.BodyConfiguration;
 import jakarta.annotation.Priority;
@@ -521,7 +522,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         try {
             LoggedBodyConfiguration bodyConfiguration = getBodyConfiguration(state, RESPONSE);
             String body = state.getResponseBody();
-            if (bodyConfiguration.logs(LoggedBody.LogType.MDC)) {
+            if (bodyConfiguration.logs(LogType.MDC)) {
                 putMdc(RESPONSE_BODY, body);
             }
             logResponse(state, bodyConfiguration.logs(LOG) ? requireNonNullElse(body, EMPTY) : EMPTY);
@@ -575,7 +576,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         try {
             putMdc(DURATION, valueOf(state.getElapsedMillis()));
 
-            if (getBodyConfiguration(state, REQUEST).logs(LoggedBody.LogType.MDC)) {
+            if (getBodyConfiguration(state, REQUEST).logs(LogType.MDC)) {
                 putMdc(REQUEST_BODY, state.getRequestBody());
             }
 

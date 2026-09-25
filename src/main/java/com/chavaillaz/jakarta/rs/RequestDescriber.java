@@ -7,6 +7,8 @@ import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_URI;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_CLASS;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
+import static com.chavaillaz.jakarta.rs.MaskingBodyFilter.DEFAULT_MASK;
+import static java.lang.Character.isHighSurrogate;
 import static java.lang.String.join;
 import static java.util.Map.Entry.comparingByKey;
 import static java.util.UUID.randomUUID;
@@ -109,7 +111,7 @@ final class RequestDescriber {
         if (requestId.length() <= REQUEST_ID_MAX_LENGTH) {
             return requestId;
         }
-        int end = Character.isHighSurrogate(requestId.charAt(REQUEST_ID_MAX_LENGTH - 1))
+        int end = isHighSurrogate(requestId.charAt(REQUEST_ID_MAX_LENGTH - 1))
                 ? REQUEST_ID_MAX_LENGTH - 1
                 : REQUEST_ID_MAX_LENGTH;
         return requestId.substring(0, end);
@@ -161,7 +163,7 @@ final class RequestDescriber {
                 .stream()
                 .sorted(comparingByKey())
                 .map(entry -> entry.getKey() + "=" + (sensitive.test(QUERY, entry.getKey())
-                        ? MaskingBodyFilter.DEFAULT_MASK
+                        ? DEFAULT_MASK
                         : join(",", entry.getValue())))
                 .collect(joining("&"));
     }

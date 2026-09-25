@@ -1,8 +1,8 @@
 package com.chavaillaz.jakarta.rs;
 
+import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.joining;
 
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.regex.Pattern;
 
@@ -29,7 +29,7 @@ public class FormMaskingBodyFilter extends MaskingBodyFilter {
      * @param parameters The names of the form parameters whose value must be masked
      */
     public FormMaskingBodyFilter(String... parameters) {
-        this(DEFAULT_MASK, Arrays.asList(parameters));
+        this(DEFAULT_MASK, asList(parameters));
     }
 
     /**

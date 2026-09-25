@@ -1,5 +1,6 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.LoggedBodyCapture.NO_LIMIT;
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static jakarta.ws.rs.HttpMethod.POST;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -545,7 +546,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         boolean closed = false;
 
         ReleasingBodyCapture() {
-            super(LoggedBodyCapture.NO_LIMIT);
+            super(NO_LIMIT);
         }
 
         @Override

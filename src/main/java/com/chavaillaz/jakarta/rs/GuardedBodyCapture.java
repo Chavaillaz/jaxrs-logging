@@ -1,5 +1,7 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.LoggedSupport.report;
+
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Set;
@@ -135,7 +137,7 @@ final class GuardedBodyCapture implements LoggedBodyCapture {
          */
         private void fail(Exception failure) {
             failed = true;
-            LoggedSupport.report(log, message, failure);
+            report(log, message, failure);
         }
 
     }

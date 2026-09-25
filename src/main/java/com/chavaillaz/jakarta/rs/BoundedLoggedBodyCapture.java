@@ -1,5 +1,8 @@
 package com.chavaillaz.jakarta.rs;
 
+import static java.lang.Math.ceil;
+import static java.lang.Math.max;
+import static java.lang.Math.min;
 import static java.nio.charset.StandardCharsets.ISO_8859_1;
 import static java.nio.charset.StandardCharsets.US_ASCII;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -207,8 +210,8 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
                 .onMalformedInput(CodingErrorAction.REPLACE)
                 .onUnmappableCharacter(CodingErrorAction.REPLACE);
         // Sized for the most characters the bytes can decode to, so decoding never has to stop and grow it
-        CharBuffer decoded = CharBuffer.allocate((int) Math.min(CaptureBuffer.MAX_CAPACITY,
-                (long) Math.ceil(size * (double) decoder.maxCharsPerByte())));
+        CharBuffer decoded = CharBuffer.allocate((int) min(CaptureBuffer.MAX_CAPACITY,
+                (long) ceil(size * (double) decoder.maxCharsPerByte())));
         decoder.decode(ByteBuffer.wrap(bytes, 0, size), decoded, false);
         return decoded.flip();
     }
@@ -227,7 +230,7 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
      * @return The number of leading bytes forming complete characters
      */
     private static int completeUtf8Length(byte[] bytes, int size) {
-        for (int i = size - 1; i >= Math.max(0, size - 4); i--) {
+        for (int i = size - 1; i >= max(0, size - 4); i--) {
             int lead = bytes[i] & 0xFF;
             if ((lead & 0xC0) != 0x80) {
                 int length;

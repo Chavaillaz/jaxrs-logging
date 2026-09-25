@@ -1,6 +1,8 @@
 package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
+import static java.util.Arrays.asList;
+import static java.util.Arrays.stream;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.emptySet;
 import static org.apache.commons.lang3.ClassUtils.getAllInterfaces;
@@ -72,7 +74,7 @@ public final class LoggedUtils {
      * @param mappings       The mappings to add
      */
     public static void mergeMappings(Set<LoggedMapping> mergedMappings, LoggedMapping... mappings) {
-        Arrays.stream(mappings)
+        stream(mappings)
                 .filter(newMapping -> mergedMappings.stream()
                         .noneMatch(existingMapping -> areConflicting(newMapping, existingMapping)))
                 .forEach(mergedMappings::add);
@@ -100,8 +102,8 @@ public final class LoggedUtils {
             return true;
         }
         BiPredicate<String, String> sameName = first.type() == HEADER ? String::equalsIgnoreCase : String::equals;
-        return Arrays.stream(first.paramNames())
-                .anyMatch(name -> Arrays.stream(second.paramNames()).anyMatch(other -> sameName.test(name, other)));
+        return stream(first.paramNames())
+                .anyMatch(name -> stream(second.paramNames()).anyMatch(other -> sameName.test(name, other)));
     }
 
     /**
@@ -164,9 +166,9 @@ public final class LoggedUtils {
      */
     private static <A extends Annotation, W extends Annotation> List<A> getDeclaredAnnotation(AnnotatedElement element, Class<A> annotationType, Class<W> wrapperType, Function<W, A[]> mapper) {
         if (element.isAnnotationPresent(annotationType)) {
-            return Arrays.asList(element.getAnnotationsByType(annotationType));
+            return asList(element.getAnnotationsByType(annotationType));
         } else if (wrapperType != null && element.isAnnotationPresent(wrapperType)) {
-            return Arrays.stream(element.getAnnotationsByType(wrapperType))
+            return stream(element.getAnnotationsByType(wrapperType))
                     .map(mapper)
                     .flatMap(Arrays::stream)
                     .toList();

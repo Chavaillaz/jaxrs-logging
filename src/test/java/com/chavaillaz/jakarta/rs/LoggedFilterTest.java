@@ -12,6 +12,7 @@ import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_CLASS;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
+import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
 import static jakarta.ws.rs.core.HttpHeaders.CONTENT_TYPE;
@@ -1003,7 +1004,7 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         // Then: a caller quoting it in a bug report points straight at the request, instead of leaving
         // whoever picks the report up searching the logs by timestamp
-        assertEquals(requestId, responseContext.getHeaders().getFirst(LoggedFilter.REQUEST_ID_HEADER));
+        assertEquals(requestId, responseContext.getHeaders().getFirst(REQUEST_ID_HEADER));
     }
 
     @Test
@@ -1023,7 +1024,7 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         // Then
         assertEquals(1, responseContext.getHeaders().keySet().stream()
-                .filter(LoggedFilter.REQUEST_ID_HEADER::equalsIgnoreCase)
+                .filter(REQUEST_ID_HEADER::equalsIgnoreCase)
                 .count());
         assertEquals("chosen-by-the-application", responseContext.getHeaders().getFirst("x-request-id"));
     }
@@ -1050,7 +1051,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         // Then
         assertEquals("trace-42", requestId);
         assertEquals("trace-42", responseContext.getHeaders().getFirst("X-Trace-ID"));
-        assertNull(responseContext.getHeaders().getFirst(LoggedFilter.REQUEST_ID_HEADER));
+        assertNull(responseContext.getHeaders().getFirst(REQUEST_ID_HEADER));
     }
 
     @ParameterizedTest(name = "strategy obtaining \"{0}\"")
@@ -1074,7 +1075,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         // Then
         String requestId = getMdcLogged(REQUEST_ID);
         assertDoesNotThrow(() -> UUID.fromString(requestId));
-        assertEquals(requestId, responseContext.getHeaders().getFirst(LoggedFilter.REQUEST_ID_HEADER));
+        assertEquals(requestId, responseContext.getHeaders().getFirst(REQUEST_ID_HEADER));
     }
 
     @Test
@@ -1630,7 +1631,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         // Then: it is logged and answered under its own identifier, and the enclosing request keeps its own
         assertEquals(List.of("Processed POST /service with status 204"), getProcessedMessages());
         assertEquals(suspendedId, getMdcLogged(REQUEST_ID));
-        assertEquals(suspendedId, suspendedResponse.getHeaders().getFirst(LoggedFilter.REQUEST_ID_HEADER));
+        assertEquals(suspendedId, suspendedResponse.getHeaders().getFirst(REQUEST_ID_HEADER));
         assertEquals(enclosingId, getMdc(REQUEST_ID));
         assertEquals("/topics", getMdc(REQUEST_URI));
 
@@ -1671,7 +1672,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         // Then
         assertEquals(List.of("Processed POST /service with status 204"), getProcessedMessages());
         assertEquals(requestId, getMdcLogged(REQUEST_ID));
-        assertEquals(requestId, responseContext.getHeaders().getFirst(LoggedFilter.REQUEST_ID_HEADER));
+        assertEquals(requestId, responseContext.getHeaders().getFirst(REQUEST_ID_HEADER));
         assertTrue(left == null || left.isEmpty(), () -> "Left on the worker: " + left);
     }
 

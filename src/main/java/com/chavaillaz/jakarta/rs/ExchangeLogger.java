@@ -3,9 +3,9 @@ package com.chavaillaz.jakarta.rs;
 import static org.apache.commons.lang3.StringUtils.EMPTY;
 import static org.apache.commons.lang3.StringUtils.LF;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
+import static org.apache.commons.lang3.math.NumberUtils.toInt;
 
 import jakarta.ws.rs.core.MultivaluedMap;
-import org.apache.commons.lang3.math.NumberUtils;
 import org.slf4j.Logger;
 
 /**
@@ -58,7 +58,7 @@ final class ExchangeLogger {
      * @param body     The body of the response, blank if it is not logged
      */
     void processed(String method, String uri, String status, String duration, String body) {
-        log.atLevel(configuration.responseLevel(NumberUtils.toInt(status)))
+        log.atLevel(configuration.responseLevel(toInt(status)))
                 .log("Processed {} {} with status {} in {}ms{}{}", method, uri, status, duration, isNotBlank(body) ? LF : EMPTY, body);
     }
 

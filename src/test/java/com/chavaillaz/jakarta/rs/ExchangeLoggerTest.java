@@ -1,5 +1,6 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -68,7 +69,7 @@ class ExchangeLoggerTest extends AbstractFilterTest {
     void checkRequestIdReturned() {
         MultivaluedMap<String, Object> headers = new MultivaluedHashMap<>();
         defaultLogger.returnRequestId(headers, "abc-123");
-        assertEquals("abc-123", headers.getFirst(LoggedFilter.REQUEST_ID_HEADER));
+        assertEquals("abc-123", headers.getFirst(REQUEST_ID_HEADER));
 
         MultivaluedMap<String, Object> alreadySet = new MultivaluedHashMap<>();
         alreadySet.putSingle("x-request-id", "chosen-by-the-application");

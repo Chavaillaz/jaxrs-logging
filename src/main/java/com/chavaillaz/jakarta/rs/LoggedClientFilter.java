@@ -1,10 +1,15 @@
 package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.LOG;
+import static com.chavaillaz.jakarta.rs.LoggedBodyCapture.NO_LIMIT;
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
+import static com.chavaillaz.jakarta.rs.LoggedSupport.levelOf;
+import static com.chavaillaz.jakarta.rs.MaskingBodyFilter.DEFAULT_MASK;
 import static jakarta.ws.rs.RuntimeType.CLIENT;
 import static java.lang.System.nanoTime;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.Arrays.asList;
+import static java.util.Arrays.stream;
 import static java.util.Collections.unmodifiableSet;
 import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElseGet;
@@ -16,7 +21,6 @@ import static org.apache.commons.lang3.StringUtils.isNotBlank;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLDecoder;
-import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
@@ -68,8 +72,8 @@ import org.slf4j.event.Level;
  * status line and the body are guaranteed to be available together to merge into one line the way the
  * server-side filter does.
  * <p>
- * Only {@link com.chavaillaz.jakarta.rs.LoggedBody.LogType#LOG} is supported (a separate log line), not
- * {@link com.chavaillaz.jakarta.rs.LoggedBody.LogType#MDC}: the server-side filter can attach the body to
+ * Only {@link LoggedBody.LogType#LOG} is supported (a separate log line), not
+ * {@link LoggedBody.LogType#MDC}: the server-side filter can attach the body to
  * MDC because it owns a single, well-defined completion point for the whole request ({@code logResponse},
  * see its Javadoc); this provider deliberately does not reproduce that coordination (for the reason above),
  * so there is no single point to scope such an MDC entry to.
@@ -179,8 +183,8 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         private String correlationIdMdcKey = LoggedField.REQUEST_ID.getDefaultField();
         private boolean logRequestBody = false;
         private boolean logResponseBody = false;
-        private int requestBodyLimit = LoggedBodyCapture.NO_LIMIT;
-        private int responseBodyLimit = LoggedBodyCapture.NO_LIMIT;
+        private int requestBodyLimit = NO_LIMIT;
+        private int responseBodyLimit = NO_LIMIT;
         private final Set<Class<? extends LoggedBodyFilter>> bodyFilterClasses = new LinkedHashSet<>();
         private final Set<LoggedBodyFilter> bodyFilterInstances = new LinkedHashSet<>();
 
@@ -322,7 +326,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
          * @throws NullPointerException if any of the elements is {@code null}
          */
         private static <T> List<T> nonNull(T[] elements, String message) {
-            List<T> list = Arrays.asList(elements);
+            List<T> list = asList(elements);
             list.forEach(element -> requireNonNull(element, message));
             return list;
         }
@@ -403,7 +407,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         if (authority != null) {
             rendered.append("//").append(userInfoEnd < 0
                     ? authority
-                    : MaskingBodyFilter.DEFAULT_MASK + authority.substring(userInfoEnd));
+                    : DEFAULT_MASK + authority.substring(userInfoEnd));
         }
         rendered.append(uri.getRawPath());
         if (uri.getRawQuery() != null) {
@@ -423,13 +427,13 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      * @return The query with the values of its sensitive parameters masked
      */
     private String maskQuery(String rawQuery) {
-        return Arrays.stream(rawQuery.split("&", -1))
+        return stream(rawQuery.split("&", -1))
                 .map(parameter -> {
                     int separator = parameter.indexOf('=');
                     // Decoded before being compared, so a name the caller escaped is recognized all the same;
                     // the raw components of a java.net.URI are always validly encoded, so this cannot fail
                     return separator >= 0 && isSensitiveQueryParameter(URLDecoder.decode(parameter.substring(0, separator), UTF_8))
-                            ? parameter.substring(0, separator + 1) + MaskingBodyFilter.DEFAULT_MASK
+                            ? parameter.substring(0, separator + 1) + DEFAULT_MASK
                             : parameter;
                 })
                 .collect(joining("&"));
@@ -503,7 +507,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
             long duration = (nanoTime() - requestStartTime) / 1_000_000;
             int status = responseContext.getStatus();
 
-            log.atLevel(requireNonNullElseGet(getResponseLevel(status), () -> LoggedSupport.levelOf(status)))
+            log.atLevel(requireNonNullElseGet(getResponseLevel(status), () -> levelOf(status)))
                     .log("Called {} {} with status {} in {}ms",
                             requestContext.getMethod(),
                             getLoggedUri(requestContext.getUri()),
@@ -520,7 +524,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      * @return The level to log the call at, {@code null} leaving the status at its default level
      */
     protected Level getResponseLevel(int status) {
-        return LoggedSupport.levelOf(status);
+        return levelOf(status);
     }
 
     /**

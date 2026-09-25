@@ -1,5 +1,7 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
+import static com.chavaillaz.jakarta.rs.LoggedSupport.levelOf;
 import static java.util.Collections.unmodifiableMap;
 import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElseGet;
@@ -162,7 +164,7 @@ public final class LoggedFilterConfiguration {
      * @return The level to log the request at, never {@code null}
      */
     Level responseLevel(int status) {
-        return requireNonNullElseGet(responseLevel.apply(status), () -> LoggedSupport.levelOf(status));
+        return requireNonNullElseGet(responseLevel.apply(status), () -> levelOf(status));
     }
 
     /**
@@ -193,7 +195,7 @@ public final class LoggedFilterConfiguration {
     public static final class Builder {
 
         private final Map<LoggedField, String> fieldNames = new EnumMap<>(LoggedField.class);
-        private String requestIdHeader = LoggedFilter.REQUEST_ID_HEADER;
+        private String requestIdHeader = REQUEST_ID_HEADER;
         private Function<ContainerRequestContext, String> requestId;
         private boolean requestIdReturned = true;
         private BiPredicate<MappingType, String> sensitiveParameters = LoggedFilterConfiguration::isCredential;

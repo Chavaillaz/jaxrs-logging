@@ -1,11 +1,12 @@
 package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedBodyCapture.NO_LIMIT;
+import static java.lang.Math.max;
 import static java.lang.Math.min;
+import static java.util.Arrays.copyOf;
+import static java.util.Objects.checkFromIndexSize;
 
 import java.io.OutputStream;
-import java.util.Arrays;
-import java.util.Objects;
 
 /**
  * Buffer keeping, in memory, at most a given number of the bytes written to it: the bytes of a body a
@@ -104,7 +105,7 @@ final class CaptureBuffer extends OutputStream {
 
     @Override
     public void write(byte[] b, int off, int len) {
-        Objects.checkFromIndexSize(off, len, b.length);
+        checkFromIndexSize(off, len, b.length);
         int kept = min(len, capacityLimit - size);
         if (kept < len) {
             // Reported only when bytes were actually dropped, not when the limit was merely reached: a body
@@ -128,7 +129,7 @@ final class CaptureBuffer extends OutputStream {
      */
     private void grow(int minCapacity) {
         int doubled = (int) min((long) bytes.length * 2, capacityLimit);
-        bytes = Arrays.copyOf(bytes, Math.max(doubled, minCapacity));
+        bytes = copyOf(bytes, max(doubled, minCapacity));
     }
 
     /**

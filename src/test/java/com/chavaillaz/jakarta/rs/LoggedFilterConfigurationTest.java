@@ -2,6 +2,7 @@ package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_URI;
+import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedFilterConfiguration.isCredential;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.PATH;
@@ -48,10 +49,10 @@ class LoggedFilterConfigurationTest {
     void checkDefaultRequestId() throws Exception {
         LoggedFilterConfiguration configuration = LoggedFilterConfiguration.defaults();
 
-        assertEquals("abc-123", configuration.requestIdOf(request(LoggedFilter.REQUEST_ID_HEADER, "abc-123")));
+        assertEquals("abc-123", configuration.requestIdOf(request(REQUEST_ID_HEADER, "abc-123")));
         // Left for RequestDescriber to generate, as it does for whatever strategy obtains none
         assertNull(configuration.requestIdOf(request("X-Other", "abc-123")));
-        assertEquals(LoggedFilter.REQUEST_ID_HEADER, configuration.returnedRequestIdHeader());
+        assertEquals(REQUEST_ID_HEADER, configuration.returnedRequestIdHeader());
     }
 
     @Test
@@ -144,7 +145,7 @@ class LoggedFilterConfigurationTest {
                 .requestId(request -> "server-side")
                 .build();
 
-        assertEquals("server-side", configuration.requestIdOf(request(LoggedFilter.REQUEST_ID_HEADER, "client-side")));
+        assertEquals("server-side", configuration.requestIdOf(request(REQUEST_ID_HEADER, "client-side")));
     }
 
     @Test

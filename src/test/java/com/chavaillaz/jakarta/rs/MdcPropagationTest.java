@@ -1,5 +1,7 @@
 package com.chavaillaz.jakarta.rs;
 
+import static java.util.concurrent.TimeUnit.MILLISECONDS;
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -19,7 +21,6 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.AfterEach;
@@ -150,27 +151,27 @@ class MdcPropagationTest {
                 executeResult.set(MDC.get("request-id"));
                 latch.countDown();
             });
-            assertTrue(latch.await(5, TimeUnit.SECONDS));
+            assertTrue(latch.await(5, SECONDS));
             assertEquals("for-execute", executeResult.get());
 
             // submit(Runnable)
             MDC.put("request-id", "for-submit-runnable");
             AtomicReference<String> submitResult = new AtomicReference<>();
-            executor.submit(() -> submitResult.set(MDC.get("request-id"))).get(5, TimeUnit.SECONDS);
+            executor.submit(() -> submitResult.set(MDC.get("request-id"))).get(5, SECONDS);
             assertEquals("for-submit-runnable", submitResult.get());
 
             // submit(Callable)
             MDC.put("request-id", "for-submit-callable");
             Future<String> future = executor.submit(() -> MDC.get("request-id"));
-            assertEquals("for-submit-callable", future.get(5, TimeUnit.SECONDS));
+            assertEquals("for-submit-callable", future.get(5, SECONDS));
 
             // invokeAll
             MDC.put("request-id", "for-invoke-all");
             List<Future<String>> results = executor.invokeAll(List.of(() -> MDC.get("request-id")));
-            assertEquals("for-invoke-all", results.getFirst().get(5, TimeUnit.SECONDS));
+            assertEquals("for-invoke-all", results.getFirst().get(5, SECONDS));
         } finally {
             executor.shutdown();
-            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+            assertTrue(executor.awaitTermination(5, SECONDS));
         }
     }
 
@@ -189,7 +190,7 @@ class MdcPropagationTest {
             assertThrows(NullPointerException.class, () -> MdcPropagation.wrap((ExecutorService) null));
         } finally {
             executor.shutdown();
-            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+            assertTrue(executor.awaitTermination(5, SECONDS));
         }
     }
 
@@ -201,7 +202,7 @@ class MdcPropagationTest {
 
         assertFalse(executor.isShutdown());
         executor.shutdown();
-        assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+        assertTrue(executor.awaitTermination(5, SECONDS));
         assertTrue(executor.isShutdown());
         assertTrue(executor.isTerminated());
         assertTrue(rawExecutor.isShutdown());
@@ -232,17 +233,17 @@ class MdcPropagationTest {
             executor.schedule(() -> {
                 runnableResult.set(MDC.get("request-id"));
                 latch.countDown();
-            }, 1, TimeUnit.MILLISECONDS);
-            assertTrue(latch.await(5, TimeUnit.SECONDS));
+            }, 1, MILLISECONDS);
+            assertTrue(latch.await(5, SECONDS));
             assertEquals("for-schedule-runnable", runnableResult.get());
 
             // schedule(Callable, ...)
             MDC.put("request-id", "for-schedule-callable");
-            Future<String> future = executor.schedule(() -> MDC.get("request-id"), 1, TimeUnit.MILLISECONDS);
-            assertEquals("for-schedule-callable", future.get(5, TimeUnit.SECONDS));
+            Future<String> future = executor.schedule(() -> MDC.get("request-id"), 1, MILLISECONDS);
+            assertEquals("for-schedule-callable", future.get(5, SECONDS));
         } finally {
             executor.shutdown();
-            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+            assertTrue(executor.awaitTermination(5, SECONDS));
         }
     }
 
@@ -261,15 +262,15 @@ class MdcPropagationTest {
             executor.scheduleAtFixedRate(() -> {
                 seen.add(MDC.get("request-id"));
                 latch.countDown();
-            }, 0, 5, TimeUnit.MILLISECONDS);
+            }, 0, 5, MILLISECONDS);
             MDC.put("request-id", "mutated-after-scheduling");
 
             // Then
-            assertTrue(latch.await(5, TimeUnit.SECONDS));
+            assertTrue(latch.await(5, SECONDS));
             assertTrue(seen.stream().allMatch("captured-at-schedule-time"::equals));
         } finally {
             executor.shutdown();
-            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+            assertTrue(executor.awaitTermination(5, SECONDS));
         }
     }
 
@@ -281,7 +282,7 @@ class MdcPropagationTest {
 
         assertFalse(executor.isShutdown());
         executor.shutdown();
-        assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+        assertTrue(executor.awaitTermination(5, SECONDS));
         assertTrue(executor.isShutdown());
         assertTrue(executor.isTerminated());
         assertTrue(rawExecutor.isShutdown());
@@ -302,7 +303,7 @@ class MdcPropagationTest {
                     .supplyAsync(() -> record(seen, "loaded"), executor)
                     .thenApplyAsync(value -> value + record(seen, ""), executor)
                     .thenApplyAsync(value -> value + record(seen, ""), executor)
-                    .get(5, TimeUnit.SECONDS);
+                    .get(5, SECONDS);
 
             // Then: the context reaches every stage, not just the first
             assertEquals("loaded", result);
@@ -310,7 +311,7 @@ class MdcPropagationTest {
             assertTrue(seen.stream().allMatch("abc-123"::equals));
         } finally {
             pool.shutdown();
-            assertTrue(pool.awaitTermination(5, TimeUnit.SECONDS));
+            assertTrue(pool.awaitTermination(5, SECONDS));
         }
     }
 
@@ -341,11 +342,11 @@ class MdcPropagationTest {
             });
 
             // Then
-            assertTrue(latch.await(5, TimeUnit.SECONDS));
+            assertTrue(latch.await(5, SECONDS));
             assertNull(seen.get());
         } finally {
             pool.shutdown();
-            assertTrue(pool.awaitTermination(5, TimeUnit.SECONDS));
+            assertTrue(pool.awaitTermination(5, SECONDS));
         }
     }
 
@@ -360,19 +361,19 @@ class MdcPropagationTest {
         String result = CompletableFuture
                 .supplyAsync(MdcPropagation.wrapSupplier(() -> record(seen, "loaded")))
                 .thenApplyAsync(MdcPropagation.wrapFunction(value -> value + record(seen, "")))
-                .get(5, TimeUnit.SECONDS);
+                .get(5, SECONDS);
 
         AtomicReference<String> consumed = new AtomicReference<>();
         CompletableFuture
                 .completedFuture(result)
                 .thenAcceptAsync(MdcPropagation.wrapConsumer(value -> consumed.set(MDC.get("request-id"))))
-                .get(5, TimeUnit.SECONDS);
+                .get(5, SECONDS);
 
         AtomicReference<String> completed = new AtomicReference<>();
         CompletableFuture
                 .completedFuture(result)
                 .whenCompleteAsync(MdcPropagation.wrapBiConsumer((value, error) -> completed.set(MDC.get("request-id"))))
-                .get(5, TimeUnit.SECONDS);
+                .get(5, SECONDS);
 
         AtomicReference<String> handled = new AtomicReference<>();
         CompletableFuture
@@ -381,7 +382,7 @@ class MdcPropagationTest {
                     handled.set(MDC.get("request-id"));
                     return value;
                 }))
-                .get(5, TimeUnit.SECONDS);
+                .get(5, SECONDS);
 
         // Then
         assertEquals("loaded", result);

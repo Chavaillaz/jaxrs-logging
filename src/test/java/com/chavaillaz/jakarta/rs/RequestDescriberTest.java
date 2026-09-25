@@ -8,6 +8,8 @@ import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_CLASS;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
+import static com.chavaillaz.jakarta.rs.RequestDescriber.requestIdOf;
+import static com.chavaillaz.jakarta.rs.RequestDescriber.sanitize;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -122,8 +124,8 @@ class RequestDescriberTest {
     @Test
     @DisplayName("Check a request identifier the client supplies is kept, sanitized")
     void checkRequestIdKept() {
-        assertEquals("abc-123", RequestDescriber.requestIdOf("abc-123"));
-        assertEquals("abc  FAKE LINE", RequestDescriber.requestIdOf("abc\r\nFAKE LINE"));
+        assertEquals("abc-123", requestIdOf("abc-123"));
+        assertEquals("abc  FAKE LINE", requestIdOf("abc\r\nFAKE LINE"));
     }
 
     @ParameterizedTest
@@ -131,17 +133,17 @@ class RequestDescriberTest {
     @ValueSource(strings = {"", "  ", "\r\n"})
     @DisplayName("Check a request without a usable identifier gets a random one")
     void checkRequestIdGenerated(String header) {
-        String requestId = RequestDescriber.requestIdOf(header);
+        String requestId = requestIdOf(header);
 
         assertDoesNotThrow(() -> UUID.fromString(requestId));
-        assertNotEquals(requestId, RequestDescriber.requestIdOf(header));
+        assertNotEquals(requestId, requestIdOf(header));
     }
 
     @Test
     @DisplayName("Check sanitizing replaces every kind of line break, and leaves null alone")
     void checkSanitize() {
-        assertEquals("a b c d e", RequestDescriber.sanitize("a\nb\u0085c\u2028d\u2029e"));
-        assertNull(RequestDescriber.sanitize(null));
+        assertEquals("a b c d e", sanitize("a\nb\u0085c\u2028d\u2029e"));
+        assertNull(sanitize(null));
     }
 
     @Test
@@ -149,8 +151,8 @@ class RequestDescriberTest {
     void checkSanitizeC1() {
         // CSI starts a terminal escape sequence the way ESC [ does, and PAD opens the C1 set; both are what
         // an ISO-8859-1 header decodes the bytes 0x9B and 0x80 to
-        assertEquals("a 31mb c", RequestDescriber.sanitize("a\u009B31mb\u0080c"));
-        assertEquals("caf\u00e9 \u00e0 5 \u20ac", RequestDescriber.sanitize("caf\u00e9 \u00e0 5 \u20ac"));
+        assertEquals("a 31mb c", sanitize("a\u009B31mb\u0080c"));
+        assertEquals("caf\u00e9 \u00e0 5 \u20ac", sanitize("caf\u00e9 \u00e0 5 \u20ac"));
     }
 
 }

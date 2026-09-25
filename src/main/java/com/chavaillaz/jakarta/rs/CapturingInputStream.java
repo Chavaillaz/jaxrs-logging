@@ -1,5 +1,7 @@
 package com.chavaillaz.jakarta.rs;
 
+import static java.lang.Math.min;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -63,7 +65,7 @@ final class CapturingInputStream extends InputStream {
     public int read(byte[] b, int off, int len) throws IOException {
         int read = in.read(b, off, len);
         if (read > 0) {
-            int alreadyCaptured = (int) Math.min(read, captured - position);
+            int alreadyCaptured = (int) min(read, captured - position);
             if (alreadyCaptured < read) {
                 capture.write(b, off + alreadyCaptured, read - alreadyCaptured);
                 captured = position + read;

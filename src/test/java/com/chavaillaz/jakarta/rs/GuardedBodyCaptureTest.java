@@ -1,5 +1,6 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.LoggedBodyCapture.NO_LIMIT;
 import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN_TYPE;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -87,7 +88,7 @@ class GuardedBodyCaptureTest extends AbstractFilterTest {
     void checkFailingSink(Operation operation) {
         // Given
         FailingSink sink = new FailingSink(operation);
-        GuardedBodyCapture capture = new GuardedBodyCapture(new BoundedLoggedBodyCapture(LoggedBodyCapture.NO_LIMIT) {
+        GuardedBodyCapture capture = new GuardedBodyCapture(new BoundedLoggedBodyCapture(NO_LIMIT) {
 
             @Override
             public OutputStream sink() {
@@ -119,7 +120,7 @@ class GuardedBodyCaptureTest extends AbstractFilterTest {
     void checkWorkingSink() throws IOException {
         // Given
         AtomicBoolean closed = new AtomicBoolean();
-        GuardedBodyCapture capture = new GuardedBodyCapture(new BoundedLoggedBodyCapture(LoggedBodyCapture.NO_LIMIT) {
+        GuardedBodyCapture capture = new GuardedBodyCapture(new BoundedLoggedBodyCapture(NO_LIMIT) {
 
             @Override
             public void close() {

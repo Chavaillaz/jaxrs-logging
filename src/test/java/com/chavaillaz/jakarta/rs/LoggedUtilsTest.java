@@ -7,13 +7,13 @@ import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.getAnnotation;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.getMergedMappings;
+import static java.util.stream.Collectors.toSet;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doReturn;
 
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
@@ -64,7 +64,7 @@ class LoggedUtilsTest {
         Set<LoggedMapping> mappings = getMergedMappings(resourceInfo);
 
         // Then
-        Set<String> mdcKeys = mappings.stream().map(LoggedMapping::mdcKey).collect(Collectors.toSet());
+        Set<String> mdcKeys = mappings.stream().map(LoggedMapping::mdcKey).collect(toSet());
         assertEquals(3, mappings.size());
         assertTrue(mdcKeys.contains("interface-a"));
         assertTrue(mdcKeys.contains("interface-b"));
@@ -99,7 +99,7 @@ class LoggedUtilsTest {
         // Then: header names are case-insensitive, query parameter names are not
         assertEquals(Set.of("ua", "topic", "class-topic"), mappings.stream()
                 .map(LoggedMapping::mdcKey)
-                .collect(Collectors.toSet()));
+                .collect(toSet()));
     }
 
     // Class-level configuration applying (by default) to both request and response

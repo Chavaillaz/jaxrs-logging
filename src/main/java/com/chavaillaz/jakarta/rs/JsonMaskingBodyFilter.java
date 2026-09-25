@@ -1,8 +1,8 @@
 package com.chavaillaz.jakarta.rs;
 
+import static java.util.Arrays.asList;
 import static java.util.stream.Collectors.joining;
 
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.regex.Pattern;
 
@@ -53,7 +53,7 @@ public class JsonMaskingBodyFilter extends MaskingBodyFilter {
      * @param properties The names of the JSON properties whose value must be masked
      */
     public JsonMaskingBodyFilter(String... properties) {
-        this(DEFAULT_MASK, Arrays.asList(properties));
+        this(DEFAULT_MASK, asList(properties));
     }
 
     /**

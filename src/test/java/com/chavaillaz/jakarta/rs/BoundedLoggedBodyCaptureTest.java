@@ -1,5 +1,8 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER;
+import static com.chavaillaz.jakarta.rs.BoundedLoggedBodyCapture.TRUNCATION_MARKER;
+import static com.chavaillaz.jakarta.rs.LoggedBodyCapture.NO_LIMIT;
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON_TYPE;
 import static jakarta.ws.rs.core.MediaType.APPLICATION_OCTET_STREAM_TYPE;
 import static jakarta.ws.rs.core.MediaType.APPLICATION_XML_TYPE;
@@ -85,7 +88,7 @@ class BoundedLoggedBodyCaptureTest {
 
         // Then: the dangling half character is gone, and what is left is marked as incomplete rather
         // than reading, in the logs, as the whole body the application actually received
-        assertEquals("Caf" + BoundedLoggedBodyCapture.TRUNCATION_MARKER, result);
+        assertEquals("Caf" + TRUNCATION_MARKER, result);
     }
 
     @Test
@@ -170,7 +173,7 @@ class BoundedLoggedBodyCaptureTest {
         String result = capture.content(Set.of(), TEXT_PLAIN_TYPE.withCharset("UTF-16BE"));
 
         // Then
-        assertEquals("Caf" + BoundedLoggedBodyCapture.TRUNCATION_MARKER, result);
+        assertEquals("Caf" + TRUNCATION_MARKER, result);
     }
 
     @Test
@@ -185,7 +188,7 @@ class BoundedLoggedBodyCaptureTest {
         String result = capture.content(Set.of(), TEXT_PLAIN_TYPE.withCharset("ISO-8859-1"));
 
         // Then: a single-byte charset has no character to cut in half, so the é is complete and kept
-        assertEquals("Café" + BoundedLoggedBodyCapture.TRUNCATION_MARKER, result);
+        assertEquals("Café" + TRUNCATION_MARKER, result);
     }
 
     @ParameterizedTest(name = "limit={0}")
@@ -200,7 +203,7 @@ class BoundedLoggedBodyCaptureTest {
         String result = capture.content(Set.of());
 
         // Then
-        assertEquals("a" + BoundedLoggedBodyCapture.TRUNCATION_MARKER, result);
+        assertEquals("a" + TRUNCATION_MARKER, result);
     }
 
     @Test
@@ -214,7 +217,7 @@ class BoundedLoggedBodyCaptureTest {
         String result = capture.content(Set.of());
 
         // Then: malformed rather than cut in half, it is decoded the way the rest of the body is
-        assertEquals("a�" + BoundedLoggedBodyCapture.TRUNCATION_MARKER, result);
+        assertEquals("a�" + TRUNCATION_MARKER, result);
     }
 
     @ParameterizedTest(name = "{0}")
@@ -229,7 +232,7 @@ class BoundedLoggedBodyCaptureTest {
         String result = capture.content(Set.of(), TEXT_PLAIN_TYPE.withCharset(charset));
 
         // Then
-        assertEquals(expected + BoundedLoggedBodyCapture.TRUNCATION_MARKER, result);
+        assertEquals(expected + TRUNCATION_MARKER, result);
     }
 
     @Test
@@ -248,7 +251,7 @@ class BoundedLoggedBodyCaptureTest {
                     .append("\",\"password\":\"secret-").append(i).append("\"},");
         }
         byte[] body = json.toString().getBytes(UTF_8);
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(LoggedBodyCapture.NO_LIMIT);
+        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(NO_LIMIT);
         capture.sink().write(body);
         Set<LoggedBodyFilter> filters = Set.of(new JsonMaskingBodyFilter("password"));
         for (int i = 0; i < 3; i++) {
@@ -344,7 +347,7 @@ class BoundedLoggedBodyCaptureTest {
         }));
 
         // Then
-        assertEquals(BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER, result);
+        assertEquals(FILTERING_FAILURE_MARKER, result);
         assertFalse(result.contains("hunter2"));
     }
 
@@ -375,7 +378,7 @@ class BoundedLoggedBodyCaptureTest {
         String result = assertDoesNotThrow(() -> capture.content(Set.of(filter)));
 
         // Then
-        assertEquals(BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER, result);
+        assertEquals(FILTERING_FAILURE_MARKER, result);
     }
 
     @Test

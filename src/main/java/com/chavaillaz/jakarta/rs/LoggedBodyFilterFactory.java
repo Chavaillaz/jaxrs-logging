@@ -1,8 +1,9 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER;
+import static java.util.Arrays.asList;
 import static java.util.Collections.unmodifiableSet;
 
-import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.Map;
@@ -46,13 +47,13 @@ public class LoggedBodyFilterFactory {
         @Override
         public void filter(StringBuilder body) {
             body.setLength(0);
-            body.append(BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER);
+            body.append(FILTERING_FAILURE_MARKER);
         }
 
         @Override
         public CharSequence apply(CharSequence body) {
             // Dropped without being copied first only to be thrown away
-            return BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER;
+            return FILTERING_FAILURE_MARKER;
         }
 
     };
@@ -73,7 +74,7 @@ public class LoggedBodyFilterFactory {
      * were declared, so filters that depend on one another's output run predictably
      */
     public Set<LoggedBodyFilter> getInstances(Class<? extends LoggedBodyFilter>[] filterTypes) {
-        return getInstances(Arrays.asList(filterTypes));
+        return getInstances(asList(filterTypes));
     }
 
     /**

@@ -1,5 +1,8 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.LoggedSupport.report;
+import static com.chavaillaz.jakarta.rs.LoggedSupport.safely;
+
 import java.io.IOException;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
@@ -137,7 +140,7 @@ final class BodyCapturer {
             return capture;
         } catch (Exception e) {
             release(capture);
-            LoggedSupport.report(log, CAPTURE_FAILURE, e);
+            report(log, CAPTURE_FAILURE, e);
             return null;
         }
     }
@@ -156,7 +159,7 @@ final class BodyCapturer {
         if (capture == null) {
             return;
         }
-        LoggedSupport.safely(log, RENDERING_FAILURE, () -> {
+        safely(log, RENDERING_FAILURE, () -> {
             try {
                 handler.accept(capture.content(configuration.filters(), context.getMediaType()));
             } finally {

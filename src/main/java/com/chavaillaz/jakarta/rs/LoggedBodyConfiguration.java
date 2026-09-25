@@ -1,5 +1,7 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.CaptureBuffer.checkLimit;
+import static com.chavaillaz.jakarta.rs.LoggedBodyCapture.NO_LIMIT;
 import static java.util.Objects.requireNonNull;
 
 import java.util.Set;
@@ -27,7 +29,7 @@ public record LoggedBodyConfiguration(Set<LogType> types, int limit, Set<LoggedB
     /**
      * Configuration logging nothing, used whenever no {@link LoggedBody} applies.
      */
-    public static final LoggedBodyConfiguration NONE = new LoggedBodyConfiguration(Set.of(), LoggedBodyCapture.NO_LIMIT, Set.of());
+    public static final LoggedBodyConfiguration NONE = new LoggedBodyConfiguration(Set.of(), NO_LIMIT, Set.of());
 
     /**
      * Creates a body logging configuration, rejecting one that could never capture anything.
@@ -41,7 +43,7 @@ public record LoggedBodyConfiguration(Set<LogType> types, int limit, Set<LoggedB
     public LoggedBodyConfiguration {
         requireNonNull(types, "The types of body logging are required");
         requireNonNull(filters, "The body filters are required");
-        CaptureBuffer.checkLimit(limit);
+        checkLimit(limit);
     }
 
     /**

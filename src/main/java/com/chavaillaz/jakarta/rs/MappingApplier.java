@@ -1,6 +1,8 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static com.chavaillaz.jakarta.rs.RequestDescriber.sanitize;
+import static java.lang.String.CASE_INSENSITIVE_ORDER;
 import static java.util.Comparator.comparing;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
@@ -108,7 +110,7 @@ final class MappingApplier {
      * @return The (empty) set to record claimed names in
      */
     private static Set<String> newClaimedNames(MappingType type) {
-        return type == MappingType.HEADER ? new TreeSet<>(String.CASE_INSENSITIVE_ORDER) : new HashSet<>();
+        return type == HEADER ? new TreeSet<>(CASE_INSENSITIVE_ORDER) : new HashSet<>();
     }
 
     /**
