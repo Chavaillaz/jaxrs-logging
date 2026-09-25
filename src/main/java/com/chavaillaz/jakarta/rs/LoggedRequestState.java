@@ -26,7 +26,7 @@ import org.slf4j.MDC;
  *
  * @see #of(ContainerRequestContext, LoggedFilter)
  */
-public class LoggedRequestState {
+final class LoggedRequestState {
 
     /**
      * Name of the single container property this state is stored under.
@@ -34,7 +34,7 @@ public class LoggedRequestState {
      * Qualified with the class name, as the property map is shared with the container, the application
      * and every other provider registered alongside this one.
      */
-    protected static final String PROPERTY = LoggedRequestState.class.getName();
+    private static final String PROPERTY = LoggedRequestState.class.getName();
 
     /**
      * Provider handling this request, which {@link LoggedBodyInterceptor} hands the bodies it captures back
@@ -111,7 +111,7 @@ public class LoggedRequestState {
      *
      * @param provider The provider handling the request
      */
-    protected LoggedRequestState(LoggedFilter provider) {
+    LoggedRequestState(LoggedFilter provider) {
         this.provider = provider;
         this.startTime = nanoTime();
     }
@@ -123,7 +123,7 @@ public class LoggedRequestState {
      * @param provider The provider handling the request, recorded when the state is created
      * @return The state of the request, never {@code null}
      */
-    public static LoggedRequestState of(ContainerRequestContext context, LoggedFilter provider) {
+    static LoggedRequestState of(ContainerRequestContext context, LoggedFilter provider) {
         LoggedRequestState state = find(context);
         if (state == null) {
             state = new LoggedRequestState(provider);
@@ -138,7 +138,7 @@ public class LoggedRequestState {
      * @param context The context of the request being processed
      * @return The state of the request, or {@code null} if no {@link LoggedFilter} is active on it
      */
-    public static LoggedRequestState find(ContainerRequestContext context) {
+    static LoggedRequestState find(ContainerRequestContext context) {
         return asState(context.getProperty(PROPERTY));
     }
 
@@ -151,7 +151,7 @@ public class LoggedRequestState {
      * @param context The context of the entity being read or written
      * @return The state of the request, or {@code null} if no {@link LoggedFilter} is active on it
      */
-    public static LoggedRequestState find(InterceptorContext context) {
+    static LoggedRequestState find(InterceptorContext context) {
         return asState(context.getProperty(PROPERTY));
     }
 
@@ -172,7 +172,7 @@ public class LoggedRequestState {
      *
      * @return The provider handling this request
      */
-    public LoggedFilter getProvider() {
+    LoggedFilter getProvider() {
         return provider;
     }
 
@@ -181,7 +181,7 @@ public class LoggedRequestState {
      *
      * @return The time elapsed since the request started, in milliseconds
      */
-    public long getElapsedMillis() {
+    long getElapsedMillis() {
         return NANOSECONDS.toMillis(nanoTime() - startTime);
     }
 
@@ -190,7 +190,7 @@ public class LoggedRequestState {
      *
      * @return The mutable, concurrent map of the entries to be removed from MDC once the request is done
      */
-    public Map<String, String> getMdcEntries() {
+    Map<String, String> getMdcEntries() {
         return mdcEntries;
     }
 
@@ -205,7 +205,7 @@ public class LoggedRequestState {
      * @param withBody Whether the line carries the request body
      * @return {@code true} if the line is new and must be logged, {@code false} if it would repeat one
      */
-    public boolean markRequestLogged(boolean withBody) {
+    boolean markRequestLogged(boolean withBody) {
         boolean first = !requestLogged.getAndSet(true);
         return withBody ? requestBodyLogged.compareAndSet(false, true) : first;
     }
@@ -215,7 +215,7 @@ public class LoggedRequestState {
      *
      * @return {@code true} if the request has already been logged, {@code false} otherwise
      */
-    public boolean isRequestLogged() {
+    boolean isRequestLogged() {
         return requestLogged.get();
     }
 
@@ -224,7 +224,7 @@ public class LoggedRequestState {
      *
      * @return {@code true} if this call was the one that completed it, {@code false} if it already was
      */
-    public boolean markCompleted() {
+    boolean markCompleted() {
         return completed.compareAndSet(false, true);
     }
 
@@ -233,7 +233,7 @@ public class LoggedRequestState {
      *
      * @return {@code true} if the request has been completed, {@code false} otherwise
      */
-    public boolean isCompleted() {
+    boolean isCompleted() {
         return completed.get();
     }
 
@@ -242,7 +242,7 @@ public class LoggedRequestState {
      *
      * @return The configuration, or {@code null} if it has not been resolved yet
      */
-    public BodyConfiguration getBodyConfiguration() {
+    BodyConfiguration getBodyConfiguration() {
         return bodyConfiguration;
     }
 
@@ -251,7 +251,7 @@ public class LoggedRequestState {
      *
      * @param bodyConfiguration The configuration resolved
      */
-    public void setBodyConfiguration(BodyConfiguration bodyConfiguration) {
+    void setBodyConfiguration(BodyConfiguration bodyConfiguration) {
         this.bodyConfiguration = bodyConfiguration;
     }
 
@@ -260,7 +260,7 @@ public class LoggedRequestState {
      *
      * @return The request body as it must be logged, or {@code null} if none was captured
      */
-    public String getRequestBody() {
+    String getRequestBody() {
         return requestBody;
     }
 
@@ -269,7 +269,7 @@ public class LoggedRequestState {
      *
      * @param requestBody The request body as it must be logged
      */
-    public void setRequestBody(String requestBody) {
+    void setRequestBody(String requestBody) {
         this.requestBody = requestBody;
     }
 
@@ -278,7 +278,7 @@ public class LoggedRequestState {
      *
      * @return The response body as it must be logged, or {@code null} if none was captured
      */
-    public String getResponseBody() {
+    String getResponseBody() {
         return responseBody;
     }
 
@@ -287,7 +287,7 @@ public class LoggedRequestState {
      *
      * @param responseBody The response body as it must be logged
      */
-    public void setResponseBody(String responseBody) {
+    void setResponseBody(String responseBody) {
         this.responseBody = responseBody;
     }
 

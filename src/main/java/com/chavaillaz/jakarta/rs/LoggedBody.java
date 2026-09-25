@@ -47,7 +47,7 @@ public @interface LoggedBody {
      * By default, no limit is applied (note that it can lead to performance or memory issues). A body cut
      * short by the limit is logged with {@link BoundedLoggedBodyCapture#TRUNCATION_MARKER} appended, so it
      * is never mistaken for a complete one. A limit below {@code -1} is invalid: the resource then logs no
-     * body at all, which is reported once, on the logger of {@link LoggedResolver}.
+     * body at all, which is reported once, as an error.
      *
      * @return The maximum size of the body to be logged in bytes, or {@code -1} for no limit
      */

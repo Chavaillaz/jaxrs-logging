@@ -112,7 +112,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     /**
      * Instantiates and caches the body filters given as classes.
      */
-    protected final LoggedBodyFilterFactory bodyFilterFactory = new LoggedBodyFilterFactory();
+    private final LoggedBodyFilterFactory bodyFilterFactory = new LoggedBodyFilterFactory();
 
     /**
      * Key of the MDC entry holding the identifier propagated to the services called.
@@ -122,12 +122,12 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     /**
      * Body logging configuration of the requests sent, fixed when this provider is built.
      */
-    protected final LoggedBodyConfiguration requestBody;
+    private final LoggedBodyConfiguration requestBody;
 
     /**
      * Body logging configuration of the responses received, fixed when this provider is built.
      */
-    protected final LoggedBodyConfiguration responseBody;
+    private final LoggedBodyConfiguration responseBody;
 
     /**
      * Captures the bodies of the requests written and the responses read, through

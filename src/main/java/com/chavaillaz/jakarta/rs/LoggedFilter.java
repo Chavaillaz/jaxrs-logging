@@ -102,13 +102,13 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     /**
      * Instantiates and caches {@link LoggedBodyFilter} instances by class.
      */
-    protected final LoggedBodyFilterFactory bodyFilterFactory = new LoggedBodyFilterFactory();
+    private final LoggedBodyFilterFactory bodyFilterFactory = new LoggedBodyFilterFactory();
 
     /**
      * Resolves which {@link LoggedMapping} and {@link LoggedBody} configuration applies to the resource
      * method matched by the current request, caching results per resource.
      */
-    protected final LoggedResolver resolver = new LoggedResolver(bodyFilterFactory);
+    final LoggedResolver resolver = new LoggedResolver(bodyFilterFactory);
 
     /**
      * Provides access to the resource class and method matched by the current request.

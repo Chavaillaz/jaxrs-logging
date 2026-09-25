@@ -35,12 +35,12 @@ import org.slf4j.LoggerFactory;
  * <p>
  * A {@link ResourceInfo} is taken as a parameter rather than injected, so resolution depends on no request.
  */
-public class LoggedResolver {
+final class LoggedResolver {
 
     /**
      * Logger reporting a configuration that cannot be resolved.
      */
-    protected static final Logger log = LoggerFactory.getLogger(LoggedResolver.class);
+    private static final Logger log = LoggerFactory.getLogger(LoggedResolver.class);
 
     /**
      * Key identifying the resource a configuration was resolved for.
@@ -48,7 +48,7 @@ public class LoggedResolver {
      * @param resourceClass  The resource class matched by the request
      * @param resourceMethod The resource method matched by the request
      */
-    protected record ResourceKey(Class<?> resourceClass, Method resourceMethod) {
+    record ResourceKey(Class<?> resourceClass, Method resourceMethod) {
 
         /**
          * Creates the key for the given resource, or {@code null} when there is nothing to key on.
@@ -78,12 +78,12 @@ public class LoggedResolver {
      * @param request  The body logging configuration applicable to the request
      * @param response The body logging configuration applicable to the response
      */
-    public record BodyConfiguration(LoggedBodyConfiguration request, LoggedBodyConfiguration response) {
+    record BodyConfiguration(LoggedBodyConfiguration request, LoggedBodyConfiguration response) {
 
         /**
          * Configuration logging nothing in either direction, used whenever no {@link LoggedBody} applies.
          */
-        public static final BodyConfiguration NONE = new BodyConfiguration(LoggedBodyConfiguration.NONE, LoggedBodyConfiguration.NONE);
+        static final BodyConfiguration NONE = new BodyConfiguration(LoggedBodyConfiguration.NONE, LoggedBodyConfiguration.NONE);
 
         /**
          * Gets the configuration applicable to the given direction.
@@ -91,7 +91,7 @@ public class LoggedResolver {
          * @param target The direction to get the configuration of
          * @return The body logging configuration, never {@code null}
          */
-        public LoggedBodyConfiguration of(Direction target) {
+        LoggedBodyConfiguration of(Direction target) {
             return target == REQUEST ? request : response;
         }
 
@@ -100,22 +100,22 @@ public class LoggedResolver {
     /**
      * Cache of the {@link LoggedMapping} definitions resolved for each resource, in the order they apply in.
      */
-    protected final Map<ResourceKey, List<LoggedMapping>> mappingsCache = new ConcurrentHashMap<>();
+    final Map<ResourceKey, List<LoggedMapping>> mappingsCache = new ConcurrentHashMap<>();
 
     /**
      * Cache of the body logging configuration resolved for each resource.
      */
-    protected final Map<ResourceKey, BodyConfiguration> bodyConfigurationCache = new ConcurrentHashMap<>();
+    final Map<ResourceKey, BodyConfiguration> bodyConfigurationCache = new ConcurrentHashMap<>();
 
     /**
      * Instantiates and caches the {@link LoggedBodyFilter} classes referenced by resolved annotations.
      */
-    protected final LoggedBodyFilterFactory bodyFilterFactory;
+    private final LoggedBodyFilterFactory bodyFilterFactory;
 
     /**
      * Creates a resolver with its own body filter factory.
      */
-    public LoggedResolver() {
+    LoggedResolver() {
         this(new LoggedBodyFilterFactory());
     }
 
@@ -125,7 +125,7 @@ public class LoggedResolver {
      *
      * @param bodyFilterFactory The factory to instantiate body filter classes with
      */
-    public LoggedResolver(LoggedBodyFilterFactory bodyFilterFactory) {
+    LoggedResolver(LoggedBodyFilterFactory bodyFilterFactory) {
         this.bodyFilterFactory = bodyFilterFactory;
     }
 
@@ -142,7 +142,7 @@ public class LoggedResolver {
      * @param resourceInfo The instance to access resource class and method
      * @return The mappings applicable to the resource method, in the order they apply in
      */
-    public List<LoggedMapping> getMappings(ResourceInfo resourceInfo) {
+    List<LoggedMapping> getMappings(ResourceInfo resourceInfo) {
         ResourceKey key = ResourceKey.of(resourceInfo);
         if (key == null) {
             return List.of();
@@ -164,7 +164,7 @@ public class LoggedResolver {
      * @param target       The target for which to find the body logging configuration
      * @return The body logging configuration, or {@link LoggedBodyConfiguration#NONE} if none applies
      */
-    public LoggedBodyConfiguration getBodyConfiguration(ResourceInfo resourceInfo, Direction target) {
+    LoggedBodyConfiguration getBodyConfiguration(ResourceInfo resourceInfo, Direction target) {
         return getBodyConfiguration(resourceInfo).of(target);
     }
 
@@ -178,7 +178,7 @@ public class LoggedResolver {
      * @param resourceInfo The instance to access resource class and method
      * @return The body logging configuration of both directions, never {@code null}
      */
-    public BodyConfiguration getBodyConfiguration(ResourceInfo resourceInfo) {
+    BodyConfiguration getBodyConfiguration(ResourceInfo resourceInfo) {
         ResourceKey key = ResourceKey.of(resourceInfo);
         return key == null
                 ? BodyConfiguration.NONE
@@ -200,7 +200,7 @@ public class LoggedResolver {
      * @param resourceInfo The instance to access resource class and method
      * @return The body logging configuration, or {@link BodyConfiguration#NONE} if it cannot be resolved
      */
-    protected BodyConfiguration resolve(ResourceKey key, ResourceInfo resourceInfo) {
+    private BodyConfiguration resolve(ResourceKey key, ResourceInfo resourceInfo) {
         try {
             return new BodyConfiguration(resolve(resourceInfo, REQUEST), resolve(resourceInfo, RESPONSE));
         } catch (RuntimeException e) {
@@ -216,7 +216,7 @@ public class LoggedResolver {
      * @param target       The target for which to resolve the body logging configuration
      * @return The body logging configuration, or {@link LoggedBodyConfiguration#NONE} if none applies
      */
-    protected LoggedBodyConfiguration resolve(ResourceInfo resourceInfo, Direction target) {
+    private LoggedBodyConfiguration resolve(ResourceInfo resourceInfo, Direction target) {
         return findAnnotation(resourceInfo, target)
                 .map(annotation -> new LoggedBodyConfiguration(
                         stream(annotation.value()).collect(toUnmodifiableSet()),
@@ -237,7 +237,7 @@ public class LoggedResolver {
      * @param target       The target for which to find the body logging configuration
      * @return The most specific body logging annotation if present
      */
-    protected Optional<LoggedBody> findAnnotation(ResourceInfo resourceInfo, Direction target) {
+    private Optional<LoggedBody> findAnnotation(ResourceInfo resourceInfo, Direction target) {
         LoggedBody both = null;
         for (LoggedBody logging : getAnnotation(resourceInfo, LoggedBody.class, Logged.class, Logged::value)) {
             Set<Direction> targets = EnumSet.noneOf(Direction.class);

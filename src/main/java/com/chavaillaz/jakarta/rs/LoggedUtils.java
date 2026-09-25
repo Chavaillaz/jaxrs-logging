@@ -28,7 +28,7 @@ import org.apache.commons.lang3.reflect.TypeUtils;
  * Reads the annotations configuring this library from the resource method matched by a request, the
  * interfaces of its class and the class itself, most specific first (see {@link #declarationSites}).
  * <p>
- * Stateless and uncached: {@link LoggedResolver} caches what is read here, once per resource method.
+ * Stateless and uncached: the providers cache what they read through it, once per resource method.
  */
 public final class LoggedUtils {
 

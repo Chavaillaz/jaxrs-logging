@@ -8,7 +8,6 @@ import java.util.Set;
 
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
 import com.chavaillaz.jakarta.rs.LoggedBody;
-import com.chavaillaz.jakarta.rs.LoggedResolver;
 import com.chavaillaz.jakarta.rs.client.LoggedClientFilter;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
@@ -18,8 +17,7 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
  * <p>
  * Holds ready-to-use values rather than the {@link LoggedBody} annotation it is usually derived from, as it
  * is read several times per request: resolving an annotation into a {@link Set} of {@link LogType} and
- * instantiated {@link LoggedBodyFilter}s depends on no request, and is done once per resource method (see
- * {@link LoggedResolver}).
+ * instantiated {@link LoggedBodyFilter}s depends on no request, and is done once per resource method.
  *
  * @param types   The types of logging to apply to the body, empty for no body logging at all
  * @param limit   The maximum number of bytes of the body to log, or {@code -1} for no limit
@@ -36,8 +34,7 @@ public record LoggedBodyConfiguration(Set<LogType> types, int limit, Set<LoggedB
      * Creates a body logging configuration, rejecting one that could never capture anything.
      * <p>
      * A limit below {@code -1} is rejected here, where the configuration of a resource is resolved - once, and
-     * reported along with the resource it was declared on (see {@link LoggedResolver}) - rather than by every
-     * capture it would be given to.
+     * reported along with the resource it was declared on - rather than by every capture it would be given to.
      *
      * @throws IllegalArgumentException if the limit is lower than {@code -1}
      */
