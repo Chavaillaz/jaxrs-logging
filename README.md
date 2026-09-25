@@ -422,7 +422,7 @@ visible on the thread that set them, and are lost as soon as the work continues 
 submitted to an `ExecutorService`, a manually started `Thread`, a `@Suspended AsyncResponse` resumed from a
 different worker, or a reactive resource method.
 
-[MdcPropagation](src/main/java/com/chavaillaz/jakarta/rs/MdcPropagation.java) copies the calling thread's
+[MdcPropagation](src/main/java/com/chavaillaz/jakarta/rs/mdc/MdcPropagation.java) copies the calling thread's
 MDC context map onto the thread that runs a wrapped task, and restores that thread's own previous context
 map once the task completes:
 

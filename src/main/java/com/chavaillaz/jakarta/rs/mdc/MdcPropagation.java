@@ -1,4 +1,4 @@
-package com.chavaillaz.jakarta.rs;
+package com.chavaillaz.jakarta.rs.mdc;
 
 import static java.util.Objects.requireNonNull;
 
@@ -22,6 +22,7 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
+import com.chavaillaz.jakarta.rs.LoggedFilter;
 import jakarta.ws.rs.container.AsyncResponse;
 import jakarta.ws.rs.container.TimeoutHandler;
 import org.slf4j.MDC;
