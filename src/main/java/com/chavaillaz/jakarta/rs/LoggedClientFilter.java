@@ -171,9 +171,9 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     }
 
     /**
-     * Builder for {@link LoggedClientFilter}.
+     * Builder of {@link LoggedClientFilter}, starting from the default of every setting.
      */
-    public static class Builder {
+    public static final class Builder {
 
         private String correlationIdMdcKey = LoggedField.REQUEST_ID.getDefaultField();
         private boolean logRequestBody = false;
@@ -182,6 +182,10 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         private int responseBodyLimit = NO_LIMIT;
         private final Set<Class<? extends LoggedBodyFilter>> bodyFilterClasses = new LinkedHashSet<>();
         private final Set<LoggedBodyFilter> bodyFilterInstances = new LinkedHashSet<>();
+
+        private Builder() {
+            // Created through LoggedClientFilter.builder()
+        }
 
         /**
          * Sets the MDC key read to obtain the identifier propagated as {@value LoggedFilter#REQUEST_ID_HEADER}
