@@ -54,6 +54,7 @@ import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
 import jakarta.ws.rs.ext.WriterInterceptor;
 import jakarta.ws.rs.ext.WriterInterceptorContext;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -519,7 +520,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      * @param status The status of the response received
      * @return The level to log the call at, {@code null} leaving the status at its default level
      */
-    protected Level getResponseLevel(int status) {
+    protected @Nullable Level getResponseLevel(int status) {
         return levelOf(status);
     }
 
@@ -536,7 +537,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      * @throws IOException             if an IO error arises while reading the entity
      * @throws WebApplicationException if the entity cannot be read
      */
-    protected Object captureResponseBody(ReaderInterceptorContext context) throws IOException, WebApplicationException {
+    protected @Nullable Object captureResponseBody(ReaderInterceptorContext context) throws IOException, WebApplicationException {
         boolean alreadyLogged = Boolean.TRUE.equals(context.getProperty(RESPONSE_BODY_LOGGED_PROPERTY));
         LoggedBodyConfiguration configuration = isLoggingEnabled() && !alreadyLogged ? responseBody : LoggedBodyConfiguration.NONE;
         return bodyCapturer.read(context, configuration, body -> {
@@ -596,7 +597,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         }
 
         @Override
-        public Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
+        public @Nullable Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
             return filter.captureResponseBody(context);
         }
 

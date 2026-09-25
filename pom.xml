@@ -101,6 +101,14 @@
             <version>2.0.17</version>
         </dependency>
 
+        <!-- Nullness annotations of the API, a compile dependency rather than a provided one: the module requires
+             them at runtime, and the null checkers of the applications read them from the classes of this library -->
+        <dependency>
+            <groupId>org.jspecify</groupId>
+            <artifactId>jspecify</artifactId>
+            <version>1.0.1</version>
+        </dependency>
+
         <!-- Test dependencies -->
 
         <dependency>

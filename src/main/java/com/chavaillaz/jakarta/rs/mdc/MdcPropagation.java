@@ -25,6 +25,7 @@ import java.util.stream.Collectors;
 import com.chavaillaz.jakarta.rs.LoggedFilter;
 import jakarta.ws.rs.container.AsyncResponse;
 import jakarta.ws.rs.container.TimeoutHandler;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.MDC;
 
 /**
@@ -78,7 +79,7 @@ public final class MdcPropagation {
      * @param <T>  The type of the result returned by the task
      * @return A task running the given one with the calling thread's MDC context map applied
      */
-    public static <T> Callable<T> wrap(Callable<T> task) {
+    public static <T extends @Nullable Object> Callable<T> wrap(Callable<T> task) {
         requireNonNull(task, "task");
         Map<String, String> context = MDC.getCopyOfContextMap();
         return () -> {
@@ -169,7 +170,7 @@ public final class MdcPropagation {
      * @param <T>  The type of the result returned by the supplier
      * @return A supplier running the given one with the calling thread's MDC context map applied
      */
-    public static <T> Supplier<T> wrapSupplier(Supplier<T> task) {
+    public static <T extends @Nullable Object> Supplier<T> wrapSupplier(Supplier<T> task) {
         requireNonNull(task, "task");
         Map<String, String> context = MDC.getCopyOfContextMap();
         return () -> inContext(context, task);
@@ -185,7 +186,7 @@ public final class MdcPropagation {
      * @param <R>  The type of the result returned by the function
      * @return A function running the given one with the calling thread's MDC context map applied
      */
-    public static <T, R> Function<T, R> wrapFunction(Function<T, R> task) {
+    public static <T extends @Nullable Object, R extends @Nullable Object> Function<T, R> wrapFunction(Function<T, R> task) {
         requireNonNull(task, "task");
         Map<String, String> context = MDC.getCopyOfContextMap();
         return value -> inContext(context, () -> task.apply(value));
@@ -199,7 +200,7 @@ public final class MdcPropagation {
      * @param <T>  The type of the argument taken by the consumer
      * @return A consumer running the given one with the calling thread's MDC context map applied
      */
-    public static <T> Consumer<T> wrapConsumer(Consumer<T> task) {
+    public static <T extends @Nullable Object> Consumer<T> wrapConsumer(Consumer<T> task) {
         requireNonNull(task, "task");
         Map<String, String> context = MDC.getCopyOfContextMap();
         return value -> inContext(context, () -> {
@@ -219,7 +220,7 @@ public final class MdcPropagation {
      * @param <R>  The type of the result returned by the function
      * @return A function running the given one with the calling thread's MDC context map applied
      */
-    public static <T, U, R> BiFunction<T, U, R> wrapBiFunction(BiFunction<T, U, R> task) {
+    public static <T extends @Nullable Object, U extends @Nullable Object, R extends @Nullable Object> BiFunction<T, U, R> wrapBiFunction(BiFunction<T, U, R> task) {
         requireNonNull(task, "task");
         Map<String, String> context = MDC.getCopyOfContextMap();
         return (first, second) -> inContext(context, () -> task.apply(first, second));
@@ -234,7 +235,7 @@ public final class MdcPropagation {
      * @param <U>  The type of the second argument taken by the consumer
      * @return A consumer running the given one with the calling thread's MDC context map applied
      */
-    public static <T, U> BiConsumer<T, U> wrapBiConsumer(BiConsumer<T, U> task) {
+    public static <T extends @Nullable Object, U extends @Nullable Object> BiConsumer<T, U> wrapBiConsumer(BiConsumer<T, U> task) {
         requireNonNull(task, "task");
         Map<String, String> context = MDC.getCopyOfContextMap();
         return (first, second) -> inContext(context, () -> {
@@ -280,12 +281,12 @@ public final class MdcPropagation {
      * context map once it completes - rather than merging into it, so a pooled thread never leaks one
      * task's MDC entries into the next one it happens to run.
      *
-     * @param context The context map to apply while running the action
+     * @param context The context map to apply while running the action, {@code null} to run it with none
      * @param action  The action to run
      * @param <T>     The type of the result returned by the action
      * @return The result of the action
      */
-    private static <T> T inContext(Map<String, String> context, Supplier<T> action) {
+    private static <T extends @Nullable Object> T inContext(@Nullable Map<String, String> context, Supplier<T> action) {
         Map<String, String> previous = MDC.getCopyOfContextMap();
         setContext(context);
         try {
@@ -295,7 +296,7 @@ public final class MdcPropagation {
         }
     }
 
-    private static void setContext(Map<String, String> context) {
+    private static void setContext(@Nullable Map<String, String> context) {
         if (context == null) {
             MDC.clear();
         } else {
@@ -330,36 +331,36 @@ public final class MdcPropagation {
         }
 
         @Override
-        public <T> Future<T> submit(Runnable task, T result) {
+        public <T extends @Nullable Object> Future<T> submit(Runnable task, T result) {
             return delegate.submit(wrap(task), result);
         }
 
         @Override
-        public <T> Future<T> submit(Callable<T> task) {
+        public <T extends @Nullable Object> Future<T> submit(Callable<T> task) {
             return delegate.submit(wrap(task));
         }
 
         @Override
-        public <T> List<Future<T>> invokeAll(Collection<? extends Callable<T>> tasks) throws InterruptedException {
+        public <T extends @Nullable Object> List<Future<T>> invokeAll(Collection<? extends Callable<T>> tasks) throws InterruptedException {
             return delegate.invokeAll(wrapAll(tasks));
         }
 
         @Override
-        public <T> List<Future<T>> invokeAll(Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit) throws InterruptedException {
+        public <T extends @Nullable Object> List<Future<T>> invokeAll(Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit) throws InterruptedException {
             return delegate.invokeAll(wrapAll(tasks), timeout, unit);
         }
 
         @Override
-        public <T> T invokeAny(Collection<? extends Callable<T>> tasks) throws InterruptedException, ExecutionException {
+        public <T extends @Nullable Object> T invokeAny(Collection<? extends Callable<T>> tasks) throws InterruptedException, ExecutionException {
             return delegate.invokeAny(wrapAll(tasks));
         }
 
         @Override
-        public <T> T invokeAny(Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
+        public <T extends @Nullable Object> T invokeAny(Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
             return delegate.invokeAny(wrapAll(tasks), timeout, unit);
         }
 
-        private <T> List<Callable<T>> wrapAll(Collection<? extends Callable<T>> tasks) {
+        private <T extends @Nullable Object> List<Callable<T>> wrapAll(Collection<? extends Callable<T>> tasks) {
             return tasks.stream()
                     .map(MdcPropagation::wrap)
                     .collect(Collectors.toList());
@@ -424,7 +425,7 @@ public final class MdcPropagation {
         }
 
         @Override
-        public <V> ScheduledFuture<V> schedule(Callable<V> callable, long delay, TimeUnit unit) {
+        public <V extends @Nullable Object> ScheduledFuture<V> schedule(Callable<V> callable, long delay, TimeUnit unit) {
             return scheduledDelegate.schedule(wrap(callable), delay, unit);
         }
 
@@ -446,10 +447,10 @@ public final class MdcPropagation {
      * container runs its response filters - and this library its completion - with the context of the
      * request being completed rather than with whatever the completing thread happened to carry.
      */
-    private record MdcPropagatingAsyncResponse(AsyncResponse delegate, Map<String, String> context) implements AsyncResponse {
+    private record MdcPropagatingAsyncResponse(AsyncResponse delegate, @Nullable Map<String, String> context) implements AsyncResponse {
 
         @Override
-        public boolean resume(Object response) {
+        public boolean resume(@Nullable Object response) {
             return inContext(context, () -> delegate.resume(response));
         }
 
@@ -474,7 +475,7 @@ public final class MdcPropagation {
         }
 
         @Override
-        public void setTimeoutHandler(TimeoutHandler handler) {
+        public void setTimeoutHandler(@Nullable TimeoutHandler handler) {
             if (handler == null) {
                 // Clearing the handler lets the container time the request out its own way again: wrapped,
                 // it became a handler failing on the very timeout it was meant to leave alone

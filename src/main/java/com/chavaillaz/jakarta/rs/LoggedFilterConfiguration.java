@@ -21,6 +21,7 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import com.chavaillaz.jakarta.rs.internal.CredentialNames;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.core.MultivaluedMap;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.event.Level;
 
 /**
@@ -56,10 +57,10 @@ public final class LoggedFilterConfiguration {
 
     private final Map<LoggedField, String> fieldNames;
     private final String requestIdHeader;
-    private final Function<ContainerRequestContext, String> requestId;
+    private final Function<ContainerRequestContext, @Nullable String> requestId;
     private final boolean requestIdReturned;
     private final BiPredicate<MappingType, String> sensitiveParameters;
-    private final IntFunction<Level> responseLevel;
+    private final IntFunction<@Nullable Level> responseLevel;
     private final IntFunction<LoggedBodyCapture> bodyCapture;
 
     private LoggedFilterConfiguration(Builder builder) {
@@ -117,7 +118,7 @@ public final class LoggedFilterConfiguration {
      * @param field The field to get the name of
      * @return The name of its MDC entry, or {@code null} for a field left out (see {@link Builder#withoutField(LoggedField)})
      */
-    public String fieldName(LoggedField field) {
+    public @Nullable String fieldName(LoggedField field) {
         return fieldNames.get(field);
     }
 
@@ -137,7 +138,7 @@ public final class LoggedFilterConfiguration {
      * @return The identifier of the request, not sanitized yet, and {@code null} or blank if there is none
      *         (see {@link RequestDescriber#requestIdOf(String)})
      */
-    String requestIdOf(ContainerRequestContext request) {
+    @Nullable String requestIdOf(ContainerRequestContext request) {
         return requestId.apply(request);
     }
 
@@ -146,7 +147,7 @@ public final class LoggedFilterConfiguration {
      *
      * @return The name of the header, or {@code null} if the identifier is not returned
      */
-    String returnedRequestIdHeader() {
+    @Nullable String returnedRequestIdHeader() {
         return requestIdReturned ? requestIdHeader : null;
     }
 
@@ -188,7 +189,7 @@ public final class LoggedFilterConfiguration {
      * @param header  The name of the header carrying the identifier
      * @return The value of the header, {@code null} if the request has none
      */
-    private static String requestIdFromHeader(ContainerRequestContext request, String header) {
+    private static @Nullable String requestIdFromHeader(ContainerRequestContext request, String header) {
         MultivaluedMap<String, String> headers = request.getHeaders();
         return headers == null ? null : headers.getFirst(header);
     }
@@ -200,10 +201,10 @@ public final class LoggedFilterConfiguration {
 
         private final Map<LoggedField, String> fieldNames = new EnumMap<>(LoggedField.class);
         private String requestIdHeader = REQUEST_ID_HEADER;
-        private Function<ContainerRequestContext, String> requestId;
+        private @Nullable Function<ContainerRequestContext, @Nullable String> requestId;
         private boolean requestIdReturned = true;
         private BiPredicate<MappingType, String> sensitiveParameters = LoggedFilterConfiguration::isCredential;
-        private IntFunction<Level> responseLevel = LoggedSupport::levelOf;
+        private IntFunction<@Nullable Level> responseLevel = LoggedSupport::levelOf;
         private IntFunction<LoggedBodyCapture> bodyCapture = BoundedLoggedBodyCapture::new;
 
         private Builder() {
@@ -277,7 +278,7 @@ public final class LoggedFilterConfiguration {
          * @param strategy The strategy getting the identifier of the given request
          * @return This builder
          */
-        public Builder requestId(Function<ContainerRequestContext, String> strategy) {
+        public Builder requestId(Function<ContainerRequestContext, @Nullable String> strategy) {
             this.requestId = requireNonNull(strategy, "The request identifier strategy is required");
             return this;
         }
@@ -332,7 +333,7 @@ public final class LoggedFilterConfiguration {
          * @param levels The level to log a request answered with the given status at
          * @return This builder
          */
-        public Builder responseLevel(IntFunction<Level> levels) {
+        public Builder responseLevel(IntFunction<@Nullable Level> levels) {
             this.responseLevel = requireNonNull(levels, "The response level function is required");
             return this;
         }

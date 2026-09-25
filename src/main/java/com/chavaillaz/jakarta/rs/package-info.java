@@ -3,5 +3,11 @@
  * configuring it ({@link com.chavaillaz.jakarta.rs.Logged}, {@link com.chavaillaz.jakarta.rs.LoggedBody},
  * {@link com.chavaillaz.jakarta.rs.LoggedMapping}), and the providers logging the requests, configured
  * through {@link com.chavaillaz.jakarta.rs.LoggedFilterConfiguration}.
+ * <p>
+ * The package is {@link org.jspecify.annotations.NullMarked}: every type is non-null unless explicitly annotated
+ * {@link org.jspecify.annotations.Nullable}.
  */
+@NullMarked
 package com.chavaillaz.jakarta.rs;
+
+import org.jspecify.annotations.NullMarked;

@@ -8,6 +8,7 @@ import com.chavaillaz.jakarta.rs.LoggedFilterConfiguration;
 import com.chavaillaz.jakarta.rs.client.LoggedClientFilter;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import jakarta.ws.rs.core.MediaType;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Captures a request or response body as it flows through a stream, to later expose it (optionally
@@ -61,9 +62,9 @@ public interface LoggedBodyCapture extends AutoCloseable {
      * Must be called only once the stream wrapping {@link #sink()} has been fully read or written.
      *
      * @param filters The filters to apply to the captured content
-     * @return The captured (and filtered) content
+     * @return The captured (and filtered) content, or {@code null} to leave the body out of the logs
      */
-    String content(Set<LoggedBodyFilter> filters);
+    @Nullable String content(Set<LoggedBodyFilter> filters);
 
     /**
      * Gets the captured content, filtered by the given filters, using the given media type to decide how
@@ -74,9 +75,9 @@ public interface LoggedBodyCapture extends AutoCloseable {
      *
      * @param filters   The filters to apply to the captured content
      * @param mediaType The media type of the captured request or response body, or {@code null} if unknown
-     * @return The captured (and filtered) content
+     * @return The captured (and filtered) content, or {@code null} to leave the body out of the logs
      */
-    default String content(Set<LoggedBodyFilter> filters, MediaType mediaType) {
+    default @Nullable String content(Set<LoggedBodyFilter> filters, @Nullable MediaType mediaType) {
         return content(filters);
     }
 

@@ -6,6 +6,7 @@ import java.util.Set;
 import com.chavaillaz.jakarta.rs.LoggedField;
 import com.chavaillaz.jakarta.rs.LoggedFilterConfiguration;
 import com.chavaillaz.jakarta.rs.LoggedMapping;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The header and query parameter names that carry a credential often enough to be kept out of the logs
@@ -100,20 +101,20 @@ public final class CredentialNames {
     /**
      * Indicates whether a header of the given name conventionally carries a credential.
      *
-     * @param name The header name, in any casing
+     * @param name The header name, in any casing, possibly {@code null}
      * @return {@code true} if the header carries a credential, {@code false} otherwise
      */
-    public static boolean isHeader(String name) {
+    public static boolean isHeader(@Nullable String name) {
         return name != null && HEADERS.contains(name.toLowerCase(Locale.ROOT));
     }
 
     /**
      * Indicates whether a query parameter of the given name conventionally carries a credential.
      *
-     * @param name The query parameter name, in any casing
+     * @param name The query parameter name, in any casing, possibly {@code null}
      * @return {@code true} if the parameter carries a credential, {@code false} otherwise
      */
-    public static boolean isQueryParameter(String name) {
+    public static boolean isQueryParameter(@Nullable String name) {
         return name != null && QUERY_PARAMETERS.contains(name.toLowerCase(Locale.ROOT));
     }
 

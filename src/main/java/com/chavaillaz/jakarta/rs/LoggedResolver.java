@@ -20,6 +20,7 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
 import com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory;
 import jakarta.ws.rs.container.ResourceInfo;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,10 +46,10 @@ final class LoggedResolver {
     /**
      * Key identifying the resource a configuration was resolved for.
      *
-     * @param resourceClass  The resource class matched by the request
-     * @param resourceMethod The resource method matched by the request
+     * @param resourceClass  The resource class matched by the request, possibly {@code null}
+     * @param resourceMethod The resource method matched by the request, possibly {@code null}
      */
-    record ResourceKey(Class<?> resourceClass, Method resourceMethod) {
+    record ResourceKey(@Nullable Class<?> resourceClass, @Nullable Method resourceMethod) {
 
         /**
          * Creates the key for the given resource, or {@code null} when there is nothing to key on.
@@ -56,7 +57,7 @@ final class LoggedResolver {
          * @param resourceInfo The instance to access resource class and method
          * @return The key, or {@code null} if the container resolved neither a class nor a method
          */
-        static ResourceKey of(ResourceInfo resourceInfo) {
+        static @Nullable ResourceKey of(ResourceInfo resourceInfo) {
             Class<?> resourceClass = resourceInfo.getResourceClass();
             Method resourceMethod = resourceInfo.getResourceMethod();
             // Neither is guaranteed to be resolved at this stage by every container, and a

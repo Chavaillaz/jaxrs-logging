@@ -20,6 +20,7 @@ import java.util.function.Function;
 import java.util.function.Predicate;
 
 import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Works out the MDC entries the {@link LoggedMapping} annotations of a resource method ask for, from the
@@ -79,7 +80,7 @@ final class MappingApplier {
      * @param parameters The parameters of the request of the given type, by name
      * @param output     What to do with each MDC entry the mappings ask for, given its key and its value
      */
-    void apply(List<LoggedMapping> mappings, Function<MappingType, Map<String, List<String>>> parameters, BiConsumer<String, String> output) {
+    void apply(List<LoggedMapping> mappings, Function<MappingType, Map<String, List<String>>> parameters, BiConsumer<String, @Nullable String> output) {
         if (mappings.isEmpty()) {
             // The case of most resources, on the path of every request they serve
             return;
@@ -146,7 +147,7 @@ final class MappingApplier {
      * @param parameters The parameters of the request of the type of the mapping, by name
      * @param output     What to do with the MDC entry the mapping asks for
      */
-    private static void applyExplicit(LoggedMapping mapping, Map<String, List<String>> parameters, BiConsumer<String, String> output) {
+    private static void applyExplicit(LoggedMapping mapping, Map<String, List<String>> parameters, BiConsumer<String, @Nullable String> output) {
         for (String name : mapping.paramNames()) {
             List<String> values = parameters.get(name);
             if (values != null && !values.isEmpty()) {
@@ -170,7 +171,7 @@ final class MappingApplier {
      * @param claimedNames The names of the parameters of that type claimed by explicit mappings
      * @param output       What to do with each MDC entry the mapping asks for
      */
-    private void applyAutomatic(LoggedMapping mapping, Map<String, List<String>> parameters, Set<String> claimedNames, BiConsumer<String, String> output) {
+    private void applyAutomatic(LoggedMapping mapping, Map<String, List<String>> parameters, Set<String> claimedNames, BiConsumer<String, @Nullable String> output) {
         for (Map.Entry<String, List<String>> parameter : parameters.entrySet()) {
             String name = parameter.getKey();
             List<String> values = parameter.getValue();

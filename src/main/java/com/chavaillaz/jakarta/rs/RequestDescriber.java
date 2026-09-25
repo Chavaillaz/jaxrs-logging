@@ -27,6 +27,7 @@ import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ResourceInfo;
 import jakarta.ws.rs.core.UriInfo;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Describes a request received and the resource matched for it, as the fields of {@link LoggedField}
@@ -79,7 +80,7 @@ final class RequestDescriber {
      * @param value The value to sanitize
      * @return The sanitized value, or {@code null} if the given value was {@code null}
      */
-    static String sanitize(String value) {
+    static @Nullable String sanitize(@Nullable String value) {
         return value == null ? null : CONTROL_CHARACTERS.matcher(value).replaceAll(" ");
     }
 
@@ -91,7 +92,7 @@ final class RequestDescriber {
      * @param obtained The identifier obtained for the request, {@code null} if there is none
      * @return The request identifier, never blank
      */
-    static String requestIdOf(String obtained) {
+    static String requestIdOf(@Nullable String obtained) {
         // Sanitized before being checked, as sanitizing turns an identifier made of nothing but control
         // characters blank, and a blank value is never put in MDC
         String requestId = sanitize(obtained);
@@ -127,7 +128,7 @@ final class RequestDescriber {
      *                  be logged here as it may come from the client (see {@link #requestIdOf(String)})
      * @param output    What to do with each field, given its value
      */
-    void describe(ContainerRequestContext request, ResourceInfo resource, String requestId, BiConsumer<LoggedField, String> output) {
+    void describe(ContainerRequestContext request, ResourceInfo resource, @Nullable String requestId, BiConsumer<LoggedField, @Nullable String> output) {
         UriInfo uriInfo = request.getUriInfo();
         output.accept(REQUEST_ID, requestIdOf(requestId));
         output.accept(REQUEST_URI, sanitize(uriInfo.getPath()));

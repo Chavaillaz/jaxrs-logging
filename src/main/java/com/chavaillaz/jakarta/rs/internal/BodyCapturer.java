@@ -16,6 +16,7 @@ import jakarta.ws.rs.ext.InterceptorContext;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
 import jakarta.ws.rs.ext.WriterInterceptorContext;
 import org.apache.commons.io.output.TeeOutputStream;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 
 /**
@@ -79,7 +80,7 @@ public final class BodyCapturer {
      * @throws IOException             if an IO error arises while reading the entity
      * @throws WebApplicationException if the entity cannot be read
      */
-    public Object read(ReaderInterceptorContext context, LoggedBodyConfiguration configuration, Consumer<String> handler) throws IOException, WebApplicationException {
+    public @Nullable Object read(ReaderInterceptorContext context, LoggedBodyConfiguration configuration, Consumer<@Nullable String> handler) throws IOException, WebApplicationException {
         if (!configuration.isActive()) {
             return context.proceed();
         }
@@ -105,7 +106,7 @@ public final class BodyCapturer {
      * @throws IOException             if an IO error arises while writing the entity
      * @throws WebApplicationException if the entity cannot be written
      */
-    public void write(WriterInterceptorContext context, LoggedBodyConfiguration configuration, Consumer<String> handler) throws IOException, WebApplicationException {
+    public void write(WriterInterceptorContext context, LoggedBodyConfiguration configuration, Consumer<@Nullable String> handler) throws IOException, WebApplicationException {
         if (!configuration.isActive()) {
             context.proceed();
             return;
@@ -133,7 +134,7 @@ public final class BodyCapturer {
      * @param wiring        The wrapping of the entity stream with the created capture
      * @return The capture put in place, or {@code null} if it could not be
      */
-    private LoggedBodyCapture start(LoggedBodyConfiguration configuration, Consumer<LoggedBodyCapture> wiring) {
+    private @Nullable LoggedBodyCapture start(LoggedBodyConfiguration configuration, Consumer<LoggedBodyCapture> wiring) {
         LoggedBodyCapture capture = null;
         try {
             capture = captures.apply(configuration.limit());
@@ -162,7 +163,7 @@ public final class BodyCapturer {
      * @param context       The context of the entity read or written
      * @param handler       What to do with the body captured
      */
-    private void end(LoggedBodyCapture capture, LoggedBodyConfiguration configuration, InterceptorContext context, Consumer<String> handler) {
+    private void end(@Nullable LoggedBodyCapture capture, LoggedBodyConfiguration configuration, InterceptorContext context, Consumer<@Nullable String> handler) {
         if (capture == null) {
             return;
         }
@@ -185,7 +186,7 @@ public final class BodyCapturer {
      *
      * @param capture The capture to release, possibly {@code null}
      */
-    private static void release(LoggedBodyCapture capture) {
+    private static void release(@Nullable LoggedBodyCapture capture) {
         try {
             if (capture != null) {
                 capture.close();

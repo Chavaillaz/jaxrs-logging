@@ -6,6 +6,7 @@ import static org.apache.commons.lang3.StringUtils.isNotBlank;
 import static org.apache.commons.lang3.math.NumberUtils.toInt;
 
 import jakarta.ws.rs.core.MultivaluedMap;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 
 /**
@@ -34,11 +35,11 @@ final class ExchangeLogger {
     /**
      * Logs a request received, with its body on the following lines if it has one.
      *
-     * @param method The method of the request
-     * @param uri    The URI of the request
+     * @param method The method of the request, {@code null} if unknown
+     * @param uri    The URI of the request, {@code null} if unknown
      * @param body   The body of the request, blank if it is not logged
      */
-    void received(String method, String uri, String body) {
+    void received(@Nullable String method, @Nullable String uri, String body) {
         log.info("Received {} {}{}{}", method, uri, isNotBlank(body) ? LF : EMPTY, body);
     }
 
@@ -51,13 +52,13 @@ final class ExchangeLogger {
      * still matches the status actually logged when the request completes where no response context is at
      * hand.
      *
-     * @param method   The method of the request
-     * @param uri      The URI of the request
+     * @param method   The method of the request, {@code null} if unknown
+     * @param uri      The URI of the request, {@code null} if unknown
      * @param status   The status the request was answered with, {@code null} if unknown
-     * @param duration The time taken to answer the request, in milliseconds
+     * @param duration The time taken to answer the request, in milliseconds, {@code null} if unknown
      * @param body     The body of the response, blank if it is not logged
      */
-    void processed(String method, String uri, String status, String duration, String body) {
+    void processed(@Nullable String method, @Nullable String uri, @Nullable String status, @Nullable String duration, String body) {
         log.atLevel(configuration.responseLevel(toInt(status)))
                 .log("Processed {} {} with status {} in {}ms{}{}", method, uri, status, duration, isNotBlank(body) ? LF : EMPTY, body);
     }
@@ -72,7 +73,7 @@ final class ExchangeLogger {
      * @param headers   The headers of the response to be sent
      * @param requestId The identifier the request was logged under, {@code null} if unknown
      */
-    void returnRequestId(MultivaluedMap<String, Object> headers, String requestId) {
+    void returnRequestId(MultivaluedMap<String, Object> headers, @Nullable String requestId) {
         String header = configuration.returnedRequestIdHeader();
         // HTTP header names are case-insensitive, but the response header map is only a MultivaluedMap in
         // the JAX-RS API, so a container backing it with a case-sensitive one would otherwise send the

@@ -10,6 +10,7 @@ import com.chavaillaz.jakarta.rs.LoggedFilterConfiguration;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import jakarta.ws.rs.core.MediaType;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 
 /**
@@ -47,12 +48,12 @@ final class GuardedBodyCapture implements LoggedBodyCapture {
     }
 
     @Override
-    public String content(Set<LoggedBodyFilter> filters) {
+    public @Nullable String content(Set<LoggedBodyFilter> filters) {
         return sink.failed ? null : capture.content(filters);
     }
 
     @Override
-    public String content(Set<LoggedBodyFilter> filters, MediaType mediaType) {
+    public @Nullable String content(Set<LoggedBodyFilter> filters, @Nullable MediaType mediaType) {
         return sink.failed ? null : capture.content(filters, mediaType);
     }
 

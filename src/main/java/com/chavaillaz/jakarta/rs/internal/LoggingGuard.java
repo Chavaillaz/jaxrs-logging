@@ -2,6 +2,7 @@ package com.chavaillaz.jakarta.rs.internal;
 
 import java.util.function.Supplier;
 
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 
 /**
@@ -43,7 +44,7 @@ public final class LoggingGuard {
      * @param <T>      The type of the value
      * @return The value the action got, or the fallback value if it failed
      */
-    public static <T> T safely(Logger log, String message, Supplier<T> action, T fallback) {
+    public static <T extends @Nullable Object> T safely(Logger log, String message, Supplier<T> action, T fallback) {
         try {
             return action.get();
         } catch (Exception e) {

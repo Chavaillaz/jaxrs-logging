@@ -30,6 +30,10 @@ The jar is a named module, `com.chavaillaz.jaxrs.logging`, exporting the followi
 On the module path, export the package of the body filter classes your resources name to this module, which
 instantiates them by reflection.
 
+The API is annotated with [JSpecify](https://jspecify.dev): every package is `@NullMarked`, meaning every
+parameter, return value and field is non-null unless explicitly marked `@Nullable`, so static analysis tools
+(IDE inspections, NullAway, the Checker Framework, ...) can catch null-safety issues in your code at build time.
+
 ## Usage
 
 The logging of requests and responses is done through a filter that can be activated on a resource with:

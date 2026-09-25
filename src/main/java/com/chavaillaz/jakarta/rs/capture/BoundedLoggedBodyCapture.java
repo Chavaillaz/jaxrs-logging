@@ -19,6 +19,7 @@ import java.util.Set;
 
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import jakarta.ws.rs.core.MediaType;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -127,7 +128,7 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
      * turned into a string once, at the end.
      */
     @Override
-    public String content(Set<LoggedBodyFilter> filters, MediaType mediaType) {
+    public String content(Set<LoggedBodyFilter> filters, @Nullable MediaType mediaType) {
         byte[] bytes = buffer.array();
         int size = buffer.size();
         boolean truncated = buffer.isTruncated();
@@ -162,7 +163,7 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
      * @param mediaType The media type of the captured body, or {@code null} if unknown
      * @return The charset to decode the body with
      */
-    protected static Charset charsetOf(MediaType mediaType) {
+    protected static Charset charsetOf(@Nullable MediaType mediaType) {
         String name = mediaType == null ? null : mediaType.getParameters().get(MediaType.CHARSET_PARAMETER);
         return name == null ? UTF_8 : Charset.forName(name, UTF_8);
     }
@@ -253,7 +254,7 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
      * @param mediaType The media type of the captured body, or {@code null} if unknown
      * @return {@code true} if the body should be treated as binary, {@code false} otherwise
      */
-    protected static boolean isBinary(MediaType mediaType) {
+    protected static boolean isBinary(@Nullable MediaType mediaType) {
         if (mediaType == null || "text".equalsIgnoreCase(mediaType.getType())) {
             return false;
         } else if (!"application".equalsIgnoreCase(mediaType.getType())) {

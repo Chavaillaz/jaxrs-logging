@@ -23,6 +23,7 @@ import java.util.function.Function;
 
 import jakarta.ws.rs.container.ResourceInfo;
 import org.apache.commons.lang3.reflect.TypeUtils;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Reads the annotations configuring this library from the resource method matched by a request, the
@@ -122,13 +123,14 @@ public final class LoggedUtils {
      *
      * @param resourceInfo   The instance to access resource class and method
      * @param annotationType The annotation type to get
-     * @param wrapperType    The wrapper annotation type in case the annotation type is repeatable
-     * @param mapper         The function to extract the annotation to get (repeatable) from its wrapper
+     * @param wrapperType    The wrapper annotation type in case the annotation type is repeatable, {@code null} otherwise
+     * @param mapper         The function to extract the annotation to get (repeatable) from its wrapper,
+     *                       {@code null} if there is no wrapper type
      * @param <A>            The annotation type
      * @param <W>            The wrapper annotation type
      * @return The annotations found, or an empty list otherwise
      */
-    public static <A extends Annotation, W extends Annotation> List<A> getAnnotation(ResourceInfo resourceInfo, Class<A> annotationType, Class<W> wrapperType, Function<W, A[]> mapper) {
+    public static <A extends Annotation, W extends Annotation> List<A> getAnnotation(ResourceInfo resourceInfo, Class<A> annotationType, @Nullable Class<W> wrapperType, @Nullable Function<W, A[]> mapper) {
         Class<?> resourceClass = resourceInfo.getResourceClass();
         Method resourceMethod = resourceInfo.getResourceMethod();
         if (resourceClass == null && resourceMethod == null) {
@@ -149,8 +151,9 @@ public final class LoggedUtils {
      *
      * @param element        The element to read the annotation from
      * @param annotationType The annotation type to get
-     * @param wrapperType    The wrapper annotation type in case the annotation type is repeatable
-     * @param mapper         The function to extract the annotation to get (repeatable) from its wrapper
+     * @param wrapperType    The wrapper annotation type in case the annotation type is repeatable, {@code null} otherwise
+     * @param mapper         The function to extract the annotation to get (repeatable) from its wrapper,
+     *                       {@code null} if there is no wrapper type
      * @param <A>            The annotation type
      * @param <W>            The wrapper annotation type
      * @return The annotations declared on the element, or {@code null} if it declares neither the
@@ -158,7 +161,7 @@ public final class LoggedUtils {
      * {@code null}: it means the element does declare the wrapper, but with no annotation inside it
      * (e.g. a bare {@code @Logged}), which deliberately overrides any less specific declaration.
      */
-    private static <A extends Annotation, W extends Annotation> List<A> getDeclaredAnnotation(AnnotatedElement element, Class<A> annotationType, Class<W> wrapperType, Function<W, A[]> mapper) {
+    private static <A extends Annotation, W extends Annotation> @Nullable List<A> getDeclaredAnnotation(AnnotatedElement element, Class<A> annotationType, @Nullable Class<W> wrapperType, @Nullable Function<W, A[]> mapper) {
         if (element.isAnnotationPresent(annotationType)) {
             return asList(element.getAnnotationsByType(annotationType));
         } else if (wrapperType != null && element.isAnnotationPresent(wrapperType)) {
@@ -193,7 +196,7 @@ public final class LoggedUtils {
      * @param resourceMethod The resource method matched by the current request, possibly {@code null}
      * @return The declaration sites, in decreasing order of priority
      */
-    public static List<AnnotatedElement> declarationSites(Class<?> resourceClass, Method resourceMethod) {
+    public static List<AnnotatedElement> declarationSites(@Nullable Class<?> resourceClass, @Nullable Method resourceMethod) {
         List<AnnotatedElement> sites = new ArrayList<>();
         if (resourceMethod != null) {
             sites.add(resourceMethod);
@@ -218,11 +221,11 @@ public final class LoggedUtils {
     /**
      * Indicates whether two methods have the same signature - name and parameter types.
      *
-     * @param method1 The first method
-     * @param method2 The second method
+     * @param method1 The first method, possibly {@code null}
+     * @param method2 The second method, possibly {@code null}
      * @return {@code true} if both methods are present and have the same signature, {@code false} otherwise
      */
-    public static boolean areMethodsEqual(Method method1, Method method2) {
+    public static boolean areMethodsEqual(@Nullable Method method1, @Nullable Method method2) {
         return method1 != null && method2 != null
                 && method1.getName().equals(method2.getName())
                 && Arrays.equals(method1.getParameterTypes(), method2.getParameterTypes());
@@ -241,7 +244,7 @@ public final class LoggedUtils {
      * @param resourceMethod  The resource method matched by the current request, possibly {@code null}
      * @return {@code true} if the resource method implements the interface method, {@code false} otherwise
      */
-    private static boolean isImplementedBy(Method interfaceMethod, Class<?> resourceClass, Method resourceMethod) {
+    private static boolean isImplementedBy(Method interfaceMethod, Class<?> resourceClass, @Nullable Method resourceMethod) {
         if (areMethodsEqual(interfaceMethod, resourceMethod)) {
             return true;
         } else if (resourceMethod == null

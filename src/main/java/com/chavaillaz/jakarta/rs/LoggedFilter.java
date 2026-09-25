@@ -46,6 +46,7 @@ import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
 import jakarta.ws.rs.ext.WriterInterceptor;
 import jakarta.ws.rs.ext.WriterInterceptorContext;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -179,7 +180,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param key   The MDC key
      * @param value The value to be associated with the given key, ignored if {@code null} or blank
      */
-    protected void putMdc(String key, String value) {
+    protected void putMdc(String key, @Nullable String value) {
         mdc.put(key, value);
     }
 
@@ -188,9 +189,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * unless the field is left out (see {@link LoggedFilterConfiguration.Builder#withoutField(LoggedField)}).
      *
      * @param field The field for which put the given value
-     * @param value The value to be associated with the given field
+     * @param value The value to be associated with the given field, ignored if {@code null} or blank
      */
-    protected void putMdc(LoggedField field, String value) {
+    protected void putMdc(LoggedField field, @Nullable String value) {
         mdc.put(field, value);
     }
 
@@ -201,7 +202,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @return The value associated with the given field, {@code null} for a field left out (see
      * {@link LoggedFilterConfiguration.Builder#withoutField(LoggedField)})
      */
-    protected String getMdc(LoggedField field) {
+    protected @Nullable String getMdc(LoggedField field) {
         return mdc.get(field);
     }
 
@@ -214,7 +215,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param value The value to sanitize
      * @return The sanitized value, or {@code null} if the given value was {@code null}
      */
-    protected static String sanitize(String value) {
+    protected static @Nullable String sanitize(@Nullable String value) {
         return RequestDescriber.sanitize(value);
     }
 
@@ -239,7 +240,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param target The direction of the body about to be read or written
      * @return The configuration to capture the body with, never {@code null}
      */
-    private LoggedBodyConfiguration getCaptureConfiguration(LoggedRequestState state, Direction target) {
+    private LoggedBodyConfiguration getCaptureConfiguration(@Nullable LoggedRequestState state, Direction target) {
         // A request already completed has had its "Processed ..." line logged, so nothing captured from now
         // on - the later parts of a chunked or event stream response - could ever be logged
         if (!isLoggingEnabled() || (state != null && state.isCompleted())) {
@@ -341,7 +342,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * instead (see {@link LoggedRequestState#isRequestLogged()}).
      */
     @Override
-    public Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
+    public @Nullable Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
         try {
             return context.proceed();
         } finally {
@@ -368,7 +369,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @throws IOException              if an IO error arises while reading the entity
      * @throws WebApplicationException  if the entity cannot be read
      */
-    Object captureRequestBody(ReaderInterceptorContext context) throws IOException, WebApplicationException {
+    @Nullable Object captureRequestBody(ReaderInterceptorContext context) throws IOException, WebApplicationException {
         LoggedRequestState state = LoggedRequestState.find(context);
         // The state is only read once a body was captured, which the configuration rules out without one
         return bodyCapturer.read(context, getCaptureConfiguration(state, REQUEST), body -> state.setRequestBody(body));
@@ -416,7 +417,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param requestContext The context of the request received
      * @return The state of the request, or {@code null} if even establishing it failed
      */
-    private LoggedRequestState startedState(ContainerRequestContext requestContext) {
+    private @Nullable LoggedRequestState startedState(ContainerRequestContext requestContext) {
         LoggedRequestState state = LoggedRequestState.find(requestContext);
         if (state == null) {
             filter(requestContext);
@@ -555,7 +556,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @return The body logging configuration, {@link LoggedBodyConfiguration#NONE} for a request without
      * state, never {@code null}
      */
-    LoggedBodyConfiguration getBodyConfiguration(LoggedRequestState state, Direction target) {
+    LoggedBodyConfiguration getBodyConfiguration(@Nullable LoggedRequestState state, Direction target) {
         if (state == null) {
             // Nowhere to keep the resolved configuration, and nowhere to keep a body captured with it either
             return LoggedBodyConfiguration.NONE;

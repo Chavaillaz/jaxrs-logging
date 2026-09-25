@@ -10,6 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import com.chavaillaz.jakarta.rs.LoggedResolver.BodyConfiguration;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.ext.InterceptorContext;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.MDC;
 
 /**
@@ -94,17 +95,17 @@ final class LoggedRequestState {
      * Body logging configuration resolved for this request, kept so the several callbacks asking for it
      * share one resolution. See {@link LoggedFilter#getBodyConfiguration(LoggedRequestState, LoggedBody.Direction)}.
      */
-    private volatile BodyConfiguration bodyConfiguration;
+    private volatile @Nullable BodyConfiguration bodyConfiguration;
 
     /**
      * Request body as captured and filtered, waiting for the callback that logs it.
      */
-    private volatile String requestBody;
+    private volatile @Nullable String requestBody;
 
     /**
      * Response body as captured and filtered, waiting for the callback that logs it.
      */
-    private volatile String responseBody;
+    private volatile @Nullable String responseBody;
 
     /**
      * Creates the state of a request handled by the given provider, starting its duration measurement.
@@ -138,7 +139,7 @@ final class LoggedRequestState {
      * @param context The context of the request being processed
      * @return The state of the request, or {@code null} if no {@link LoggedFilter} is active on it
      */
-    static LoggedRequestState find(ContainerRequestContext context) {
+    static @Nullable LoggedRequestState find(ContainerRequestContext context) {
         return asState(context.getProperty(PROPERTY));
     }
 
@@ -151,7 +152,7 @@ final class LoggedRequestState {
      * @param context The context of the entity being read or written
      * @return The state of the request, or {@code null} if no {@link LoggedFilter} is active on it
      */
-    static LoggedRequestState find(InterceptorContext context) {
+    static @Nullable LoggedRequestState find(InterceptorContext context) {
         return asState(context.getProperty(PROPERTY));
     }
 
@@ -163,7 +164,7 @@ final class LoggedRequestState {
      * @param property The value found in the property map
      * @return The state, or {@code null} if there is none
      */
-    private static LoggedRequestState asState(Object property) {
+    private static @Nullable LoggedRequestState asState(@Nullable Object property) {
         return property instanceof LoggedRequestState state ? state : null;
     }
 
@@ -242,7 +243,7 @@ final class LoggedRequestState {
      *
      * @return The configuration, or {@code null} if it has not been resolved yet
      */
-    BodyConfiguration getBodyConfiguration() {
+    @Nullable BodyConfiguration getBodyConfiguration() {
         return bodyConfiguration;
     }
 
@@ -260,16 +261,16 @@ final class LoggedRequestState {
      *
      * @return The request body as it must be logged, or {@code null} if none was captured
      */
-    String getRequestBody() {
+    @Nullable String getRequestBody() {
         return requestBody;
     }
 
     /**
      * Sets the captured request body.
      *
-     * @param requestBody The request body as it must be logged
+     * @param requestBody The request body as it must be logged, {@code null} if none was captured
      */
-    void setRequestBody(String requestBody) {
+    void setRequestBody(@Nullable String requestBody) {
         this.requestBody = requestBody;
     }
 
@@ -278,16 +279,16 @@ final class LoggedRequestState {
      *
      * @return The response body as it must be logged, or {@code null} if none was captured
      */
-    String getResponseBody() {
+    @Nullable String getResponseBody() {
         return responseBody;
     }
 
     /**
      * Sets the captured response body.
      *
-     * @param responseBody The response body as it must be logged
+     * @param responseBody The response body as it must be logged, {@code null} if none was captured
      */
-    void setResponseBody(String responseBody) {
+    void setResponseBody(@Nullable String responseBody) {
         this.responseBody = responseBody;
     }
 

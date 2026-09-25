@@ -17,6 +17,7 @@ module com.chavaillaz.jaxrs.logging {
 
     requires transitive jakarta.annotation;
     requires transitive jakarta.ws.rs;
+    requires transitive org.jspecify;
     requires transitive org.slf4j;
     requires org.apache.commons.io;
     requires org.apache.commons.lang3;

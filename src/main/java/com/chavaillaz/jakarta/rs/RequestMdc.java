@@ -5,6 +5,7 @@ import static org.apache.commons.lang3.StringUtils.isNotBlank;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.jspecify.annotations.Nullable;
 import org.slf4j.MDC;
 
 /**
@@ -39,7 +40,7 @@ final class RequestMdc {
      * now-useless entry alive in each of its threads - and holding plain strings, never anything of this
      * library's own, so the entries it does keep cannot pin the application's class loader.
      */
-    private static final ThreadLocal<Map<String, String>> threadEntries = new ThreadLocal<>();
+    private static final ThreadLocal<@Nullable Map<String, String>> threadEntries = new ThreadLocal<>();
 
     /**
      * Names of the MDC entries of the fields {@link LoggedFilter} logs, a field without a name being left out
@@ -63,7 +64,7 @@ final class RequestMdc {
      * @param key   The MDC key
      * @param value The value to be associated with the given key, ignored if {@code null} or blank
      */
-    void put(String key, String value) {
+    void put(String key, @Nullable String value) {
         // Blank values are dropped rather than stored as an empty entry: an always-present, always-empty
         // field (a request with no query parameter, a header sent with no value) is pure noise in every
         // structured log line of the application, and is indistinguishable from a legitimately empty one
@@ -98,7 +99,7 @@ final class RequestMdc {
      * @param field The field to put the value of
      * @param value The value of the field, ignored if {@code null} or blank
      */
-    void put(LoggedField field, String value) {
+    void put(LoggedField field, @Nullable String value) {
         String key = fieldNames.get(field);
         if (key != null) {
             put(key, value);
@@ -111,7 +112,7 @@ final class RequestMdc {
      * @param field The field to get the value of
      * @return The value of the field, {@code null} if it has none or no name
      */
-    String get(LoggedField field) {
+    @Nullable String get(LoggedField field) {
         String key = fieldNames.get(field);
         return key == null ? null : MDC.get(key);
     }
@@ -196,7 +197,7 @@ final class RequestMdc {
      *
      * @param context The context map the thread had, {@code null} if it had none
      */
-    private static void restore(Map<String, String> context) {
+    private static void restore(@Nullable Map<String, String> context) {
         if (context == null) {
             MDC.clear();
         } else {

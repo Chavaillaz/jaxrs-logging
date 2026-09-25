@@ -14,6 +14,7 @@ import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
 import jakarta.ws.rs.ext.WriterInterceptor;
 import jakarta.ws.rs.ext.WriterInterceptorContext;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Captures the request and response bodies logged by {@link LoggedFilter}, from a position in the
@@ -45,7 +46,7 @@ public class LoggedBodyInterceptor implements ReaderInterceptor, WriterIntercept
     }
 
     @Override
-    public Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
+    public @Nullable Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
         LoggedFilter filter = getFilter(context);
         return filter == null ? context.proceed() : filter.captureRequestBody(context);
     }
@@ -70,7 +71,7 @@ public class LoggedBodyInterceptor implements ReaderInterceptor, WriterIntercept
      * @param context The context of the entity being read or written
      * @return The filter handling the current request, or {@code null} if there is none
      */
-    protected LoggedFilter getFilter(InterceptorContext context) {
+    protected @Nullable LoggedFilter getFilter(InterceptorContext context) {
         LoggedRequestState state = LoggedRequestState.find(context);
         return state == null ? null : state.getProvider();
     }
