@@ -14,6 +14,7 @@ import static java.util.Collections.unmodifiableSet;
 import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElseGet;
 import static java.util.UUID.randomUUID;
+import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.stream.Collectors.joining;
 import static org.apache.commons.lang3.StringUtils.LF;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
@@ -23,7 +24,6 @@ import java.net.URI;
 import java.net.URLDecoder;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 
 import jakarta.annotation.Priority;
@@ -485,11 +485,9 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     @Override
     public void filter(ClientRequestContext requestContext, ClientResponseContext responseContext) {
         safely(() -> {
-            long requestStartTime = Optional.ofNullable(requestContext.getProperty(REQUEST_TIME_PROPERTY))
-                    .map(Number.class::cast)
-                    .map(Number::longValue)
-                    .orElseGet(System::nanoTime);
-            long duration = (nanoTime() - requestStartTime) / 1_000_000;
+            long now = nanoTime();
+            long start = requestContext.getProperty(REQUEST_TIME_PROPERTY) instanceof Long started ? started : now;
+            long duration = NANOSECONDS.toMillis(now - start);
             int status = responseContext.getStatus();
 
             log.atLevel(requireNonNullElseGet(getResponseLevel(status), () -> levelOf(status)))
