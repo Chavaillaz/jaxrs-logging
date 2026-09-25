@@ -4,6 +4,7 @@ import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.REQUEST;
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.RESPONSE;
 import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.LOG;
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
+import static jakarta.ws.rs.core.MediaType.APPLICATION_OCTET_STREAM;
 import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.commons.lang3.StringUtils.LF;
@@ -22,7 +23,11 @@ import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.core.Response;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.logging.log4j.core.LogEvent;
 import org.jboss.resteasy.mock.MockDispatcherFactory;
@@ -34,6 +39,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 import org.slf4j.event.Level;
+
+import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 
 /**
  * Runs the providers inside a real container rather than against mocked contexts: RESTEasy's in-memory
@@ -170,6 +177,31 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check a body the resource reads as a stream is not buffered once its capture is released")
+    void checkStreamedBodyNotBuffered() throws Exception {
+        // Given: a capture counting what reaches it once released, as a body logged without limit
+        AtomicLong bytesAfterRelease = new AtomicLong();
+        Dispatcher streaming = MockDispatcherFactory.createDispatcher();
+        streaming.getProviderFactory().registerProviderInstance(new LoggedFilter(LoggedFilterConfiguration.builder()
+                .bodyCapture(limit -> new ReleaseTrackingCapture(limit, bytesAfterRelease))
+                .build()));
+        streaming.getProviderFactory().registerProvider(LoggedBodyInterceptor.class);
+        streaming.getRegistry().addPerRequestResource(UploadResource.class);
+
+        // When: the resource method reads its entity once the interceptors are done with it
+        MockHttpResponse response = new MockHttpResponse();
+        streaming.invoke(MockHttpRequest.post("/upload")
+                .contentType(APPLICATION_OCTET_STREAM)
+                .content(new byte[100_000]), response);
+
+        // Then: the application reads the whole upload, none of which piles up in a capture nobody reads
+        assertEquals(200, response.getStatus());
+        assertEquals("read 100000", response.getContentAsString());
+        assertEquals(0, bytesAfterRelease.get());
+        assertEquals("Received POST /upload", received().getMessage().getFormattedMessage());
+    }
+
+    @Test
     @DisplayName("Check nothing is left in MDC once a request has been served")
     void checkNothingLeftInMdc() throws Exception {
         // When
@@ -218,6 +250,19 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
 
     }
 
+    @Path("/upload")
+    @Logged(@LoggedBody(LOG))
+    public static class UploadResource {
+
+        @POST
+        @Consumes(APPLICATION_OCTET_STREAM)
+        @Produces(TEXT_PLAIN)
+        public String upload(InputStream upload) throws IOException {
+            return "read " + upload.readAllBytes().length;
+        }
+
+    }
+
     /**
      * An API declared once for several types of entity, as a CRUD interface is, with the body logging of the
      * methods its resources implement.
@@ -259,6 +304,47 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
         @LoggedBody(value = LOG, targets = RESPONSE)
         public String create(String draft) {
             return "drafted " + draft;
+        }
+
+    }
+
+    /**
+     * In-memory capture counting the bytes its sink is given once it was released.
+     */
+    static final class ReleaseTrackingCapture extends BoundedLoggedBodyCapture {
+
+        final AtomicLong bytesAfterRelease;
+        volatile boolean released;
+
+        ReleaseTrackingCapture(int limit, AtomicLong bytesAfterRelease) {
+            super(limit);
+            this.bytesAfterRelease = bytesAfterRelease;
+        }
+
+        @Override
+        public OutputStream sink() {
+            OutputStream sink = super.sink();
+            return new OutputStream() {
+
+                @Override
+                public void write(int b) throws IOException {
+                    write(new byte[]{(byte) b}, 0, 1);
+                }
+
+                @Override
+                public void write(byte[] b, int off, int len) throws IOException {
+                    if (released) {
+                        bytesAfterRelease.addAndGet(len);
+                    }
+                    sink.write(b, off, len);
+                }
+
+            };
+        }
+
+        @Override
+        public void close() {
+            released = true;
         }
 
     }

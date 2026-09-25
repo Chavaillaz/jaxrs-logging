@@ -123,6 +123,10 @@ payload is never mistaken for what the application actually sent or received. Wi
 the same way where the heap has no room for more of it, and one too large to be rendered with the memory left
 is left out of the logs: logging it fails neither way the request it only observes.
 
+A body is captured while its entity is read or written, which a resource method taking it as a stream (an
+`InputStream` or a `Reader` parameter) only does once the providers are done with it: such a body is not
+logged, and nothing of it is buffered either.
+
 A body whose content type is not text-based (for example `application/octet-stream`, `application/pdf` or
 an `image/*`/`multipart/*` type) is logged as a lowercase hexadecimal string instead of being decoded as
 text, to avoid filling logs with replacement characters for binary payloads such as file uploads. A text
@@ -382,7 +386,7 @@ public class ArticleResource {
     @POST
     @Path("/import")
     @Logged // Redeclared empty: no body logging for this (potentially huge) payload
-    public void importArchive(InputStream archive) {
+    public void importArchive(byte[] archive) {
     }
 
 }
@@ -424,6 +428,8 @@ If body logging is activated, the body is logged as a further, separate line rat
 two: the response body is only available if/when the calling code actually reads the response entity, which
 may happen after (or not at all after) the `Called ...` line, so there is no single point to merge them into,
 unlike the server-side filter.
+A response read as a stream (`readEntity(InputStream.class)`) is read once the providers are done with it,
+and its body is not logged.
 
 For the same reason, only logging the body as a new log line is supported, not adding it to MDC: on the server
 side, `@LoggedBody(MDC)` works because `LoggedFilter` has a single, well-defined point (`logResponse`) at which

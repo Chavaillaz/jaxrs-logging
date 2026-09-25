@@ -23,6 +23,11 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
  * the entity. Its first failure is reported and swallowed instead, and the sink receives nothing from then on.
  * What it collected until then is not logged at all: a body missing an arbitrary part reads, in the logs, as
  * the one the application handled, which is worse than no body.
+ * <p>
+ * The sink also stops receiving anything once the capture is released, as the entity stream can outlive it:
+ * an entity read as a stream - an {@code InputStream} parameter of a resource method, a client response read
+ * as one - is only read once the interceptors are done with it, and its body, rendered empty by then, would
+ * otherwise go on filling a capture nobody reads again, up to the whole of an upload.
  *
  * @see BodyCapturer
  */
@@ -58,18 +63,26 @@ final class GuardedBodyCapture implements LoggedBodyCapture {
         return sink.failed ? null : capture.content(filters, mediaType);
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Stops the sink first, so nothing reaches a capture being released.
+     */
     @Override
     public void close() {
+        sink.released = true;
         capture.close();
     }
 
     /**
-     * Sink forwarding everything to the one of the guarded capture until that one fails.
+     * Sink forwarding everything to the one of the guarded capture until that one fails or the capture is
+     * released.
      * <p>
      * Written to once per chunk of the entity - once per byte for a reader reading a byte at a time - so
      * each method forwards directly, rather than through a shared helper taking the operation as a lambda
      * that could cost an allocation per write. Confined to the thread reading or writing the entity, as the
-     * capture itself is (see {@link CaptureBuffer}), so the flag needs no synchronization either.
+     * capture itself is (see {@link CaptureBuffer}), until the capture is released - which the stream it is
+     * teed to can outlive, on any thread, hence the one flag that is volatile.
      */
     private static final class GuardedSink extends OutputStream {
 
@@ -77,6 +90,7 @@ final class GuardedBodyCapture implements LoggedBodyCapture {
         private final Logger log;
         private final String message;
         private boolean failed;
+        private volatile boolean released;
 
         private GuardedSink(OutputStream sink, Logger log, String message) {
             this.sink = sink;
@@ -86,7 +100,7 @@ final class GuardedBodyCapture implements LoggedBodyCapture {
 
         @Override
         public void write(int b) {
-            if (!failed) {
+            if (isOpen()) {
                 try {
                     sink.write(b);
                 } catch (IOException | RuntimeException e) {
@@ -97,7 +111,7 @@ final class GuardedBodyCapture implements LoggedBodyCapture {
 
         @Override
         public void write(byte[] b, int off, int len) {
-            if (!failed) {
+            if (isOpen()) {
                 try {
                     sink.write(b, off, len);
                 } catch (IOException | RuntimeException e) {
@@ -108,7 +122,7 @@ final class GuardedBodyCapture implements LoggedBodyCapture {
 
         @Override
         public void flush() {
-            if (!failed) {
+            if (isOpen()) {
                 try {
                     sink.flush();
                 } catch (IOException | RuntimeException e) {
@@ -121,13 +135,22 @@ final class GuardedBodyCapture implements LoggedBodyCapture {
         public void close() {
             // Closed along with the entity stream by a TeeOutputStream: a sink failing to close may not have
             // written out what it was given, which makes its content as unreliable as a failed write does
-            if (!failed) {
+            if (isOpen()) {
                 try {
                     sink.close();
                 } catch (IOException | RuntimeException e) {
                     fail(e);
                 }
             }
+        }
+
+        /**
+         * Indicates whether the sink of the guarded capture is still to be written to.
+         *
+         * @return {@code true} if it neither failed nor was released, {@code false} otherwise
+         */
+        private boolean isOpen() {
+            return !failed && !released;
         }
 
         /**
