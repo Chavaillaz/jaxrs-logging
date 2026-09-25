@@ -1,5 +1,7 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.REQUEST;
+import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.RESPONSE;
 import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.LOG;
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN;
@@ -54,6 +56,7 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
         dispatcher.getProviderFactory().registerProvider(RejectingFilter.class);
         dispatcher.getRegistry().addPerRequestResource(ArticleResource.class);
         dispatcher.getRegistry().addPerRequestResource(NoteResource.class);
+        dispatcher.getRegistry().addPerRequestResource(DraftResource.class);
     }
 
     MockHttpResponse invoke(MockHttpRequest request) {
@@ -153,6 +156,20 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check a method repeating @LoggedBody without @Logged is logged, the compiler wrapping them in it")
+    void checkRepeatedLoggedBodyActivatesLogging() throws Exception {
+        // When
+        MockHttpResponse response = invoke(MockHttpRequest.post("/drafts")
+                .contentType(TEXT_PLAIN)
+                .content("hello".getBytes(UTF_8)));
+
+        // Then
+        assertEquals(200, response.getStatus());
+        assertEquals("Received POST /drafts" + LF + "hello", received().getMessage().getFormattedMessage());
+        assertTrue(processed().getMessage().getFormattedMessage().endsWith(LF + "drafted hello"));
+    }
+
+    @Test
     @DisplayName("Check nothing is left in MDC once a request has been served")
     void checkNothingLeftInMdc() throws Exception {
         // When
@@ -224,6 +241,24 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
         @Override
         public String create(String note) {
             return "created " + note;
+        }
+
+    }
+
+    /**
+     * Configures its body logging with repeated {@link LoggedBody} alone, which the compiler wraps into the
+     * {@link Logged} they are repeatable in.
+     */
+    @Path("/drafts")
+    public static class DraftResource {
+
+        @POST
+        @Consumes(TEXT_PLAIN)
+        @Produces(TEXT_PLAIN)
+        @LoggedBody(value = LOG, targets = REQUEST)
+        @LoggedBody(value = LOG, targets = RESPONSE)
+        public String create(String draft) {
+            return "drafted " + draft;
         }
 
     }

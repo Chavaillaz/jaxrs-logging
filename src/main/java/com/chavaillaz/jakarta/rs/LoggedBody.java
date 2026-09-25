@@ -11,8 +11,6 @@ import java.lang.annotation.Repeatable;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
-import jakarta.ws.rs.NameBinding;
-
 /**
  * Configuration for body logging of HTTP requests or responses.
  * <p>
@@ -22,7 +20,6 @@ import jakarta.ws.rs.NameBinding;
  * {@code @Logged}, which the compiler only synthesizes from several repeated {@code @LoggedBody}.
  */
 @Documented
-@NameBinding
 @Retention(RUNTIME)
 @Target({TYPE, METHOD})
 @Repeatable(Logged.class)
