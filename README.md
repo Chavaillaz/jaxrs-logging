@@ -246,9 +246,9 @@ mappings that apply.
 
 Every MDC entry the library creates is removed once the request has been logged. When a request completes
 on a different thread than the one that started it (a resumed `@Suspended` response, a reactive resource
-method), the removal cannot reach the thread that set them, so the library also sweeps its own leftovers
-at the start of every request - mapped keys included, whose names are only known once the client has sent
-the request.
+method), the removal cannot reach the thread that set them, and a wrapper restoring the context map it saved
+before the request completed puts them back, so the library also sweeps its own leftovers at the start of
+every request - mapped keys included, whose names are only known once the client has sent the request.
 
 Automatic mapping never copies a credential-carrying header (`Authorization`, `Cookie`, `X-Api-Key`, ...)
 into MDC, as `auto = true` is a blanket "map whatever the client sent" instruction and is otherwise an easy

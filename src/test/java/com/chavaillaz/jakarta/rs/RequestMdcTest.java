@@ -1,7 +1,9 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_PARAMETERS;
+import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -86,6 +88,59 @@ class RequestMdcTest {
         // Then
         assertNull(MDC.get("header-User-Agent"));
         assertNull(mdc.get(REQUEST_ID));
+    }
+
+    @Test
+    @DisplayName("Check starting a request sweeps what one done on this thread left, even once put back")
+    void checkStartSweepsRestoredEntries() {
+        // Given: a request completed within a wrapper that saved the context map before, and restores it after
+        LoggedRequestState previous = request();
+        mdc.start(previous);
+        mdc.put("header-X-Tenant", "acme");
+        Map<String, String> saved = MDC.getCopyOfContextMap();
+        previous.markCompleted();
+        mdc.cleanup(previous);
+        MDC.setContextMap(saved);
+
+        // When
+        mdc.start(request());
+
+        // Then
+        assertNull(MDC.get("header-X-Tenant"));
+    }
+
+    @Test
+    @DisplayName("Check a callback of a request done leaves nothing on the thread that carried it")
+    void checkLateCallbackLeavesNothing() {
+        // Given
+        LoggedRequestState request = request();
+        mdc.start(request);
+        request.markCompleted();
+        mdc.cleanup(request);
+
+        // When
+        mdc.onBehalfOf(request, () -> mdc.put(RESPONSE_STATUS, "500"));
+
+        // Then
+        assertNull(mdc.get(RESPONSE_STATUS));
+    }
+
+    @Test
+    @DisplayName("Check a request done stops recording its bodies, which its thread would keep until the next one")
+    void checkBodiesNotKept() {
+        // Given
+        LoggedRequestState request = request();
+        mdc.start(request);
+        mdc.put("custom-key", "custom-value");
+        mdc.put(REQUEST_BODY, "request body");
+        mdc.put(RESPONSE_BODY, "response body");
+
+        // When
+        request.markCompleted();
+        mdc.cleanup(request);
+
+        // Then
+        assertEquals(Map.of("custom-key", "custom-value"), request.getMdcEntries());
     }
 
     @Test

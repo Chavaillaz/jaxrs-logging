@@ -1,7 +1,10 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_BODY;
+import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -36,11 +39,19 @@ final class RequestMdc {
      * subclass of {@link LoggedFilter} can put anything it likes. Left there, they would mislabel every log
      * line of the unrelated requests the (pooled) thread goes on to serve.
      * <p>
-     * Removed rather than cleared once swept, so a thread pool outliving the application does not keep a
-     * now-useless entry alive in each of its threads - and holding plain strings, never anything of this
-     * library's own, so the entries it does keep cannot pin the application's class loader.
+     * A thread stays bound to the last request it carried until the next one starts, even once that request is
+     * done: its entries can come back after it completed, as a wrapper restoring the context map it saved before
+     * the completion puts them back - {@code MdcPropagation} around a task resuming a response on the thread
+     * that carried its request, for instance. What stays bound holds plain strings, never anything of this
+     * library's own, so it cannot pin the application's class loader, and no longer holds the bodies once the
+     * request is done (see {@link #cleanup(LoggedRequestState)}).
      */
     private static final ThreadLocal<@Nullable Map<String, String>> threadEntries = new ThreadLocal<>();
+
+    /**
+     * Fields holding a body, which a request done stops recording, see {@link #cleanup(LoggedRequestState)}.
+     */
+    private static final List<LoggedField> BODIES = List.of(REQUEST_BODY, RESPONSE_BODY);
 
     /**
      * Names of the MDC entries of the fields {@link LoggedFilter} logs, a field without a name being left out
@@ -163,8 +174,9 @@ final class RequestMdc {
      * as that request's rather than with nothing or, worse, as the request the thread is serving, which gets
      * its own context back afterwards, untouched by the completion of the other one.
      * <p>
-     * The thread is handed back carrying what it did before, unless that was this very request and the
-     * action completed it, in which case there is nothing left for the thread to carry.
+     * The thread that carried a request already completed is lent its entries all the same, as a later
+     * callback of that request would otherwise leave on it whatever it puts. A thread lent the entries is
+     * handed back carrying what it did before, context map included.
      *
      * @param state  The state of the request to act on behalf of
      * @param action The action to run
@@ -172,19 +184,20 @@ final class RequestMdc {
     void onBehalfOf(LoggedRequestState state, Runnable action) {
         Map<String, String> entries = state.getMdcEntries();
         Map<String, String> previous = threadEntries.get();
-        boolean lent = previous != entries;
-        Map<String, String> context = lent ? MDC.getCopyOfContextMap() : null;
-        threadEntries.set(entries);
-        if (lent) {
-            entries.forEach(MDC::put);
+        if (previous == entries && !state.isCompleted()) {
+            // The thread carries the request, still in progress
+            action.run();
+            return;
         }
+
+        Map<String, String> context = MDC.getCopyOfContextMap();
+        threadEntries.set(entries);
+        entries.forEach(MDC::put);
         try {
             action.run();
         } finally {
-            if (lent) {
-                restore(context);
-            }
-            if (previous == null || (!lent && state.isCompleted())) {
+            restore(context);
+            if (previous == null) {
                 threadEntries.remove();
             } else {
                 threadEntries.set(previous);
@@ -211,15 +224,23 @@ final class RequestMdc {
      * <p>
      * Also sweeps the fixed fields as a safety net, in case a subclass of {@link LoggedFilter} still puts one
      * of those directly through {@link MDC#put(String, String)}.
+     * <p>
+     * The entries stay recorded against the request, for the thread that carried it to sweep them again once
+     * the next request starts on it (see {@link #threadEntries}), but for the bodies: put as the request
+     * completes, after anything could have saved them to put them back, they are the one kind of entry that
+     * can be large.
      *
      * @param state The state of the request done with
      */
     void cleanup(LoggedRequestState state) {
+        Map<String, String> entries = state.getMdcEntries();
         removeFields();
-        state.getMdcEntries().keySet().forEach(MDC::remove);
-        if (threadEntries.get() == state.getMdcEntries()) {
-            // The request this thread carried is done: there is nothing left for a later request to sweep
-            threadEntries.remove();
+        entries.keySet().forEach(MDC::remove);
+        for (LoggedField body : BODIES) {
+            String key = fieldNames.get(body);
+            if (key != null) {
+                entries.remove(key);
+            }
         }
     }
 

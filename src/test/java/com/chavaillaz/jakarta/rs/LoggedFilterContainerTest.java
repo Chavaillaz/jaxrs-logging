@@ -4,12 +4,14 @@ import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.REQUEST;
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.RESPONSE;
 import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.LOG;
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
+import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static jakarta.ws.rs.core.MediaType.APPLICATION_OCTET_STREAM;
 import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.commons.lang3.StringUtils.LF;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import jakarta.annotation.Priority;
@@ -20,16 +22,21 @@ import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Priorities;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.container.AsyncResponse;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
+import jakarta.ws.rs.container.Suspended;
 import jakarta.ws.rs.core.Response;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.logging.log4j.core.LogEvent;
+import org.jboss.resteasy.core.SynchronousDispatcher;
+import org.jboss.resteasy.core.SynchronousExecutionContext;
 import org.jboss.resteasy.mock.MockDispatcherFactory;
 import org.jboss.resteasy.mock.MockHttpRequest;
 import org.jboss.resteasy.mock.MockHttpResponse;
@@ -41,6 +48,7 @@ import org.slf4j.MDC;
 import org.slf4j.event.Level;
 
 import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
+import com.chavaillaz.jakarta.rs.mdc.MdcPropagation;
 
 /**
  * Runs the providers inside a real container rather than against mocked contexts: RESTEasy's in-memory
@@ -64,6 +72,7 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
         dispatcher.getRegistry().addPerRequestResource(ArticleResource.class);
         dispatcher.getRegistry().addPerRequestResource(NoteResource.class);
         dispatcher.getRegistry().addPerRequestResource(DraftResource.class);
+        dispatcher.getRegistry().addPerRequestResource(ResumedResource.class);
     }
 
     MockHttpResponse invoke(MockHttpRequest request) {
@@ -214,6 +223,28 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
         assertTrue(left == null || left.isEmpty(), () -> "Left in MDC: " + left);
     }
 
+    @Test
+    @DisplayName("Check nothing of a request completed within a context restored after is left for the next one")
+    void checkNothingLeftByCompletionInRestoredContext() throws Exception {
+        // Given: a request whose response MdcPropagation completes on the thread serving it, restoring after the
+        // context map it saved before - the entries of the request included
+        MockHttpRequest resumed = MockHttpRequest.get("/resumed").header("X-Tenant", "acme");
+        MockHttpResponse response = new MockHttpResponse();
+        resumed.setAsynchronousContext(new SynchronousExecutionContext((SynchronousDispatcher) dispatcher, resumed, response));
+        dispatcher.invoke(resumed, response);
+        assertEquals(200, response.getStatus());
+
+        // When
+        invoke(MockHttpRequest.get("/article"));
+
+        // Then: neither the next request nor the thread once it is done carries anything of it
+        LogEvent next = listAppender.findFirstMessage("Processed GET /article");
+        assertNotNull(next, "The next request was not logged");
+        assertNull(next.getContextData().getValue("header-X-Tenant"));
+        Map<String, String> left = MDC.getCopyOfContextMap();
+        assertTrue(left == null || left.isEmpty(), () -> "Left in MDC: " + left);
+    }
+
     LogEvent processed() {
         LogEvent event = listAppender.findFirstMessage("Processed");
         assertNotNull(event, "No Processed line was logged");
@@ -304,6 +335,23 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
         @LoggedBody(value = LOG, targets = RESPONSE)
         public String create(String draft) {
             return "drafted " + draft;
+        }
+
+    }
+
+    /**
+     * Resumes its response right away, on the thread serving the request, within the context map MdcPropagation
+     * applies - as a stage given to a {@link CompletableFuture} already complete runs.
+     */
+    @Path("/resumed")
+    @Logged
+    @LoggedMapping(type = HEADER, auto = true, mdcPrefix = "header-")
+    public static class ResumedResource {
+
+        @GET
+        @Produces(TEXT_PLAIN)
+        public void get(@Suspended AsyncResponse response) {
+            CompletableFuture.completedFuture("resumed").thenAccept(MdcPropagation.wrap(response)::resume);
         }
 
     }
