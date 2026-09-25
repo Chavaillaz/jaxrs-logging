@@ -10,9 +10,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-import com.chavaillaz.jakarta.rs.LoggedClientFilter;
 import com.chavaillaz.jakarta.rs.LoggedFilter;
 import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
+import com.chavaillaz.jakarta.rs.client.LoggedClientFilter;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

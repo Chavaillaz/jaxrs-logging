@@ -6,7 +6,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.chavaillaz.jakarta.rs.LoggedBody;
-import com.chavaillaz.jakarta.rs.LoggedClientFilter;
+import com.chavaillaz.jakarta.rs.client.LoggedClientFilter;
 
 /**
  * Base for the body filters replacing part of a body matched by a regular expression, so a value that

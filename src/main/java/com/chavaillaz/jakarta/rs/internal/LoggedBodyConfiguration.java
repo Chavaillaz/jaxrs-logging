@@ -8,8 +8,8 @@ import java.util.Set;
 
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
 import com.chavaillaz.jakarta.rs.LoggedBody;
-import com.chavaillaz.jakarta.rs.LoggedClientFilter;
 import com.chavaillaz.jakarta.rs.LoggedResolver;
+import com.chavaillaz.jakarta.rs.client.LoggedClientFilter;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
 /**

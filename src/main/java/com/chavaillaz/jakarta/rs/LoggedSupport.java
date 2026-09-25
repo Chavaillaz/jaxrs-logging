@@ -1,5 +1,6 @@
 package com.chavaillaz.jakarta.rs;
 
+import com.chavaillaz.jakarta.rs.client.LoggedClientFilter;
 import org.slf4j.event.Level;
 
 /**

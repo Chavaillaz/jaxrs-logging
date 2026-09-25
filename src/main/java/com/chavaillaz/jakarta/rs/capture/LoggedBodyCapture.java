@@ -4,8 +4,8 @@ import java.io.OutputStream;
 import java.util.Set;
 
 import com.chavaillaz.jakarta.rs.LoggedBody;
-import com.chavaillaz.jakarta.rs.LoggedClientFilter;
 import com.chavaillaz.jakarta.rs.LoggedFilterConfiguration;
+import com.chavaillaz.jakarta.rs.client.LoggedClientFilter;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import jakarta.ws.rs.core.MediaType;
 

@@ -379,7 +379,7 @@ rather than once per request.
 
 ## Client calls
 
-The client-side counterpart [LoggedClientFilter](src/main/java/com/chavaillaz/jakarta/rs/LoggedClientFilter.java)
+The client-side counterpart [LoggedClientFilter](src/main/java/com/chavaillaz/jakarta/rs/client/LoggedClientFilter.java)
 logs outgoing JAX-RS Client calls and propagates the current request identifier (from MDC) to the downstream
 service as `X-Request-ID`, so a service calling another service exposing its own `@Logged` resource produces a
 single, correlated identifier across both sides of the call.
