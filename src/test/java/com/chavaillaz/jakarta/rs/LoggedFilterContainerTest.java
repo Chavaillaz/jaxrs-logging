@@ -73,12 +73,35 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
         dispatcher.getRegistry().addPerRequestResource(NoteResource.class);
         dispatcher.getRegistry().addPerRequestResource(DraftResource.class);
         dispatcher.getRegistry().addPerRequestResource(ResumedResource.class);
+        dispatcher.getRegistry().addPerRequestResource(ClearingResource.class);
     }
 
-    MockHttpResponse invoke(MockHttpRequest request) {
+    /**
+     * Creates a dispatcher serving the given resources through a provider configured as given, rather than
+     * through the default one the other tests share.
+     *
+     * @param configuration The configuration of the provider
+     * @param resources     The resources to serve
+     * @return The dispatcher created
+     */
+    static Dispatcher dispatcherWith(LoggedFilterConfiguration configuration, Class<?>... resources) {
+        Dispatcher configured = MockDispatcherFactory.createDispatcher();
+        configured.getProviderFactory().registerProviderInstance(new LoggedFilter(configuration));
+        configured.getProviderFactory().registerProvider(LoggedBodyInterceptor.class);
+        for (Class<?> resource : resources) {
+            configured.getRegistry().addPerRequestResource(resource);
+        }
+        return configured;
+    }
+
+    static MockHttpResponse invoke(Dispatcher dispatcher, MockHttpRequest request) {
         MockHttpResponse response = new MockHttpResponse();
         dispatcher.invoke(request, response);
         return response;
+    }
+
+    MockHttpResponse invoke(MockHttpRequest request) {
+        return invoke(dispatcher, request);
     }
 
     @Test
@@ -190,24 +213,55 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
     void checkStreamedBodyNotBuffered() throws Exception {
         // Given: a capture counting what reaches it once released, as a body logged without limit
         AtomicLong bytesAfterRelease = new AtomicLong();
-        Dispatcher streaming = MockDispatcherFactory.createDispatcher();
-        streaming.getProviderFactory().registerProviderInstance(new LoggedFilter(LoggedFilterConfiguration.builder()
+        Dispatcher streaming = dispatcherWith(LoggedFilterConfiguration.builder()
                 .bodyCapture(limit -> new ReleaseTrackingCapture(limit, bytesAfterRelease))
-                .build()));
-        streaming.getProviderFactory().registerProvider(LoggedBodyInterceptor.class);
-        streaming.getRegistry().addPerRequestResource(UploadResource.class);
+                .build(), UploadResource.class);
 
         // When: the resource method reads its entity once the interceptors are done with it
-        MockHttpResponse response = new MockHttpResponse();
-        streaming.invoke(MockHttpRequest.post("/upload")
+        MockHttpResponse response = invoke(streaming, MockHttpRequest.post("/upload")
                 .contentType(APPLICATION_OCTET_STREAM)
-                .content(new byte[100_000]), response);
+                .content(new byte[100_000]));
 
         // Then: the application reads the whole upload, none of which piles up in a capture nobody reads
         assertEquals(200, response.getStatus());
         assertEquals("read 100000", response.getContentAsString());
         assertEquals(0, bytesAfterRelease.get());
         assertEquals("Received POST /upload", received().getMessage().getFormattedMessage());
+    }
+
+    @Test
+    @DisplayName("Check a request is logged in full and at the level of its status whatever MDC leaves out")
+    void checkLinesIndependentOfMdcFields() throws Exception {
+        // Given
+        Dispatcher bare = dispatcherWith(LoggedFilterConfiguration.builder()
+                .withoutField(LoggedField.REQUEST_METHOD)
+                .withoutField(LoggedField.REQUEST_URI)
+                .withoutField(LoggedField.RESPONSE_STATUS)
+                .withoutField(LoggedField.DURATION)
+                .build(), FailingResource.class);
+
+        // When
+        MockHttpResponse response = invoke(bare, MockHttpRequest.get("/failing"));
+
+        // Then
+        assertEquals(500, response.getStatus());
+        LogEvent event = processed();
+        assertTrue(event.getMessage().getFormattedMessage().matches("Processed GET /failing with status 500 in \\d+ms"),
+                event.getMessage().getFormattedMessage());
+        assertEquals(Level.ERROR.name(), event.getLevel().name());
+        assertNull(event.getContextData().getValue("response-status"));
+    }
+
+    @Test
+    @DisplayName("Check a request is logged in full even once the application cleared MDC")
+    void checkLinesIndependentOfMdcCleared() throws Exception {
+        // When
+        MockHttpResponse response = invoke(MockHttpRequest.get("/clearing"));
+
+        // Then
+        assertEquals(200, response.getStatus());
+        String line = processed().getMessage().getFormattedMessage();
+        assertTrue(line.matches("Processed GET /clearing with status 200 in \\d+ms"), line);
     }
 
     @Test
@@ -352,6 +406,33 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
         @Produces(TEXT_PLAIN)
         public void get(@Suspended AsyncResponse response) {
             CompletableFuture.completedFuture("resumed").thenAccept(MdcPropagation.wrap(response)::resume);
+        }
+
+    }
+
+    @Path("/failing")
+    @Logged
+    public static class FailingResource {
+
+        @GET
+        public Response get() {
+            return Response.serverError().build();
+        }
+
+    }
+
+    /**
+     * Clears the MDC of the thread serving it, as an application may do with its own entries in mind.
+     */
+    @Path("/clearing")
+    @Logged
+    public static class ClearingResource {
+
+        @GET
+        @Produces(TEXT_PLAIN)
+        public String get() {
+            MDC.clear();
+            return "cleared";
         }
 
     }

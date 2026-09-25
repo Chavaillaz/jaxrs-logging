@@ -519,7 +519,8 @@ another is declared on the resource itself with `@LoggedBody` and `@LoggedMappin
 with `LoggedFilterConfiguration.builder()`:
 
 * **fieldName** / **withoutField**: Renames the MDC entry of a field, for example to align it with other
-  applications or with the schema of whatever the logs are shipped to, or leaves the field out altogether.
+  applications or with the schema of whatever the logs are shipped to, or leaves the field out of MDC altogether
+  (the `Received ...` and `Processed ...` lines show it all the same).
 * **requestIdHeader**: Header the request identifier is read from and returned in (`X-Request-ID` by default).
 * **requestId**: How the request identifier is obtained, for example to always generate it server-side
   when the callers are untrusted.

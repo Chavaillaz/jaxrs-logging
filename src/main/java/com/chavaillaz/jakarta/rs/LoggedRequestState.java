@@ -93,6 +93,24 @@ final class LoggedRequestState {
     private final AtomicBoolean completed = new AtomicBoolean();
 
     /**
+     * Method of the request as it is logged, kept for the lines logging it rather than read back from MDC,
+     * which may not carry it (see {@link LoggedFilterConfiguration.Builder#withoutField(LoggedField)}), and
+     * which the application may have cleared in the meantime.
+     */
+    private volatile @Nullable String method;
+
+    /**
+     * URI of the request as it is logged, kept for the same reason as {@link #method}.
+     */
+    private volatile @Nullable String uri;
+
+    /**
+     * Status the request was answered with, kept for the same reason as {@link #method}, and {@code 0} until
+     * its response is described.
+     */
+    private volatile int status;
+
+    /**
      * Body logging configuration resolved for this request, kept so the several callbacks asking for it
      * share one resolution. See {@link LoggedFilter#getBodyConfiguration(LoggedRequestState, LoggedBody.Direction)}.
      */
@@ -237,6 +255,58 @@ final class LoggedRequestState {
      */
     boolean isCompleted() {
         return completed.get();
+    }
+
+    /**
+     * Keeps the value of the given field describing this request, if the lines logging it read that field.
+     *
+     * @param field The field describing the request
+     * @param value The value of the field, as it is logged
+     */
+    void describe(LoggedField field, @Nullable String value) {
+        switch (field) {
+            case REQUEST_METHOD -> method = value;
+            case REQUEST_URI -> uri = value;
+            default -> {
+                // Not read by the lines logging the request
+            }
+        }
+    }
+
+    /**
+     * Gets the method of this request, see {@link #method}.
+     *
+     * @return The method of the request as it is logged, or {@code null} if it is unknown
+     */
+    @Nullable String getMethod() {
+        return method;
+    }
+
+    /**
+     * Gets the URI of this request, see {@link #uri}.
+     *
+     * @return The URI of the request as it is logged, or {@code null} if it is unknown
+     */
+    @Nullable String getUri() {
+        return uri;
+    }
+
+    /**
+     * Gets the status this request was answered with, see {@link #status}.
+     *
+     * @return The status of the response, or {@code 0} if it has not been described yet
+     */
+    int getStatus() {
+        return status;
+    }
+
+    /**
+     * Sets the status this request was answered with.
+     *
+     * @param status The status of the response
+     */
+    void setStatus(int status) {
+        this.status = status;
     }
 
     /**

@@ -234,8 +234,8 @@ public final class LoggedFilterConfiguration {
         }
 
         /**
-         * Leaves the given field out of MDC altogether - along with the log lines reading it back from there,
-         * such as the status in the {@code "Processed ..."} line and the level it decides.
+         * Leaves the given field out of MDC altogether. The lines logging the requests show it all the same,
+         * the provider keeping what they need of a request apart from MDC.
          *
          * @param field The field to leave out
          * @return This builder
@@ -327,9 +327,7 @@ public final class LoggedFilterConfiguration {
          * example to leave an expected {@code 404} at {@code INFO}. Defaults to {@link LoggedSupport#levelOf(int)},
          * see there why it is not simply {@code INFO}.
          * <p>
-         * The status is read back from MDC, so a request whose {@link LoggedField#RESPONSE_STATUS} field is
-         * left out is given {@code 0}. A status the function returns {@code null} for is logged at its
-         * default level.
+         * A status the function returns {@code null} for is logged at its default level.
          *
          * @param levels The level to log a request answered with the given status at
          * @return This builder

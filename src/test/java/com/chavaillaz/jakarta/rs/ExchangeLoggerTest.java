@@ -43,10 +43,10 @@ class ExchangeLoggerTest extends AbstractFilterTest {
     }
 
     @ParameterizedTest(name = "status {0} logged at {1}")
-    @CsvSource(value = {"200, INFO", "404, WARN", "503, ERROR", "NULL, INFO"}, nullValues = "NULL")
+    @CsvSource({"200, INFO", "404, WARN", "503, ERROR", "0, INFO"})
     @DisplayName("Check an answered request is logged at the level its status is given by default")
-    void checkProcessedLevel(String status, String expectedLevel) {
-        defaultLogger.processed("GET", "/articles", status, "12", "");
+    void checkProcessedLevel(int status, String expectedLevel) {
+        defaultLogger.processed("GET", "/articles", status, 12, "");
 
         assertEquals("Processed GET /articles with status " + status + " in 12ms", lastMessage());
         assertEquals(expectedLevel, lastEvent().getLevel().name());
@@ -59,7 +59,7 @@ class ExchangeLoggerTest extends AbstractFilterTest {
                 .responseLevel(status -> status == 404 ? Level.INFO : Level.ERROR)
                 .build());
 
-        logger.processed("GET", "/articles/42", "404", "3", "{\"error\": \"Not found\"}");
+        logger.processed("GET", "/articles/42", 404, 3, "{\"error\": \"Not found\"}");
 
         assertEquals("Processed GET /articles/42 with status 404 in 3ms\n{\"error\": \"Not found\"}", lastMessage());
         assertEquals("INFO", lastEvent().getLevel().name());

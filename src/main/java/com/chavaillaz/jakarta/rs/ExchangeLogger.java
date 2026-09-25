@@ -3,7 +3,6 @@ package com.chavaillaz.jakarta.rs;
 import static org.apache.commons.lang3.StringUtils.EMPTY;
 import static org.apache.commons.lang3.StringUtils.LF;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
-import static org.apache.commons.lang3.math.NumberUtils.toInt;
 
 import jakarta.ws.rs.core.MultivaluedMap;
 
@@ -48,19 +47,15 @@ final class ExchangeLogger {
      * Logs a request answered, with the body of the response on the following lines if it has one, at the
      * level the configuration gives to its status (see
      * {@link LoggedFilterConfiguration.Builder#responseLevel(java.util.function.IntFunction)}).
-     * <p>
-     * The status is the one logged in MDC rather than one taken from the response context, so the level
-     * still matches the status actually logged when the request completes where no response context is at
-     * hand.
      *
      * @param method   The method of the request, {@code null} if unknown
      * @param uri      The URI of the request, {@code null} if unknown
-     * @param status   The status the request was answered with, {@code null} if unknown
-     * @param duration The time taken to answer the request, in milliseconds, {@code null} if unknown
+     * @param status   The status the request was answered with, {@code 0} if unknown
+     * @param duration The time taken to answer the request, in milliseconds
      * @param body     The body of the response, blank if it is not logged
      */
-    void processed(@Nullable String method, @Nullable String uri, @Nullable String status, @Nullable String duration, String body) {
-        log.atLevel(configuration.responseLevel(toInt(status)))
+    void processed(@Nullable String method, @Nullable String uri, int status, long duration, String body) {
+        log.atLevel(configuration.responseLevel(status))
                 .log("Processed {} {} with status {} in {}ms{}{}", method, uri, status, duration, isNotBlank(body) ? LF : EMPTY, body);
     }
 

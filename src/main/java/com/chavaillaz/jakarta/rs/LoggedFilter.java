@@ -6,8 +6,6 @@ import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.LOG;
 import static com.chavaillaz.jakarta.rs.LoggedField.DURATION;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
-import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_METHOD;
-import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_URI;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
 import static jakarta.ws.rs.RuntimeType.SERVER;
@@ -266,7 +264,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             // From here on, the entries this thread carries are this request's
             mdc.start(state);
 
-            putMdcFromRequest(requestContext);
+            putMdcFromRequest(state, requestContext);
             putMdcFromMappings(requestContext);
 
             // Without an entity to read, aroundReadFrom is never called
@@ -283,15 +281,21 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * Everything sourced from the request is passed through {@link #sanitize(String)} first, as all of it
      * is client-controlled - including the identifier the configuration gets for it, which is replaced with
      * a random one when there is none.
+     * <p>
+     * The state of the request keeps what the lines logging it show, which MDC may not carry.
      *
+     * @param state          The state of the request received
      * @param requestContext The context of the request received
      */
-    private void putMdcFromRequest(ContainerRequestContext requestContext) {
+    private void putMdcFromRequest(LoggedRequestState state, ContainerRequestContext requestContext) {
         // A strategy of the application failing costs the request its identifier, which is then generated,
         // rather than every field describing it
         String requestId = LoggingGuard.safely(log, "Unable to get the identifier of the request, a random one is used instead",
                 () -> configuration.requestIdOf(requestContext), null);
-        describer.describe(requestContext, resourceInfo, requestId, this::putMdc);
+        describer.describe(requestContext, resourceInfo, requestId, (field, value) -> {
+            state.describe(field, value);
+            putMdc(field, value);
+        });
     }
 
     /**
@@ -380,15 +384,13 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * Logs the request received by the server, unless the line would repeat one already logged for it (see
      * {@link LoggedRequestState#markRequestLogged(boolean)}), as several callbacks can reach this for the same
      * request - one per read of its entity, for instance.
-     * <p>
-     * Note that the request method and URI must have been stored in MDC before calling this method.
      *
-     * @param state       The state of the request being logged
+     * @param state       The state of the request being logged, described already
      * @param requestBody The request body to be logged
      */
     private void logRequest(LoggedRequestState state, String requestBody) {
         if (state.markRequestLogged(isNotBlank(requestBody))) {
-            exchangeLogger.received(getMdc(REQUEST_METHOD), getMdc(REQUEST_URI), requestBody);
+            exchangeLogger.received(state.getMethod(), state.getUri(), requestBody);
         }
     }
 
@@ -435,12 +437,15 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      */
     private void describeResponse(LoggedRequestState state, ContainerResponseContext responseContext) {
         try {
+            // Kept first, for the request to be logged with its status whatever fails below
+            state.setStatus(responseContext.getStatus());
+
             // A request whose resource method never read its entity has not been logged yet
             if (getBodyConfiguration(state, REQUEST).logs(LOG) && !state.isRequestLogged()) {
                 logRequest(state, EMPTY);
             }
 
-            putMdc(RESPONSE_STATUS, valueOf(responseContext.getStatus()));
+            putMdc(RESPONSE_STATUS, valueOf(state.getStatus()));
             exchangeLogger.returnRequestId(responseContext.getHeaders(), getMdc(REQUEST_ID));
         } finally {
             // Without an entity to write (204 No Content, HEAD), aroundWriteTo is never called: the request is
@@ -522,10 +527,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * This is the single completion point of a request: idempotent, so the callbacks that can reach it do not
      * log the request twice, and unconditional, so its MDC entries are removed whatever else applies to it.
      * The duration is measured here, and therefore covers serializing and writing the entity.
-     * <p>
-     * Note that the response status must have been stored in MDC before calling this method.
      *
-     * @param state        The state of the request being completed
+     * @param state        The state of the request being completed, its response described already
      * @param responseBody The response body to be logged
      */
     void logResponse(LoggedRequestState state, String responseBody) {
@@ -534,13 +537,14 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         }
 
         try {
-            putMdc(DURATION, valueOf(state.getElapsedMillis()));
+            long duration = state.getElapsedMillis();
+            putMdc(DURATION, valueOf(duration));
 
             if (getBodyConfiguration(state, REQUEST).logs(LogType.MDC)) {
                 putMdc(REQUEST_BODY, state.getRequestBody());
             }
 
-            exchangeLogger.processed(getMdc(REQUEST_METHOD), getMdc(REQUEST_URI), getMdc(RESPONSE_STATUS), getMdc(DURATION), responseBody);
+            exchangeLogger.processed(state.getMethod(), state.getUri(), state.getStatus(), duration, responseBody);
         } finally {
             cleanupMdc(state);
         }
