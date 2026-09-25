@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 
+import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.ext.InterceptorContext;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;

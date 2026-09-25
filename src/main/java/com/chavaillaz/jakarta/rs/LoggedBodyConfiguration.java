@@ -1,7 +1,7 @@
 package com.chavaillaz.jakarta.rs;
 
-import static com.chavaillaz.jakarta.rs.CaptureBuffer.checkLimit;
-import static com.chavaillaz.jakarta.rs.LoggedBodyCapture.NO_LIMIT;
+import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
+import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.checkLimit;
 import static java.util.Objects.requireNonNull;
 
 import java.util.Set;

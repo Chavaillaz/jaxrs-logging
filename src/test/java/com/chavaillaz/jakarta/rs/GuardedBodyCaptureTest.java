@@ -1,6 +1,6 @@
 package com.chavaillaz.jakarta.rs;
 
-import static com.chavaillaz.jakarta.rs.LoggedBodyCapture.NO_LIMIT;
+import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
 import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN_TYPE;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -13,6 +13,7 @@ import java.io.OutputStream;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;

@@ -1,6 +1,6 @@
-package com.chavaillaz.jakarta.rs;
+package com.chavaillaz.jakarta.rs.capture;
 
-import static com.chavaillaz.jakarta.rs.LoggedBodyCapture.NO_LIMIT;
+import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;

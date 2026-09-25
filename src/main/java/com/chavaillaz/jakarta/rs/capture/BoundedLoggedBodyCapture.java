@@ -1,4 +1,4 @@
-package com.chavaillaz.jakarta.rs;
+package com.chavaillaz.jakarta.rs.capture;
 
 import static java.lang.Math.ceil;
 import static java.lang.Math.max;

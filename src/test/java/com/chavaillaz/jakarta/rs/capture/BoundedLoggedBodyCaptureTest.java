@@ -1,8 +1,8 @@
-package com.chavaillaz.jakarta.rs;
+package com.chavaillaz.jakarta.rs.capture;
 
-import static com.chavaillaz.jakarta.rs.BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER;
-import static com.chavaillaz.jakarta.rs.BoundedLoggedBodyCapture.TRUNCATION_MARKER;
-import static com.chavaillaz.jakarta.rs.LoggedBodyCapture.NO_LIMIT;
+import static com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER;
+import static com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture.TRUNCATION_MARKER;
+import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON_TYPE;
 import static jakarta.ws.rs.core.MediaType.APPLICATION_OCTET_STREAM_TYPE;
 import static jakarta.ws.rs.core.MediaType.APPLICATION_XML_TYPE;
@@ -22,6 +22,7 @@ import java.lang.management.ManagementFactory;
 import java.nio.charset.Charset;
 import java.util.Set;
 
+import com.chavaillaz.jakarta.rs.SensitiveBodyFilter;
 import com.chavaillaz.jakarta.rs.filter.JsonMaskingBodyFilter;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import com.chavaillaz.jakarta.rs.filter.RegexMaskingBodyFilter;

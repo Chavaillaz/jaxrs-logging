@@ -1,8 +1,11 @@
-package com.chavaillaz.jakarta.rs;
+package com.chavaillaz.jakarta.rs.capture;
 
 import java.io.OutputStream;
 import java.util.Set;
 
+import com.chavaillaz.jakarta.rs.LoggedBody;
+import com.chavaillaz.jakarta.rs.LoggedClientFilter;
+import com.chavaillaz.jakarta.rs.LoggedFilterConfiguration;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import jakarta.ws.rs.core.MediaType;
 
@@ -26,6 +29,20 @@ public interface LoggedBodyCapture extends AutoCloseable {
      * Limit meaning that a capture keeps the whole body, however large, see {@link LoggedBody#limit()}.
      */
     int NO_LIMIT = -1;
+
+    /**
+     * Checks the given limit, which is valid when it is {@link #NO_LIMIT} or a number of bytes.
+     *
+     * @param limit The limit to check
+     * @return The limit, valid
+     * @throws IllegalArgumentException if the limit is lower than {@link #NO_LIMIT}
+     */
+    static int checkLimit(int limit) {
+        if (limit < NO_LIMIT) {
+            throw new IllegalArgumentException("Limit must be -1 (unlimited) or a positive value, but was " + limit);
+        }
+        return limit;
+    }
 
     /**
      * Gets the output stream receiving a copy of every byte of the request or response body, once each, as

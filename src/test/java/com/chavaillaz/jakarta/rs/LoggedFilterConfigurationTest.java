@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.Arrays;
 
+import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext;
 import org.jboss.resteasy.mock.MockHttpRequest;

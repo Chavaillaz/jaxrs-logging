@@ -1,6 +1,7 @@
-package com.chavaillaz.jakarta.rs;
+package com.chavaillaz.jakarta.rs.capture;
 
-import static com.chavaillaz.jakarta.rs.LoggedBodyCapture.NO_LIMIT;
+import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
+import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.checkLimit;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
 import static java.util.Objects.checkFromIndexSize;
@@ -81,21 +82,6 @@ final class CaptureBuffer extends OutputStream {
         this.resize = resize;
         this.capacityLimit = limit == NO_LIMIT ? maxCapacity : min(limit, maxCapacity);
         this.bytes = new byte[min(capacityLimit, INITIAL_CAPACITY)];
-    }
-
-    /**
-     * Checks the given limit, which is valid when it is {@link LoggedBodyCapture#NO_LIMIT} or a number of
-     * bytes.
-     *
-     * @param limit The limit to check
-     * @return The limit, valid
-     * @throws IllegalArgumentException if the limit is lower than {@link LoggedBodyCapture#NO_LIMIT}
-     */
-    static int checkLimit(int limit) {
-        if (limit < NO_LIMIT) {
-            throw new IllegalArgumentException("Limit must be -1 (unlimited) or a positive value, but was " + limit);
-        }
-        return limit;
     }
 
     @Override

@@ -1,9 +1,9 @@
 package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.LOG;
-import static com.chavaillaz.jakarta.rs.LoggedBodyCapture.NO_LIMIT;
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedSupport.levelOf;
+import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
 import static com.chavaillaz.jakarta.rs.filter.MaskingBodyFilter.DEFAULT_MASK;
 import static jakarta.ws.rs.RuntimeType.CLIENT;
 import static java.lang.System.nanoTime;
@@ -26,6 +26,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
+import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
+import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import jakarta.annotation.Priority;
 import jakarta.ws.rs.ConstrainedTo;
@@ -313,7 +315,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
          * @throws IllegalArgumentException if the limit is lower than {@code -1}
          */
         private static int checkLimit(int limit) {
-            return CaptureBuffer.checkLimit(limit);
+            return LoggedBodyCapture.checkLimit(limit);
         }
 
         /**
