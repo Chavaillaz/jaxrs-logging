@@ -28,6 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
@@ -62,6 +63,7 @@ import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ResourceInfo;
+import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.ext.InterceptorContext;
 import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
@@ -1395,6 +1397,47 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         // Then: the body was read from the capture, and the capture released afterwards
         assertNotNull(listAppender.findFirstMessage("Received"));
+        assertTrue(closed.get());
+    }
+
+    @Test
+    @DisplayName("Check a body too large to render with the memory available is left out without failing the request")
+    void checkBodyTooLargeToRenderLeftOut() throws Exception {
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+
+        // Given: a capture whose rendering needs more memory than the heap has left
+        AtomicBoolean closed = new AtomicBoolean();
+        LoggedFilter capturingFilter = filterWith(LoggedFilterConfiguration.builder()
+                .bodyCapture(limit -> new BoundedLoggedBodyCapture(limit) {
+
+                    @Override
+                    public String content(Set<LoggedBodyFilter> filters, MediaType mediaType) {
+                        throw new OutOfMemoryError("Java heap space");
+                    }
+
+                    @Override
+                    public void close() {
+                        closed.set(true);
+                    }
+
+                })
+                .build());
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ReaderInterceptorContext requestInterceptorContext = readerContext(
+                requestContext, requestContext.getEntityStream(),
+                InputStream::readAllBytes);
+        capturingFilter.filter(requestContext);
+
+        // When: an error escaping would be rethrown by JUnit as unrecoverable, crashing the whole test run
+        try {
+            capturingFilter.aroundReadFrom(requestInterceptorContext);
+        } catch (OutOfMemoryError e) {
+            fail("Rendering the body failed the request", e);
+        }
+
+        // Then: the body is left out, and the capture released all the same
+        assertEquals(List.of(), getReceivedMessages());
+        assertNotNull(listAppender.findFirstMessage(BodyCapturer.MEMORY_FAILURE));
         assertTrue(closed.get());
     }
 

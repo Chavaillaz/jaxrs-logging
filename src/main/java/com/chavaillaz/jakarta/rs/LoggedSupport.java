@@ -86,7 +86,7 @@ public final class LoggedSupport {
      * @param message The message to report the failure with
      * @param failure The failure to report
      */
-    static void report(Logger log, String message, Exception failure) {
+    static void report(Logger log, String message, Throwable failure) {
         try {
             log.error(message, failure);
         } catch (Exception ignored) {

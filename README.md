@@ -102,7 +102,9 @@ two of them on a method log its bodies, while a single one silently does not.
 Be careful when activating any body logging, as it may produce performance or memory issues if the body size
 is not limited: the captured body is buffered in memory, so an endpoint accepting large (or client-controlled)
 payloads should always set a `limit`. A body cut short by that limit ends with `...[truncated]`, so a partial
-payload is never mistaken for what the application actually sent or received.
+payload is never mistaken for what the application actually sent or received. Without a limit, a body is cut
+the same way where the heap has no room for more of it, and one too large to be rendered with the memory left
+is left out of the logs: logging it fails neither way the request it only observes.
 
 A body whose content type is not text-based (for example `application/octet-stream`, `application/pdf` or
 an `image/*`/`multipart/*` type) is logged as a lowercase hexadecimal string instead of being decoded as

@@ -45,6 +45,11 @@ final class BodyCapturer {
      */
     static final String RENDERING_FAILURE = "Unable to log the captured body or to release the capture, the exchange itself is left unaffected";
 
+    /**
+     * Message reporting a body that was captured but is too large to be rendered with the memory available.
+     */
+    static final String MEMORY_FAILURE = "Unable to render the captured body with the memory available, it is left out of the logs, the exchange itself is left unaffected";
+
     private final Logger log;
     private final IntFunction<LoggedBodyCapture> captures;
 
@@ -142,6 +147,11 @@ final class BodyCapturer {
      * Hands the body the given capture rendered over to the given handler, then releases the capture,
      * reporting anything either of them throws: whatever a capture was given to hold the body with, it gets
      * back here, once, and whether or not rendering what it collected worked.
+     * <p>
+     * Rendering a body takes about as much memory again as capturing it did, which the heap may not have
+     * for a large one - one its capture was cut short for lack of memory, typically. Only that allocation
+     * fails, so the body is left out of the logs, as it would be if a filter had failed on it, rather than
+     * the error escaping to fail the exchange.
      *
      * @param capture       The capture to read from and release, {@code null} if none could be put in place
      * @param configuration The body logging configuration of the entity
@@ -155,6 +165,8 @@ final class BodyCapturer {
         safely(log, RENDERING_FAILURE, () -> {
             try {
                 handler.accept(capture.content(configuration.filters(), context.getMediaType()));
+            } catch (OutOfMemoryError e) {
+                report(log, MEMORY_FAILURE, e);
             } finally {
                 capture.close();
             }

@@ -13,6 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
@@ -498,6 +499,33 @@ class LoggedClientFilterTest extends AbstractFilterTest {
 
         // Then
         assertNull(listAppender.findFirstMessage("Request body"));
+        assertTrue(capture.closed);
+    }
+
+    @Test
+    @DisplayName("Check a body too large to render with the memory available is left out without failing the call")
+    void checkBodyTooLargeToRenderLeftOut() throws Exception {
+        // Given: a capture whose rendering needs more memory than the heap has left
+        filter.filter(requestContext);
+        ReleasingBodyCapture capture = new ReleasingBodyCapture() {
+
+            @Override
+            public String content(Set<LoggedBodyFilter> filters, MediaType mediaType) {
+                throw new OutOfMemoryError("Java heap space");
+            }
+
+        };
+
+        // When: an error escaping would be rethrown by JUnit as unrecoverable, crashing the whole test run
+        try {
+            capturingFilter(capture).captureRequestBody(writerContext(properties, "Hello, world!"));
+        } catch (OutOfMemoryError e) {
+            fail("Rendering the body failed the call", e);
+        }
+
+        // Then
+        assertNull(listAppender.findFirstMessage("Request body"));
+        assertNotNull(listAppender.findFirstMessage(BodyCapturer.MEMORY_FAILURE));
         assertTrue(capture.closed);
     }
 
