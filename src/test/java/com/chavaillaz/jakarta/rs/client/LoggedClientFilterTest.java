@@ -276,6 +276,32 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check a call the level override fails for is still logged, at its default level")
+    void checkResponseLevelFailing() {
+        // Given
+        LoggedClientFilter levelling = new LoggedClientFilter() {
+
+            @Override
+            protected Level getResponseLevel(int status) {
+                throw new IllegalStateException("No level for " + status);
+            }
+
+        };
+        ClientResponseContext responseContext = mock(ClientResponseContext.class);
+        doReturn(503).when(responseContext).getStatus();
+
+        // When
+        levelling.filter(requestContext);
+        levelling.filter(requestContext, responseContext);
+
+        // Then: the failure is reported, and the line logged all the same
+        LogEvent event = listAppender.findFirstMessage("Called");
+        assertNotNull(event, "No Called line was logged");
+        assertEquals(Level.ERROR.name(), event.getLevel().name());
+        assertNotNull(listAppender.findFirstMessage("Unable to get the level of the client call"));
+    }
+
+    @Test
     @DisplayName("Check the request body is not captured when request body logging is not activated")
     void checkRequestBodyNotCapturedByDefault() throws Exception {
         // Given

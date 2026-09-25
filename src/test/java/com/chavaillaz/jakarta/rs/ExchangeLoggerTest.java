@@ -2,6 +2,7 @@ package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import jakarta.ws.rs.core.MultivaluedHashMap;
@@ -63,6 +64,27 @@ class ExchangeLoggerTest extends AbstractFilterTest {
 
         assertEquals("Processed GET /articles/42 with status 404 in 3ms\n{\"error\": \"Not found\"}", lastMessage());
         assertEquals("INFO", lastEvent().getLevel().name());
+    }
+
+    @Test
+    @DisplayName("Check an answered request is logged at its default level when the level function fails")
+    void checkProcessedFailingLevel() {
+        // Given
+        ExchangeLogger logger = logger(LoggedFilterConfiguration.builder()
+                .responseLevel(status -> {
+                    throw new IllegalStateException("No level for " + status);
+                })
+                .build());
+
+        // When
+        logger.processed("GET", "/articles", 503, 7, "");
+
+        // Then: the failure is reported, and the line logged all the same
+        LogEvent processed = listAppender.findFirstMessage("Processed");
+        assertNotNull(processed, "No Processed line was logged");
+        assertEquals("Processed GET /articles with status 503 in 7ms", processed.getMessage().getFormattedMessage());
+        assertEquals("ERROR", processed.getLevel().name());
+        assertNotNull(listAppender.findFirstMessage("Unable to get the level of the request"));
     }
 
     @Test

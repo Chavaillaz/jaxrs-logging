@@ -8,6 +8,9 @@ import jakarta.ws.rs.core.MultivaluedMap;
 
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
+import org.slf4j.event.Level;
+
+import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
 
 /**
  * Writes the lines {@link LoggedFilter} logs an exchange with - {@code Received ...} once a request is read,
@@ -47,6 +50,9 @@ final class ExchangeLogger {
      * Logs a request answered, with the body of the response on the following lines if it has one, at the
      * level the configuration gives to its status (see
      * {@link LoggedFilterConfiguration.Builder#responseLevel(java.util.function.IntFunction)}).
+     * <p>
+     * A level function of the application failing costs the line its level - the default one of the status
+     * is used instead - rather than the line itself.
      *
      * @param method   The method of the request, {@code null} if unknown
      * @param uri      The URI of the request, {@code null} if unknown
@@ -55,7 +61,9 @@ final class ExchangeLogger {
      * @param body     The body of the response, blank if it is not logged
      */
     void processed(@Nullable String method, @Nullable String uri, int status, long duration, String body) {
-        log.atLevel(configuration.responseLevel(status))
+        Level level = LoggingGuard.safely(log, "Unable to get the level of the request, its default one is used instead",
+                () -> configuration.responseLevel(status), LoggedSupport.levelOf(status));
+        log.atLevel(level)
                 .log("Processed {} {} with status {} in {}ms{}{}", method, uri, status, duration, isNotBlank(body) ? LF : EMPTY, body);
     }
 

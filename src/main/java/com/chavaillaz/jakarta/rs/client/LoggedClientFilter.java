@@ -505,7 +505,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
             long duration = NANOSECONDS.toMillis(now - start);
             int status = responseContext.getStatus();
 
-            log.atLevel(requireNonNullElseGet(getResponseLevel(status), () -> levelOf(status)))
+            log.atLevel(responseLevel(status))
                     .log("Called {} {} with status {} in {}ms",
                             requestContext.getMethod(),
                             getLoggedUri(requestContext.getUri()),
@@ -523,6 +523,20 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      */
     protected @Nullable Level getResponseLevel(int status) {
         return levelOf(status);
+    }
+
+    /**
+     * Gets the level a call answered with the given status is logged at: the one
+     * {@link #getResponseLevel(int)} gives, or the default one of the status when it gives none - or fails,
+     * which costs the line its level rather than the line itself.
+     *
+     * @param status The status of the response received
+     * @return The level to log the call at
+     */
+    private Level responseLevel(int status) {
+        Level level = LoggingGuard.safely(log, "Unable to get the level of the client call, its default one is used instead",
+                () -> getResponseLevel(status), null);
+        return level == null ? levelOf(status) : level;
     }
 
     /**
