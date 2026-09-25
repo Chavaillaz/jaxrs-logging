@@ -1,9 +1,5 @@
 package com.chavaillaz.jakarta.rs;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.stream.Stream;
-
 /**
  * List of context fields to be written in MDC by {@link LoggedFilter}, under the default names given here
  * unless its configuration renames them (see {@link LoggedFilterConfiguration.Builder#fieldName(LoggedField, String)}).
@@ -69,21 +65,6 @@ public enum LoggedField {
      */
     LoggedField(String defaultField) {
         this.defaultField = defaultField;
-    }
-
-    /**
-     * Gets a {@link Map} with the enumeration name as key and the default field name as value.
-     *
-     * @return The corresponding {@link Map}
-     * @deprecated No longer used by this library, whose field names are configured: see
-     * {@link LoggedFilterConfiguration#fieldName(LoggedField)} for the name a provider actually uses, and
-     * {@link #getDefaultField()} for the default name of a field.
-     */
-    @Deprecated(since = "4.0", forRemoval = true)
-    public static Map<String, String> getDefaultFields() {
-        Map<String, String> map = new HashMap<>();
-        Stream.of(LoggedField.values()).forEach(entry -> map.put(entry.name(), entry.getDefaultField()));
-        return map;
     }
 
     /**
