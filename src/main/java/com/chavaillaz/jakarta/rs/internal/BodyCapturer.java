@@ -1,12 +1,15 @@
-package com.chavaillaz.jakarta.rs;
+package com.chavaillaz.jakarta.rs.internal;
 
-import static com.chavaillaz.jakarta.rs.LoggedSupport.report;
-import static com.chavaillaz.jakarta.rs.LoggedSupport.safely;
+import static com.chavaillaz.jakarta.rs.internal.LoggingGuard.report;
+import static com.chavaillaz.jakarta.rs.internal.LoggingGuard.safely;
 
 import java.io.IOException;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 
+import com.chavaillaz.jakarta.rs.LoggedClientFilter;
+import com.chavaillaz.jakarta.rs.LoggedFilter;
+import com.chavaillaz.jakarta.rs.LoggedFilterConfiguration;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.ext.InterceptorContext;
@@ -33,23 +36,23 @@ import org.slf4j.Logger;
  *     {@link GuardedBodyCapture}.</li>
  * </ul>
  */
-final class BodyCapturer {
+public final class BodyCapturer {
 
     /**
      * Message reporting a body that could not be captured.
      */
-    static final String CAPTURE_FAILURE = "Unable to capture the body, it is left out of the logs, the exchange itself is left unaffected";
+    public static final String CAPTURE_FAILURE = "Unable to capture the body, it is left out of the logs, the exchange itself is left unaffected";
 
     /**
      * Message reporting a body that was captured but could not be rendered, or a capture that could not be
      * released.
      */
-    static final String RENDERING_FAILURE = "Unable to log the captured body or to release the capture, the exchange itself is left unaffected";
+    public static final String RENDERING_FAILURE = "Unable to log the captured body or to release the capture, the exchange itself is left unaffected";
 
     /**
      * Message reporting a body that was captured but is too large to be rendered with the memory available.
      */
-    static final String MEMORY_FAILURE = "Unable to render the captured body with the memory available, it is left out of the logs, the exchange itself is left unaffected";
+    public static final String MEMORY_FAILURE = "Unable to render the captured body with the memory available, it is left out of the logs, the exchange itself is left unaffected";
 
     private final Logger log;
     private final IntFunction<LoggedBodyCapture> captures;
@@ -60,7 +63,7 @@ final class BodyCapturer {
      * @param log      The logger of the provider capturing, to report a failure on
      * @param captures The creation of a capture keeping at most the given number of bytes
      */
-    BodyCapturer(Logger log, IntFunction<LoggedBodyCapture> captures) {
+    public BodyCapturer(Logger log, IntFunction<LoggedBodyCapture> captures) {
         this.log = log;
         this.captures = captures;
     }
@@ -76,7 +79,7 @@ final class BodyCapturer {
      * @throws IOException             if an IO error arises while reading the entity
      * @throws WebApplicationException if the entity cannot be read
      */
-    Object read(ReaderInterceptorContext context, LoggedBodyConfiguration configuration, Consumer<String> handler) throws IOException, WebApplicationException {
+    public Object read(ReaderInterceptorContext context, LoggedBodyConfiguration configuration, Consumer<String> handler) throws IOException, WebApplicationException {
         if (!configuration.isActive()) {
             return context.proceed();
         }
@@ -102,7 +105,7 @@ final class BodyCapturer {
      * @throws IOException             if an IO error arises while writing the entity
      * @throws WebApplicationException if the entity cannot be written
      */
-    void write(WriterInterceptorContext context, LoggedBodyConfiguration configuration, Consumer<String> handler) throws IOException, WebApplicationException {
+    public void write(WriterInterceptorContext context, LoggedBodyConfiguration configuration, Consumer<String> handler) throws IOException, WebApplicationException {
         if (!configuration.isActive()) {
             context.proceed();
             return;

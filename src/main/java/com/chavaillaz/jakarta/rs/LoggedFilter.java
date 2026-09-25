@@ -26,6 +26,10 @@ import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
 import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
 import com.chavaillaz.jakarta.rs.LoggedResolver.BodyConfiguration;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
+import com.chavaillaz.jakarta.rs.internal.BodyCapturer;
+import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
+import com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory;
+import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
 import jakarta.annotation.Priority;
 import jakarta.ws.rs.ConstrainedTo;
 import jakarta.ws.rs.Priorities;
@@ -215,12 +219,12 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     /**
      * Runs the given logging action, swallowing anything it throws, so that logging a request can never
-     * be the reason it fails. See {@link LoggedSupport#safely(Logger, String, Runnable)}.
+     * be the reason it fails. See {@link LoggingGuard#safely(Logger, String, Runnable)}.
      *
      * @param action The logging action to run
      */
     private void safely(Runnable action) {
-        LoggedSupport.safely(log, "Unable to log the request or response, the exchange itself is left unaffected", action);
+        LoggingGuard.safely(log, "Unable to log the request or response, the exchange itself is left unaffected", action);
     }
 
     /**
@@ -240,7 +244,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         if (!isLoggingEnabled() || (state != null && state.isCompleted())) {
             return LoggedBodyConfiguration.NONE;
         }
-        return LoggedSupport.safely(log, BodyCapturer.CAPTURE_FAILURE, () -> getBodyConfiguration(state, target), LoggedBodyConfiguration.NONE);
+        return LoggingGuard.safely(log, BodyCapturer.CAPTURE_FAILURE, () -> getBodyConfiguration(state, target), LoggedBodyConfiguration.NONE);
     }
 
     /**
@@ -282,7 +286,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     private void putMdcFromRequest(ContainerRequestContext requestContext) {
         // A strategy of the application failing costs the request its identifier, which is then generated,
         // rather than every field describing it
-        String requestId = LoggedSupport.safely(log, "Unable to get the identifier of the request, a random one is used instead",
+        String requestId = LoggingGuard.safely(log, "Unable to get the identifier of the request, a random one is used instead",
                 () -> configuration.requestIdOf(requestContext), null);
         describer.describe(requestContext, resourceInfo, requestId, this::putMdc);
     }

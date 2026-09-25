@@ -1,4 +1,4 @@
-package com.chavaillaz.jakarta.rs;
+package com.chavaillaz.jakarta.rs.internal;
 
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.checkLimit;
@@ -7,6 +7,9 @@ import static java.util.Objects.requireNonNull;
 import java.util.Set;
 
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
+import com.chavaillaz.jakarta.rs.LoggedBody;
+import com.chavaillaz.jakarta.rs.LoggedClientFilter;
+import com.chavaillaz.jakarta.rs.LoggedResolver;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
 /**

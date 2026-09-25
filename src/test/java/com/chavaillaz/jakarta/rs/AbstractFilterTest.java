@@ -14,7 +14,7 @@ public abstract class AbstractFilterTest {
     protected static final InMemoryAppender listAppender = InMemoryAppender.createDefaultAppender();
 
     @BeforeAll
-    static void registerListAppender() {
+    protected static void registerListAppender() {
         LoggerContext loggerContext = (LoggerContext) LogManager.getContext(false);
         Configuration configuration = loggerContext.getConfiguration();
         LoggerConfig rootLoggerConfig = configuration.getLoggerConfig("");
@@ -23,7 +23,7 @@ public abstract class AbstractFilterTest {
     }
 
     @BeforeEach
-    void setupTest() throws Exception {
+    protected void setupTest() throws Exception {
         MDC.clear();
         listAppender.getMessages().clear();
         listAppender.start();

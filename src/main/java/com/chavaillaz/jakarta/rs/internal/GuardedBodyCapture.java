@@ -1,11 +1,12 @@
-package com.chavaillaz.jakarta.rs;
+package com.chavaillaz.jakarta.rs.internal;
 
-import static com.chavaillaz.jakarta.rs.LoggedSupport.report;
+import static com.chavaillaz.jakarta.rs.internal.LoggingGuard.report;
 
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.Set;
 
+import com.chavaillaz.jakarta.rs.LoggedFilterConfiguration;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import jakarta.ws.rs.core.MediaType;

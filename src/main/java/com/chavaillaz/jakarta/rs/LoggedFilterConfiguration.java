@@ -18,6 +18,7 @@ import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
 import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
+import com.chavaillaz.jakarta.rs.internal.CredentialNames;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.core.MultivaluedMap;
 import org.slf4j.event.Level;

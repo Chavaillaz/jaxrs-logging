@@ -1,4 +1,4 @@
-package com.chavaillaz.jakarta.rs;
+package com.chavaillaz.jakarta.rs.internal;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;

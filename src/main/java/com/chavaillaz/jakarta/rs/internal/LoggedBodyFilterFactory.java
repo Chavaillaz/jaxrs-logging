@@ -1,4 +1,4 @@
-package com.chavaillaz.jakarta.rs;
+package com.chavaillaz.jakarta.rs.internal;
 
 import static com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER;
 import static java.util.Arrays.asList;
@@ -10,6 +10,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import com.chavaillaz.jakarta.rs.LoggedClientFilter;
+import com.chavaillaz.jakarta.rs.LoggedFilter;
 import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import org.slf4j.Logger;

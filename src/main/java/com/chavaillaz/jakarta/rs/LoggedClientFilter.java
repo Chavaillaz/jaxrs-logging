@@ -29,6 +29,11 @@ import java.util.Set;
 import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
+import com.chavaillaz.jakarta.rs.internal.BodyCapturer;
+import com.chavaillaz.jakarta.rs.internal.CredentialNames;
+import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
+import com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory;
+import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
 import jakarta.annotation.Priority;
 import jakarta.ws.rs.ConstrainedTo;
 import jakarta.ws.rs.Priorities;
@@ -593,13 +598,13 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     }
 
     /**
-     * Runs the given logging action, swallowing anything it throws, so that logging a call can never be
-     * the reason it fails. See {@link LoggedSupport#safely(Logger, String, Runnable)}.
+     * Runs the given logging action, reporting anything it throws on the logger of this provider and
+     * swallowing it, so that logging a call can never be the reason it fails.
      *
      * @param action The logging action to run
      */
     protected void safely(Runnable action) {
-        LoggedSupport.safely(log, "Unable to log the client call, the call itself is left unaffected", action);
+        LoggingGuard.safely(log, "Unable to log the client call, the call itself is left unaffected", action);
     }
 
     /**

@@ -232,7 +232,7 @@ the request.
 Automatic mapping never copies a credential-carrying header (`Authorization`, `Cookie`, `X-Api-Key`, ...)
 into MDC, as `auto = true` is a blanket "map whatever the client sent" instruction and is otherwise an easy
 way to end up with bearer tokens and session cookies permanently stored in a log aggregator. The exact list
-is in [CredentialNames](src/main/java/com/chavaillaz/jakarta/rs/CredentialNames.java); extend or restrict
+is in [CredentialNames](src/main/java/com/chavaillaz/jakarta/rs/internal/CredentialNames.java); extend or restrict
 it with `sensitiveParameters` in the [configuration](#configuration). An explicit mapping naming a header
 is a deliberate decision and is left alone.
 
@@ -244,7 +244,7 @@ practice and well known as such, and it is also what OAuth's implicit and author
 presigned URLs and plenty of internal APIs do - the application has no say in what its callers send.
 
 The value of a parameter whose name is a well-known credential name (`access_token`, `password`,
-`client_secret`, the `X-Amz-Signature` of a presigned URL, ... see [CredentialNames](src/main/java/com/chavaillaz/jakarta/rs/CredentialNames.java))
+`client_secret`, the `X-Amz-Signature` of a presigned URL, ... see [CredentialNames](src/main/java/com/chavaillaz/jakarta/rs/internal/CredentialNames.java))
 is therefore replaced with `***`, while the name stays visible - knowing a token was supplied at all is
 the useful part for troubleshooting, and the name is not the secret:
 

@@ -1,4 +1,4 @@
-package com.chavaillaz.jakarta.rs;
+package com.chavaillaz.jakarta.rs.internal;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.Set;
 
+import com.chavaillaz.jakarta.rs.SensitiveBodyFilter;
 import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import org.junit.jupiter.api.DisplayName;

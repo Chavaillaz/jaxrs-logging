@@ -63,6 +63,8 @@ import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
 import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
+import com.chavaillaz.jakarta.rs.internal.BodyCapturer;
+import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ResourceInfo;
 import jakarta.ws.rs.core.MediaType;

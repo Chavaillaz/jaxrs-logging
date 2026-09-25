@@ -35,6 +35,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
+import com.chavaillaz.jakarta.rs.internal.BodyCapturer;
 import jakarta.ws.rs.client.ClientRequestContext;
 import jakarta.ws.rs.client.ClientResponseContext;
 import jakarta.ws.rs.core.FeatureContext;

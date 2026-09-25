@@ -1,4 +1,4 @@
-package com.chavaillaz.jakarta.rs;
+package com.chavaillaz.jakarta.rs.internal;
 
 import static java.lang.Math.min;
 

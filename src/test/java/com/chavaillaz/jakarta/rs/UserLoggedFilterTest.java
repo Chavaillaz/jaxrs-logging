@@ -36,7 +36,7 @@ class UserLoggedFilterTest extends AbstractFilterTest {
 
     @Override
     @BeforeEach
-    void setupTest() throws Exception {
+    protected void setupTest() throws Exception {
         super.setupTest();
         Class<?> type = AnnotatedResource.class;
         doReturn(type).when(resourceInfo).getResourceClass();
