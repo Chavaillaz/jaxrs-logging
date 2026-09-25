@@ -28,9 +28,6 @@ import org.jspecify.annotations.Nullable;
  * Every decision about a body - whether it is captured, how it is filtered, where it is logged - stays with
  * the {@link LoggedFilter} handling the request, which this provider calls back. An application registering
  * its providers explicitly and forgetting this one therefore loses the bodies, not the log lines.
- *
- * @see LoggedFilter#captureRequestBody(ReaderInterceptorContext)
- * @see LoggedFilter#captureResponseBody(WriterInterceptorContext)
  */
 @Logged
 @Provider

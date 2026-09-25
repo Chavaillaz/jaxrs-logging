@@ -165,7 +165,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     /**
      * Puts a diagnostic context value identified by the given key into the current thread's context map,
      * recording the entry against the request whose entries this thread carries, so it is removed once that
-     * request has been fully processed (see {@link RequestMdc}).
+     * request has been fully processed, whichever thread completes it.
      * <p>
      * Every MDC entry set by this provider, or a subclass extending it, should go through this method
      * (or the {@link #putMdc(LoggedField, String)} overload) rather than {@link MDC#put(String, String)}
@@ -339,7 +339,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * Logs the {@code "Received ..."} line with the body captured, even when reading the entity failed.
      * Most JAX-RS implementations only call this when the resource method reads the entity: when it does not,
      * the line is logged without a body by {@link #filter(ContainerRequestContext, ContainerResponseContext)}
-     * instead (see {@link LoggedRequestState#isRequestLogged()}).
+     * instead.
      */
     @Override
     public @Nullable Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {

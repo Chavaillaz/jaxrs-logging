@@ -30,9 +30,9 @@ import java.lang.annotation.Target;
 public @interface Logged {
 
     /**
-     * Body logging configuration for requests and/or responses.
+     * Body logging configurations for requests and/or responses, none logging no body at all.
      *
-     * @return The request logging configuration
+     * @return The body logging configurations
      */
     LoggedBody[] value() default {};
 

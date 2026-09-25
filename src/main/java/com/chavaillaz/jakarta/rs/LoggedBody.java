@@ -34,12 +34,11 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 public @interface LoggedBody {
 
     /**
-     * Indicates how the request or response body must be logged.
+     * Indicates how the request or response body must be logged, none logging no body at all.
      * <p>
-     * Do not activate it when expecting large payloads to avoid any performance or memory issue.
-     * <p>
-     * Note that for {@link LogType#MDC} on the request, the body will be stored in the request context
-     * in order to be retrieved and stored as MDC when logging the processing log line.
+     * A body is captured in memory by default, and a request body logged as {@link LogType#MDC} is kept until
+     * the request completes, to be put in MDC for its {@code "Processed ..."} line: set a {@link #limit()} for
+     * a resource accepting or returning large payloads.
      *
      * @return The types of logging to be done
      */

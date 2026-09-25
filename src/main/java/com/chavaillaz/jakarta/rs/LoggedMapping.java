@@ -28,9 +28,9 @@ import java.lang.annotation.Target;
 public @interface LoggedMapping {
 
     /**
-     * Type of field to be mapped to the given MDC key.
+     * Type of the parameters to map.
      *
-     * @return The type of mapping
+     * @return The type of the parameters
      */
     MappingType type();
 
@@ -60,8 +60,8 @@ public @interface LoggedMapping {
     String mdcPrefix() default "";
 
     /**
-     * MDC key to which map any of the parameter names of the defined type.
-     * Can be empty to ignore the mapping for the given parameters.
+     * MDC key the first of the named parameters the request carries is mapped to, after {@link #mdcPrefix()}.
+     * Left empty, the named parameters are not mapped at all, not even by an automatic mapping.
      *
      * @return The MDC key
      */
@@ -75,7 +75,7 @@ public @interface LoggedMapping {
     String[] paramNames() default {};
 
     /**
-     * Type of fields to be mapped.
+     * Type of the parameters of a request a mapping reads.
      */
     enum MappingType {
 

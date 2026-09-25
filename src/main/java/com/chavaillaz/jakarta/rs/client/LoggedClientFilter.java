@@ -451,9 +451,10 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      * Indicates whether the value of the query parameter of the given name must be kept out of the logs,
      * see {@link #getLoggedUri(URI)}.
      * <p>
-     * The defaults come from {@link CredentialNames}, which only knows what callers conventionally name
-     * their secrets. Override to extend (or restrict) them for the services an application calls, for
-     * example to also mask the key a partner API expects in its query string:
+     * The default reports the names callers conventionally give their secrets, the way
+     * {@link LoggedFilterConfiguration#isCredential} does for the query parameters a server receives.
+     * Override to extend (or restrict) them for the services an application calls, for example to also
+     * mask the key a partner API expects in its query string:
      * <pre>{@code
      * @Override
      * protected boolean isSensitiveQueryParameter(String name) {

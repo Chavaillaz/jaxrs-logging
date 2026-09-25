@@ -95,8 +95,10 @@ public final class LoggedFilterConfiguration {
 
     /**
      * Indicates whether the value of the given parameter carries a credential by the conventions callers
-     * follow to name one, as listed by {@link CredentialNames}: the default of
-     * {@link Builder#sensitiveParameters(BiPredicate)}, to compose with when extending it.
+     * follow to name one - {@code Authorization}, {@code Cookie} or {@code X-Api-Key} for a header,
+     * {@code access_token}, {@code password} or {@code client_secret} for a query parameter, among others,
+     * whatever their casing: the default of {@link Builder#sensitiveParameters(BiPredicate)}, to compose
+     * with when extending it.
      * <p>
      * Path parameters are never reported: their names are chosen by the application itself, not by whoever
      * calls it, so there is no equivalent list of names that "just happen" to carry a credential.
