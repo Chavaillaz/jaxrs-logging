@@ -46,7 +46,9 @@ public class InMemoryAppender extends AbstractAppender {
 
     @Override
     public void append(LogEvent event) {
-        getMessages().add(event);
+        // Copied, as Log4j reuses the instance it hands over for the next event logged on the thread unless
+        // it takes the application for a web one - which it does whenever the Servlet API is at hand
+        getMessages().add(event.toImmutable());
     }
 
     /**
