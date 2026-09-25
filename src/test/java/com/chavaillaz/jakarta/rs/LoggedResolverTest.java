@@ -94,8 +94,8 @@ class LoggedResolverTest {
     void checkBothDirectionsConfiguration() throws Exception {
         setup("bothMethod");
 
-        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo, REQUEST);
-        LoggedBodyConfiguration response = resolver.getBodyConfiguration(resourceInfo, RESPONSE);
+        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo).of(REQUEST);
+        LoggedBodyConfiguration response = resolver.getBodyConfiguration(resourceInfo).of(RESPONSE);
 
         assertTrue(request.isActive());
         assertEquals(request, response);
@@ -106,8 +106,8 @@ class LoggedResolverTest {
     void checkRequestOnlyConfiguration() throws Exception {
         setup("requestOnlyMethod");
 
-        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo, REQUEST);
-        LoggedBodyConfiguration response = resolver.getBodyConfiguration(resourceInfo, RESPONSE);
+        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo).of(REQUEST);
+        LoggedBodyConfiguration response = resolver.getBodyConfiguration(resourceInfo).of(RESPONSE);
 
         assertEquals(Set.of(LOG), request.types());
         assertFalse(response.isActive());
@@ -118,8 +118,8 @@ class LoggedResolverTest {
     void checkResponseOnlyConfiguration() throws Exception {
         setup("responseOnlyMethod");
 
-        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo, REQUEST);
-        LoggedBodyConfiguration response = resolver.getBodyConfiguration(resourceInfo, RESPONSE);
+        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo).of(REQUEST);
+        LoggedBodyConfiguration response = resolver.getBodyConfiguration(resourceInfo).of(RESPONSE);
 
         assertFalse(request.isActive());
         assertEquals(Set.of(LOG), response.types());
@@ -131,8 +131,8 @@ class LoggedResolverTest {
         // Recognized by the number of directions it listed, it applied to neither, without a word
         setup("repeatedTargetMethod");
 
-        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo, REQUEST);
-        LoggedBodyConfiguration response = resolver.getBodyConfiguration(resourceInfo, RESPONSE);
+        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo).of(REQUEST);
+        LoggedBodyConfiguration response = resolver.getBodyConfiguration(resourceInfo).of(RESPONSE);
 
         assertEquals(Set.of(LOG), request.types());
         assertFalse(response.isActive());
@@ -146,7 +146,7 @@ class LoggedResolverTest {
         // targeting both
         setup(methodName);
 
-        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo, REQUEST);
+        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo).of(REQUEST);
 
         assertEquals(Set.of(LOG), request.types());
     }
@@ -156,8 +156,8 @@ class LoggedResolverTest {
     void checkBodyConfigurationCaching() throws Exception {
         setup("bothMethod");
 
-        resolver.getBodyConfiguration(resourceInfo, REQUEST);
-        resolver.getBodyConfiguration(resourceInfo, RESPONSE);
+        resolver.getBodyConfiguration(resourceInfo).of(REQUEST);
+        resolver.getBodyConfiguration(resourceInfo).of(RESPONSE);
 
         assertEquals(1, resolver.bodyConfigurationCache.size());
     }
@@ -268,8 +268,8 @@ class LoggedResolverTest {
     void checkNullResourceMethodBodyConfiguration() {
         doReturn(null).when(resourceInfo).getResourceMethod();
 
-        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo, REQUEST);
-        LoggedBodyConfiguration response = resolver.getBodyConfiguration(resourceInfo, RESPONSE);
+        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo).of(REQUEST);
+        LoggedBodyConfiguration response = resolver.getBodyConfiguration(resourceInfo).of(RESPONSE);
 
         assertFalse(request.isActive());
         assertFalse(response.isActive());
@@ -299,8 +299,8 @@ class LoggedResolverTest {
         ResourceInfo second = resourceInfo(OtherSharedInterfaceResource.class);
 
         // When
-        LoggedBodyConfiguration firstConfiguration = resolver.getBodyConfiguration(first, REQUEST);
-        LoggedBodyConfiguration secondConfiguration = resolver.getBodyConfiguration(second, REQUEST);
+        LoggedBodyConfiguration firstConfiguration = resolver.getBodyConfiguration(first).of(REQUEST);
+        LoggedBodyConfiguration secondConfiguration = resolver.getBodyConfiguration(second).of(REQUEST);
 
         // Then: each class gets its own configuration instead of the first one resolved winning for both
         assertEquals(Set.of(MDC), firstConfiguration.types());

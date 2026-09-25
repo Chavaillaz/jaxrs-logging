@@ -122,8 +122,7 @@ final class LoggedResolver {
     }
 
     /**
-     * Creates a resolver instantiating body filters through the given factory, so a provider already
-     * owning one (see {@link LoggedFilter#bodyFilterFactory}) shares its instances with this resolver.
+     * Creates a resolver instantiating body filters through the given factory.
      *
      * @param bodyFilterFactory The factory to instantiate body filter classes with
      */
@@ -176,29 +175,13 @@ final class LoggedResolver {
     }
 
     /**
-     * Gets the body logging configuration for the given target (request or response) of the resource
-     * method matched by the given resource.
-     * If multiple configurations are defined, the one specifically targeting the given target is used.
-     * Otherwise, the configuration targeting both request and response is used if present. Among several
-     * as specific as one another, the first one declared is used (see {@link #findAnnotation}).
-     * <p>
-     * Both directions are resolved and cached together the first time either is requested for a given
-     * resource, as reflection-based annotation lookups are expensive to repeat on every request.
-     *
-     * @param resourceInfo The instance to access resource class and method
-     * @param target       The target for which to find the body logging configuration
-     * @return The body logging configuration, or {@link LoggedBodyConfiguration#NONE} if none applies
-     */
-    LoggedBodyConfiguration getBodyConfiguration(ResourceInfo resourceInfo, Direction target) {
-        return getBodyConfiguration(resourceInfo).of(target);
-    }
-
-    /**
      * Gets the body logging configuration for both directions of the resource method matched by the
-     * given resource, resolving and caching them together the first time either is requested.
+     * given resource, resolving and caching them together the first time either is requested, as
+     * reflection-based annotation lookups are expensive to repeat on every request.
      * <p>
-     * Preferred by a caller needing the configuration more than once for the same request, which can then
-     * look it up - and call the (usually proxied) {@link ResourceInfo} - once rather than per direction.
+     * For each direction, a configuration specifically targeting it is used if there is one, and one
+     * targeting both request and response otherwise. Among several as specific as one another, the first
+     * one declared is used (see {@link #findAnnotation}).
      *
      * @param resourceInfo The instance to access resource class and method
      * @return The body logging configuration of both directions, never {@code null}

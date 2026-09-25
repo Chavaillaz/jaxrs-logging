@@ -47,7 +47,6 @@ import com.chavaillaz.jakarta.rs.client.LoggedClientFilter;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import com.chavaillaz.jakarta.rs.internal.BodyCapturer;
 import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
-import com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory;
 import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
 
 /**
@@ -100,15 +99,11 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected final LoggedFilterConfiguration configuration;
 
     /**
-     * Instantiates and caches {@link LoggedBodyFilter} instances by class.
-     */
-    private final LoggedBodyFilterFactory bodyFilterFactory = new LoggedBodyFilterFactory();
-
-    /**
      * Resolves which {@link LoggedMapping} and {@link LoggedBody} configuration applies to the resource
-     * method matched by the current request, caching results per resource.
+     * method matched by the current request, caching results per resource, along with the
+     * {@link LoggedBodyFilter} instances it names.
      */
-    final LoggedResolver resolver = new LoggedResolver(bodyFilterFactory);
+    final LoggedResolver resolver = new LoggedResolver();
 
     /**
      * Provides access to the resource class and method matched by the current request.
