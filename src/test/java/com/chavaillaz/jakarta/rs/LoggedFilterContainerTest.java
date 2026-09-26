@@ -270,6 +270,21 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check a request is logged with its MDC entries even once the application cleared MDC")
+    void checkEntriesLoggedIndependentOfMdcCleared() throws Exception {
+        // When
+        MockHttpResponse response = invoke(MockHttpRequest.get("/clearing").header(REQUEST_ID_HEADER, "abc-123"));
+
+        // Then: the line completing the request can still be correlated with the other lines of it
+        assertEquals(200, response.getStatus());
+        LogEvent event = processed();
+        assertEquals("abc-123", event.getContextData().getValue("request-id"));
+        assertEquals("/clearing", event.getContextData().getValue("request-uri"));
+        Map<String, String> left = MDC.getCopyOfContextMap();
+        assertTrue(left == null || left.isEmpty(), () -> "Left in MDC: " + left);
+    }
+
+    @Test
     @DisplayName("Check the identifier of a request is returned even once the application cleared MDC")
     void checkRequestIdReturnedIndependentOfMdcCleared() throws Exception {
         // When

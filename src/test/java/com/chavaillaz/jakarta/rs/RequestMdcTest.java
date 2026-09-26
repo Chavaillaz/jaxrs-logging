@@ -90,6 +90,25 @@ class RequestMdcTest {
     }
 
     @Test
+    @DisplayName("Check a callback of a request has its entries back once the application cleared MDC")
+    void checkEntriesReinstatedOnceCleared() {
+        // Given: the application clearing MDC while serving the request, then putting its own entries
+        LoggedRequestState request = request();
+        mdc.start(request);
+        mdc.put(REQUEST_ID, "abc-123");
+        MDC.clear();
+        MDC.put("application-key", "kept");
+
+        // When
+        AtomicReference<String> seen = new AtomicReference<>();
+        mdc.onBehalfOf(request, () -> seen.set(mdc.get(REQUEST_ID)));
+
+        // Then
+        assertEquals("abc-123", seen.get());
+        assertEquals("kept", MDC.get("application-key"));
+    }
+
+    @Test
     @DisplayName("Check starting a request sweeps what a previous one left on the thread")
     void checkStartSweepsPreviousRequest() {
         // Given: a request that completed elsewhere, leaving its entries on this thread

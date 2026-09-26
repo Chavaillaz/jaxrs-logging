@@ -191,6 +191,10 @@ final class RequestMdc {
      * The thread that carried a request already completed is lent its entries all the same, as a later
      * callback of that request would otherwise leave on it whatever it puts. A thread lent the entries is
      * handed back carrying what it did before, context map included.
+     * <p>
+     * The thread carrying the request has its entries put back if they are gone: the application may have
+     * cleared its context map while serving the request, with its own entries in mind, which would leave the
+     * lines completing the request with nothing to correlate them with the others.
      *
      * @param state  The state of the request to act on behalf of
      * @param action The action to run
@@ -200,6 +204,7 @@ final class RequestMdc {
         Map<String, String> previous = threadEntries.get();
         if (previous == entries && !state.isCompleted()) {
             // The thread carries the request, still in progress
+            reinstate(entries);
             action.run();
             return;
         }
@@ -217,6 +222,20 @@ final class RequestMdc {
                 threadEntries.set(previous);
             }
         }
+    }
+
+    /**
+     * Puts back in the current thread's context map the given entries of a request it no longer holds as
+     * they were put, leaving alone those it still does, which is all of them in the common case.
+     *
+     * @param entries The entries recorded for the request
+     */
+    private static void reinstate(Map<String, String> entries) {
+        entries.forEach((key, value) -> {
+            if (!value.equals(MDC.get(key))) {
+                MDC.put(key, value);
+            }
+        });
     }
 
     /**
