@@ -538,7 +538,9 @@ A container instantiates a provider through its no-argument constructor, so pass
 constructor of a subclass:
 
 ```java
+@Logged
 @Provider
+@Priority(Priorities.HEADER_DECORATOR - 1)
 public class ApplicationLoggedFilter extends LoggedFilter {
 
     public ApplicationLoggedFilter() {
@@ -551,6 +553,12 @@ public class ApplicationLoggedFilter extends LoggedFilter {
 
 }
 ```
+
+Neither `@Logged` nor `@Priority` is inherited, so the subclass declares both: without `@Logged`, it would log
+the requests of every resource, annotated or not, and without `@Priority`, it would run among the filters of
+your application (at `Priorities.USER`) rather than before them. Its priority is one less than the one of
+`LoggedFilter`, as a container scanning the jars it deploys for providers registers `LoggedFilter` as well: a
+request is logged once, by the first of them to see it, which is then the subclass.
 
 An application registering its providers explicitly can pass it to `new LoggedFilter(configuration)` instead.
 

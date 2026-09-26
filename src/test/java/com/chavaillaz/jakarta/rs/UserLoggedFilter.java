@@ -2,13 +2,23 @@ package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.getAnnotation;
+import static jakarta.ws.rs.Priorities.HEADER_DECORATOR;
 
+import jakarta.annotation.Priority;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.ext.Provider;
 
+/**
+ * Example of a subclass putting entries of its own in MDC, bound to an annotation of its own.
+ * <p>
+ * Neither the binding nor the priority of {@link LoggedFilter} being inherited, it declares both, its
+ * priority running it before a {@link LoggedFilter} bound to the same resources, so it is the one logging
+ * their requests.
+ */
 @Provider
 @UserLogged
+@Priority(HEADER_DECORATOR - 1)
 public class UserLoggedFilter extends LoggedFilter {
 
     protected static final String REQUEST_IDENTIFIER = "request-identifier";

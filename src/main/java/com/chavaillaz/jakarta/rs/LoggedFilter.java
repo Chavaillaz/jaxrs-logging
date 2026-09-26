@@ -68,15 +68,19 @@ import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
  * status (see {@link LoggedFilterConfiguration.Builder#responseLevel(java.util.function.IntFunction)}), with
  * the status, the duration and - if {@link LoggedBody} asks for them - the bodies in {@link MDC} as well.
  * <p>
- * Its low priority ({@link Priorities#HEADER_DECORATOR}) runs its filters first on the request and last on
- * the response, so the {@link MDC} entries it puts cover the other providers; a subclass can declare a
- * {@link Priority} of its own. Bodies are captured by {@link LoggedBodyInterceptor} instead, whose priority
- * places it after any entity coder, so it captures the entity rather than its transfer encoding: an
- * application registering its providers explicitly registers both.
+ * Its priority, {@link Priorities#HEADER_DECORATOR}, runs its request filter after the authentication and
+ * authorization filters but before those of the application, which default to {@link Priorities#USER}, and
+ * its response filter the other way round, so the {@link MDC} entries it puts cover the filters of the
+ * application. Bodies are captured by {@link LoggedBodyInterceptor} instead, whose priority places it after
+ * any entity coder, so it captures the entity rather than its transfer encoding: an application registering
+ * its providers explicitly registers both.
  * <p>
  * A request is logged once, by the first {@code LoggedFilter} to see it, however many of them are bound to
- * its resource - this class, which the container discovers in this library, and a subclass of the
- * application, typically: the others stand aside.
+ * its resource: the others stand aside. A subclass - configuring this one, as
+ * {@link LoggedFilterConfiguration} shows, or putting entries of its own - therefore declares both its
+ * binding and a priority running it before this class, which the container may discover in this library, as
+ * neither {@link Logged} nor {@link Priority} is inherited: a subclass declaring neither logs the requests of
+ * every resource, and runs at {@link Priorities#USER}.
  * <p>
  * The configuration resolved from the annotations of a resource method, and the body filters it names, are
  * cached for the lifetime of the provider, which suits the fixed set of resources of an application but not

@@ -31,9 +31,12 @@ import com.chavaillaz.jakarta.rs.internal.CredentialNames;
  * logs a request at, and how it captures bodies.
  * <p>
  * Immutable, and built through {@link #builder()}. A container instantiates a provider through its
- * no-argument constructor, so a subclass passes its configuration from there:
+ * no-argument constructor, so a subclass passes its configuration from there, declaring its binding and a
+ * priority running it before a {@link LoggedFilter} the container may discover next to it (see there why):
  * <pre>{@code
+ * @Logged
  * @Provider
+ * @Priority(Priorities.HEADER_DECORATOR - 1)
  * public class ApplicationLoggedFilter extends LoggedFilter {
  *
  *     public ApplicationLoggedFilter() {
