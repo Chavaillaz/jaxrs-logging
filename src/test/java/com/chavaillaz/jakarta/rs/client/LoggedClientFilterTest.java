@@ -11,7 +11,6 @@ import static org.apache.commons.lang3.StringUtils.LF;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -19,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -27,7 +27,9 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
 import jakarta.ws.rs.client.ClientRequestContext;
+import jakarta.ws.rs.client.ClientRequestFilter;
 import jakarta.ws.rs.client.ClientResponseContext;
+import jakarta.ws.rs.client.ClientResponseFilter;
 import jakarta.ws.rs.core.FeatureContext;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.MultivaluedHashMap;
@@ -599,14 +601,79 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         boolean enabled = bodyLoggingFilter.configure(featureContext);
 
         // Then: a single client.register(...) keeps covering bodies, which the interceptor hands back
-        ArgumentCaptor<Object> registered = ArgumentCaptor.forClass(Object.class);
-        verify(featureContext).register(registered.capture());
-        LoggedClientFilter.BodyInterceptor interceptor = assertInstanceOf(LoggedClientFilter.BodyInterceptor.class, registered.getValue());
+        LoggedClientFilter.BodyInterceptor interceptor = registered(featureContext, LoggedClientFilter.BodyInterceptor.class);
         interceptor.aroundWriteTo(writerContext(properties, "Hello, world!"));
         interceptor.aroundReadFrom(readerContext("Received content"));
         assertTrue(enabled);
         assertNotNull(listAppender.findFirstMessage("Request body"));
         assertNotNull(listAppender.findFirstMessage("Response body"));
+    }
+
+    /**
+     * Gets the component of the given type a feature registered on the given context.
+     *
+     * @param featureContext The context the feature was configured with
+     * @param type           The type of the component to get
+     * @param <T>            The type of the component
+     * @return The component registered
+     */
+    static <T> T registered(FeatureContext featureContext, Class<T> type) {
+        ArgumentCaptor<Object> registered = ArgumentCaptor.forClass(Object.class);
+        verify(featureContext, atLeastOnce()).register(registered.capture());
+        return type.cast(registered.getAllValues().stream()
+                .filter(type::isInstance)
+                .findFirst()
+                .orElseGet(() -> fail("No " + type.getSimpleName() + " registered")));
+    }
+
+    long lines(String start) {
+        return listAppender.getMessages().stream()
+                .filter(event -> event.getMessage().getFormattedMessage().startsWith(start))
+                .count();
+    }
+
+    @Test
+    @DisplayName("Check a runtime registering the filter as a feature alone has its calls logged all the same")
+    void checkCallsLoggedWhenRegisteredAsFeatureAlone() {
+        // Given: what Apache CXF registers of the filter, a feature and nothing more
+        FeatureContext featureContext = mock(FeatureContext.class);
+        filter.configure(featureContext);
+        ClientRequestFilter requestFilter = registered(featureContext, ClientRequestFilter.class);
+        ClientResponseFilter responseFilter = registered(featureContext, ClientResponseFilter.class);
+        ClientResponseContext responseContext = mock(ClientResponseContext.class);
+        doReturn(200).when(responseContext).getStatus();
+        MDC.put("request-id", "abc-123");
+
+        // When
+        assertDoesNotThrow(() -> requestFilter.filter(requestContext));
+        assertDoesNotThrow(() -> responseFilter.filter(requestContext, responseContext));
+
+        // Then
+        assertEquals("abc-123", headers.getFirst(REQUEST_ID_HEADER));
+        assertEquals(1, lines("Calling"));
+        assertEquals(1, lines("Called"));
+    }
+
+    @Test
+    @DisplayName("Check a runtime registering the filter both as a filter and as a feature has each call logged once")
+    void checkCallsLoggedOnceWhenRegisteredTwice() throws IOException {
+        // Given: what Jersey and RESTEasy register of the filter, itself and what it registers as a feature
+        FeatureContext featureContext = mock(FeatureContext.class);
+        filter.configure(featureContext);
+        ClientRequestFilter requestFilter = registered(featureContext, ClientRequestFilter.class);
+        ClientResponseFilter responseFilter = registered(featureContext, ClientResponseFilter.class);
+        ClientResponseContext responseContext = mock(ClientResponseContext.class);
+        doReturn(200).when(responseContext).getStatus();
+
+        // When
+        filter.filter(requestContext);
+        requestFilter.filter(requestContext);
+        responseFilter.filter(requestContext, responseContext);
+        filter.filter(requestContext, responseContext);
+
+        // Then
+        assertEquals(1, lines("Calling"));
+        assertEquals(1, lines("Called"));
     }
 
     @Test
