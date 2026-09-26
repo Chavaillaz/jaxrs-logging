@@ -362,4 +362,14 @@ final class LoggedRequestState {
         this.responseBody = responseBody;
     }
 
+    /**
+     * Releases the bodies captured for this request, logged once it completes: this state lives as long as
+     * the request does, which a response written in parts - an event stream, a chunked output - keeps open
+     * long after its {@code "Processed ..."} line.
+     */
+    void releaseBodies() {
+        requestBody = null;
+        responseBody = null;
+    }
+
 }

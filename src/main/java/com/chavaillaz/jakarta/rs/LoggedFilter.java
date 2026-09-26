@@ -565,7 +565,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     /**
      * Logs the response sent by the server and completes the request (see
-     * {@link LoggedRequestState#markCompleted()}), removing its MDC entries.
+     * {@link LoggedRequestState#markCompleted()}), removing its MDC entries and releasing its bodies (see
+     * {@link LoggedRequestState#releaseBodies()}).
      * <p>
      * This is the single completion point of a request: idempotent, so the callbacks that can reach it do not
      * log the request twice, and unconditional, so its MDC entries are removed whatever else applies to it.
@@ -590,6 +591,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             exchangeLogger.processed(state.getMethod(), state.getUri(), state.getStatus(), duration, responseBody);
         } finally {
             cleanupMdc(state);
+            state.releaseBodies();
         }
     }
 

@@ -341,6 +341,31 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check the bodies of a request are released once it is logged, the request possibly outliving it")
+    void checkBodiesReleasedOnceLogged() throws Exception {
+        setupTest(AnnotatedResource.class, "bodyAsMdcAndLog");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ReaderInterceptorContext requestInterceptorContext = readerContext(requestContext, requestContext.getEntityStream(), InputStream::readAllBytes);
+        ContainerResponseContextImpl responseContext = getResponseContext(requestContext);
+        WriterInterceptorContext responseInterceptorContext = writerContext(requestContext, output -> output.write(OUTPUT.getBytes(UTF_8)));
+
+        // When
+        loggingFilter.filter(requestContext);
+        loggingFilter.aroundReadFrom(requestInterceptorContext);
+        loggingFilter.filter(requestContext, responseContext);
+        loggingFilter.aroundWriteTo(responseInterceptorContext);
+
+        // Then: logged with both of them, which the state of the request, kept along with it, no longer holds
+        assertEquals(INPUT, getMdcLogged(REQUEST_BODY));
+        assertEquals(OUTPUT, getMdcLogged(RESPONSE_BODY));
+        LoggedRequestState state = LoggedRequestState.find(requestContext);
+        assertNull(state.getRequestBody());
+        assertNull(state.getResponseBody());
+    }
+
+    @Test
     @DisplayName("Check body logging configuration is resolved once per resource method and cached")
     void checkBodyConfigurationCaching() throws Exception {
         setupTest(AnnotatedResource.class, "bodyAsMdc");
