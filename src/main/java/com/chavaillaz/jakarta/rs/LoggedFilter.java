@@ -286,14 +286,14 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * Guarded like the rest of the capture setup (see {@link BodyCapturer}): it runs before the entity is read
      * or written, which a configuration that cannot be resolved must not prevent.
      *
-     * @param state  The state of the request, or {@code null} if this provider never saw it start
+     * @param state  The state of the request
      * @param target The direction of the body about to be read or written
      * @return The configuration to capture the body with, never {@code null}
      */
-    private LoggedBodyConfiguration getCaptureConfiguration(@Nullable LoggedRequestState state, Direction target) {
+    private LoggedBodyConfiguration getCaptureConfiguration(LoggedRequestState state, Direction target) {
         // A request already completed has had its "Processed ..." line logged, so nothing captured from now
         // on - the later parts of a chunked or event stream response - could ever be logged
-        if (!isLoggingEnabled() || (state != null && state.isCompleted())) {
+        if (!isLoggingEnabled() || state.isCompleted()) {
             return LoggedBodyConfiguration.NONE;
         }
         return LoggingGuard.safely(log, CAPTURE_FAILURE, () -> getBodyConfiguration(state, target), LoggedBodyConfiguration.NONE);
@@ -477,7 +477,10 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         } finally {
             safely(() -> {
                 LoggedRequestState state = handledState(context);
-                String body = state == null ? null : state.getRequestBody();
+                if (state == null) {
+                    return;
+                }
+                String body = state.getRequestBody();
                 if (isNotBlank(body) && getBodyConfiguration(state, REQUEST).logs(LOG)) {
                     logRequest(state, body);
                 }
@@ -653,8 +656,12 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      */
     void captureResponseBody(WriterInterceptorContext context) throws IOException, WebApplicationException {
         LoggedRequestState state = LoggedRequestState.find(context);
-        // The state is only read once a body was captured, which the configuration rules out without one
-        setup().bodyCapturer().write(context, getCaptureConfiguration(state, RESPONSE), body -> state.setResponseBody(body));
+        if (state == null) {
+            // Nowhere to keep a body captured, which LoggedBodyInterceptor only asks for with a state
+            context.proceed();
+            return;
+        }
+        setup().bodyCapturer().write(context, getCaptureConfiguration(state, RESPONSE), state::setResponseBody);
     }
 
     /**
@@ -697,16 +704,11 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * first time it is asked for and reusing that result for the rest of the request afterwards (see
      * {@link LoggedRequestState#getBodyConfiguration()}).
      *
-     * @param state  The state of the request, or {@code null} if this provider never saw it start
+     * @param state  The state of the request
      * @param target The target for which to find the body logging configuration
-     * @return The body logging configuration, {@link LoggedBodyConfiguration#NONE} for a request without
-     * state, never {@code null}
+     * @return The body logging configuration, never {@code null}
      */
-    LoggedBodyConfiguration getBodyConfiguration(@Nullable LoggedRequestState state, Direction target) {
-        if (state == null) {
-            // Nowhere to keep the resolved configuration, and nowhere to keep a body captured with it either
-            return LoggedBodyConfiguration.NONE;
-        }
+    LoggedBodyConfiguration getBodyConfiguration(LoggedRequestState state, Direction target) {
         BodyConfiguration resolved = state.getBodyConfiguration();
         if (resolved == null) {
             resolved = resolver.getBodyConfiguration(resourceInfo);
