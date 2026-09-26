@@ -26,8 +26,9 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
  * <p>
  * The sink also stops receiving anything once the capture is released, as the entity stream can outlive it:
  * an entity read as a stream - an {@code InputStream} parameter of a resource method, a client response read
- * as one - is only read once the interceptors are done with it, and its body, rendered empty by then, would
- * otherwise go on filling a capture nobody reads again, up to the whole of an upload.
+ * as one - has its body handed over once the stream ends, or once its request is answered if it never does,
+ * and whatever is read of it afterwards would otherwise go on filling a capture nobody reads again, up to the
+ * rest of an upload.
  *
  * @see BodyCapturer
  */

@@ -17,7 +17,9 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
  * <p>
  * An instance is meant to be used once, for a single request or response body: {@link #sink()} receives a
  * copy of the body while it is being read or written, {@link #content(Set)} is called once that is done to
- * retrieve what was captured, and {@link #close()} releases whatever the capture held.
+ * retrieve what was captured, and {@link #close()} releases whatever the capture held. For a body the
+ * application reads as a stream once the providers are done with it, that is once the stream ends - or once
+ * its request is answered, if it never does - possibly on another thread than the one that read it.
  * <p>
  * This is the extension point for the mechanics of body capture itself (bounded in-memory buffering by
  * default, see {@link BoundedLoggedBodyCapture}), as opposed to {@link LoggedBodyFilter}, which only

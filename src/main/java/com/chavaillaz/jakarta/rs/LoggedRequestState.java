@@ -129,6 +129,12 @@ final class LoggedRequestState {
     private volatile @Nullable String responseBody;
 
     /**
+     * Handing over of the request body the resource method reads as a stream, which sets
+     * {@link #requestBody} once the stream ends, or once this runs it, whichever comes first.
+     */
+    private volatile @Nullable Runnable streamedRequestBody;
+
+    /**
      * Creates the state of a request handled by the given provider, starting its duration measurement.
      *
      * @param provider The provider handling the request
@@ -363,6 +369,27 @@ final class LoggedRequestState {
     }
 
     /**
+     * Records the handing over of the request body the resource method reads as a stream, see
+     * {@link #streamedRequestBody}.
+     *
+     * @param handOver The handing over of the request body, which runs once, whatever runs it first
+     */
+    void setStreamedRequestBody(Runnable handOver) {
+        this.streamedRequestBody = handOver;
+    }
+
+    /**
+     * Has the request body the resource method reads as a stream handed over, as far as it read it, if the
+     * stream has not ended already: its request is being answered, and the lines logging it are due.
+     */
+    void endStreamedRequestBody() {
+        Runnable handOver = streamedRequestBody;
+        if (handOver != null) {
+            handOver.run();
+        }
+    }
+
+    /**
      * Releases the bodies captured for this request, logged once it completes: this state lives as long as
      * the request does, which a response written in parts - an event stream, a chunked output - keeps open
      * long after its {@code "Processed ..."} line.
@@ -370,6 +397,7 @@ final class LoggedRequestState {
     void releaseBodies() {
         requestBody = null;
         responseBody = null;
+        streamedRequestBody = null;
     }
 
 }

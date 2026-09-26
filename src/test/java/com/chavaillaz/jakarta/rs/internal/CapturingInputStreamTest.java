@@ -11,6 +11,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PushbackInputStream;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -22,8 +23,13 @@ class CapturingInputStreamTest {
 
     final ByteArrayOutputStream capture = new ByteArrayOutputStream();
 
+    /**
+     * Number of times the stream told the body ended.
+     */
+    final AtomicInteger endings = new AtomicInteger();
+
     InputStream capturing(InputStream entity) {
-        return new CapturingInputStream(entity, capture);
+        return new CapturingInputStream(entity, capture, endings::incrementAndGet);
     }
 
     static InputStream entity() {
@@ -47,6 +53,41 @@ class CapturingInputStreamTest {
         // Then
         assertEquals(BODY, read);
         assertEquals(BODY, captured());
+    }
+
+    @Test
+    @DisplayName("Check the body is told ended once read to its end, whether in chunks or byte by byte")
+    void checkEndingOnceRead() throws IOException {
+        // Given
+        InputStream chunked = capturing(entity());
+        InputStream byteByByte = capturing(entity());
+
+        // When
+        readRest(chunked);
+        int reads = 0;
+        while (byteByByte.read() >= 0) {
+            reads++;
+        }
+
+        // Then
+        assertEquals(BODY.length(), reads);
+        assertEquals(2, endings.get());
+    }
+
+    @Test
+    @DisplayName("Check the body is told ended once the stream is closed, and not while it is still being read")
+    void checkEndingOnceClosed() throws IOException {
+        // Given
+        InputStream stream = capturing(entity());
+
+        // When: read in part, then left as it is
+        stream.readNBytes(5);
+
+        // Then
+        assertEquals(0, endings.get());
+        stream.close();
+        assertEquals(1, endings.get());
+        assertEquals(BODY.substring(0, 5), captured());
     }
 
     @Test

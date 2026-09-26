@@ -589,7 +589,9 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      * its body never logged.
      * <p>
      * A buffered entity can be read any number of times, each read going through the interceptors again: a
-     * body already logged for the call (see {@link #RESPONSE_BODY_LOGGED_PROPERTY}) is not logged again.
+     * body already logged for the call (see {@link #RESPONSE_BODY_LOGGED_PROPERTY}) is not logged again. An
+     * entity read as a stream ({@code response.readEntity(InputStream.class)}) is only read once this returns:
+     * its body is logged once the calling code read that stream to its end, or closed it.
      *
      * @param context The context of the entity being read
      * @return The entity read
@@ -608,6 +610,8 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
                         LF,
                         body);
             }
+        }, handOver -> {
+            // Nothing marks the end of a call: a response read as a stream is logged once that stream ends
         });
     }
 

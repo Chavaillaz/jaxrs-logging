@@ -127,8 +127,9 @@ the same way where the heap has no room for more of it, and one too large to be 
 is left out of the logs: logging it fails neither way the request it only observes.
 
 A body is captured while its entity is read or written, which a resource method taking it as a stream (an
-`InputStream` or a `Reader` parameter) only does once the providers are done with it: such a body is not
-logged, and nothing of it is buffered either.
+`InputStream` or a `Reader` parameter) does once the providers are done with it: such a body is logged once the
+method read it to its end or closed it, and at the latest once the request is answered, as far as the method
+read it - so set a `limit` for a resource taking large uploads that way, as for any other.
 
 A body whose content type is not text-based (for example `application/octet-stream`, `application/pdf` or
 an `image/*`/`multipart/*` type) is logged as a lowercase hexadecimal string instead of being decoded as
@@ -440,7 +441,7 @@ two: the response body is only available if/when the calling code actually reads
 may happen after (or not at all after) the `Called ...` line, so there is no single point to merge them into,
 unlike the server-side filter.
 A response read as a stream (`readEntity(InputStream.class)`) is read once the providers are done with it,
-and its body is not logged.
+and its body logged once the calling code read that stream to its end, or closed it.
 
 For the same reason, only logging the body as a new log line is supported, not adding it to MDC: on the server
 side, `@LoggedBody(MDC)` works because `LoggedFilter` has a single, well-defined point (`logResponse`) at which

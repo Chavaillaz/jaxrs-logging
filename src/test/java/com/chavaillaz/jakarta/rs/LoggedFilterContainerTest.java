@@ -10,7 +10,6 @@ import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_URI;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
-import static jakarta.ws.rs.core.MediaType.APPLICATION_OCTET_STREAM;
 import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.commons.lang3.StringUtils.LF;
@@ -37,8 +36,11 @@ import jakarta.ws.rs.ext.Provider;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.Reader;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.logging.log4j.core.LogEvent;
@@ -85,6 +87,7 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
         dispatcher.getRegistry().addPerRequestResource(MappedResource.class);
         dispatcher.getRegistry().addPerRequestResource(PlainResource.class);
         dispatcher.getRegistry().addPerRequestResource(ConcreteResource.class);
+        dispatcher.getRegistry().addPerRequestResource(UploadResource.class);
     }
 
     /**
@@ -298,24 +301,53 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check a body the resource reads as a stream is not buffered once its capture is released")
-    void checkStreamedBodyNotBuffered() throws Exception {
-        // Given: a capture counting what reaches it once released, as a body logged without limit
+    @DisplayName("Check a body the resource reads as a stream is logged once read, and its capture released")
+    void checkStreamedBodyLogged() throws Exception {
+        // Given: captures counting what reaches them once released
         AtomicLong bytesAfterRelease = new AtomicLong();
+        AtomicInteger releases = new AtomicInteger();
         Dispatcher streaming = dispatcherWith(LoggedFilterConfiguration.builder()
-                .bodyCapture(limit -> new ReleaseTrackingCapture(limit, bytesAfterRelease))
+                .bodyCapture(limit -> new ReleaseTrackingCapture(limit, bytesAfterRelease, releases))
                 .build(), UploadResource.class);
 
         // When: the resource method reads its entity once the interceptors are done with it
         MockHttpResponse response = invoke(streaming, MockHttpRequest.post("/upload")
-                .contentType(APPLICATION_OCTET_STREAM)
-                .content(new byte[100_000]));
+                .contentType(TEXT_PLAIN)
+                .content("hello".getBytes(UTF_8)));
 
-        // Then: the application reads the whole upload, none of which piles up in a capture nobody reads
+        // Then: logged as the resource method read it, from captures all released, which nothing reached after
         assertEquals(200, response.getStatus());
-        assertEquals("read 100000", response.getContentAsString());
+        assertEquals("read 5", response.getContentAsString());
+        assertEquals("Received POST /upload" + LF + "hello", received().getMessage().getFormattedMessage());
+        assertEquals(2, releases.get());
         assertEquals(0, bytesAfterRelease.get());
-        assertEquals("Received POST /upload", received().getMessage().getFormattedMessage());
+    }
+
+    @Test
+    @DisplayName("Check a body the resource reads in part as a stream is logged as far as it read it, once answered")
+    void checkStreamedBodyReadInPartLogged() throws Exception {
+        // When: the resource method reads the first bytes of its entity only, and leaves the stream open
+        MockHttpResponse response = invoke(MockHttpRequest.post("/upload/head")
+                .contentType(TEXT_PLAIN)
+                .content("hello world".getBytes(UTF_8)));
+
+        // Then
+        assertEquals(200, response.getStatus());
+        assertEquals("head hello", response.getContentAsString());
+        assertEquals("Received POST /upload/head" + LF + "hello", received().getMessage().getFormattedMessage());
+    }
+
+    @Test
+    @DisplayName("Check a body the resource reads through a reader is logged")
+    void checkBodyReadThroughReaderLogged() throws Exception {
+        // When
+        MockHttpResponse response = invoke(MockHttpRequest.post("/upload/text")
+                .contentType(TEXT_PLAIN)
+                .content("hello".getBytes(UTF_8)));
+
+        // Then
+        assertEquals(200, response.getStatus());
+        assertEquals("Received POST /upload/text" + LF + "hello", received().getMessage().getFormattedMessage());
     }
 
     @Test
@@ -511,10 +543,28 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
     public static class UploadResource {
 
         @POST
-        @Consumes(APPLICATION_OCTET_STREAM)
+        @Consumes(TEXT_PLAIN)
         @Produces(TEXT_PLAIN)
         public String upload(InputStream upload) throws IOException {
             return "read " + upload.readAllBytes().length;
+        }
+
+        @POST
+        @Path("/head")
+        @Consumes(TEXT_PLAIN)
+        @Produces(TEXT_PLAIN)
+        public String head(InputStream upload) throws IOException {
+            return "head " + new String(upload.readNBytes(5), UTF_8);
+        }
+
+        @POST
+        @Path("/text")
+        @Consumes(TEXT_PLAIN)
+        @Produces(TEXT_PLAIN)
+        public String text(Reader upload) throws IOException {
+            try (upload) {
+                return "text " + upload.read();
+            }
         }
 
     }
@@ -700,16 +750,18 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
     }
 
     /**
-     * In-memory capture counting the bytes its sink is given once it was released.
+     * In-memory capture counting the bytes its sink is given once it was released, and the captures released.
      */
     static final class ReleaseTrackingCapture extends BoundedLoggedBodyCapture {
 
         final AtomicLong bytesAfterRelease;
-        volatile boolean released;
+        final AtomicInteger releases;
+        final AtomicBoolean released = new AtomicBoolean();
 
-        ReleaseTrackingCapture(int limit, AtomicLong bytesAfterRelease) {
+        ReleaseTrackingCapture(int limit, AtomicLong bytesAfterRelease, AtomicInteger releases) {
             super(limit);
             this.bytesAfterRelease = bytesAfterRelease;
+            this.releases = releases;
         }
 
         @Override
@@ -724,7 +776,7 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
 
                 @Override
                 public void write(byte[] b, int off, int len) throws IOException {
-                    if (released) {
+                    if (released.get()) {
                         bytesAfterRelease.addAndGet(len);
                     }
                     sink.write(b, off, len);
@@ -735,7 +787,8 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
 
         @Override
         public void close() {
-            released = true;
+            released.set(true);
+            releases.incrementAndGet();
         }
 
     }

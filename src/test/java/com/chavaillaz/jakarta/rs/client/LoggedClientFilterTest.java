@@ -7,6 +7,7 @@ import static com.chavaillaz.jakarta.rs.internal.BodyCapturer.MEMORY_FAILURE;
 import static com.chavaillaz.jakarta.rs.internal.Sanitizer.REQUEST_ID_MAX_LENGTH;
 import static jakarta.ws.rs.HttpMethod.POST;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.apache.commons.lang3.StringUtils.LF;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -564,6 +565,25 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         LogEvent event = listAppender.findFirstMessage("Response body");
         assertNotNull(event);
         assertTrue(event.getMessage().getFormattedMessage().contains("Received content"));
+    }
+
+    @Test
+    @DisplayName("Check a response the calling code reads as a stream is logged once read to its end")
+    void checkStreamedResponseBodyLogged() throws Exception {
+        // Given: the entity stream handed over as it is, as for response.readEntity(InputStream.class)
+        LoggedClientFilter bodyLoggingFilter = LoggedClientFilter.builder().logResponseBody().build();
+        ReaderInterceptorContext context = readerContext("Received content");
+        doAnswer(invocation -> context.getInputStream()).when(context).proceed();
+
+        // When
+        InputStream entity = (InputStream) bodyLoggingFilter.captureResponseBody(context);
+
+        // Then: nothing is logged until the calling code read the stream
+        assertNull(listAppender.findFirstMessage("Response body"));
+        assertEquals("Received content", new String(entity.readAllBytes(), UTF_8));
+        LogEvent event = listAppender.findFirstMessage("Response body");
+        assertNotNull(event);
+        assertTrue(event.getMessage().getFormattedMessage().endsWith(LF + "Received content"));
     }
 
     @Test

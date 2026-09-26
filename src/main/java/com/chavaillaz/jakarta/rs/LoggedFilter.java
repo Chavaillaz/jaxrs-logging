@@ -467,7 +467,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * Logs the {@code "Received ..."} line with the body captured, even when reading the entity failed.
      * Most JAX-RS implementations only call this when the resource method reads the entity: when it does not,
      * the line is logged without a body by {@link #filter(ContainerRequestContext, ContainerResponseContext)}
-     * instead.
+     * instead, as it is when the resource method reads the entity as a stream, with as much of the body as the
+     * method read then.
      */
     @Override
     public @Nullable Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
@@ -489,6 +490,10 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * {@link LoggedRequestState#getRequestBody()} for {@link #aroundReadFrom(ReaderInterceptorContext)} and
      * {@link #logResponse(LoggedRequestState, String)} to log.
      * <p>
+     * An entity the resource method takes as a stream is only read once this returns: its body is stored once
+     * the stream ends, or once the response is described, with as much of it as the resource method read by
+     * then, and it is logged there (see {@link LoggedRequestState#endStreamedRequestBody()}).
+     * <p>
      * Called by {@link LoggedBodyInterceptor}, which runs after any entity coder, so what is captured is the
      * entity rather than its transfer encoding.
      *
@@ -499,8 +504,12 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      */
     @Nullable Object captureRequestBody(ReaderInterceptorContext context) throws IOException, WebApplicationException {
         LoggedRequestState state = LoggedRequestState.find(context);
-        // The state is only read once a body was captured, which the configuration rules out without one
-        return setup().bodyCapturer().read(context, getCaptureConfiguration(state, REQUEST), body -> state.setRequestBody(body));
+        if (state == null) {
+            // Nowhere to keep a body captured, which LoggedBodyInterceptor only asks for with a state
+            return context.proceed();
+        }
+        return setup().bodyCapturer().read(context, getCaptureConfiguration(state, REQUEST),
+                state::setRequestBody, state::setStreamedRequestBody);
     }
 
     /**
@@ -565,9 +574,11 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             // Kept first, for the request to be logged with its status whatever fails below
             state.setStatus(responseContext.getStatus());
 
-            // A request whose resource method never read its entity has not been logged yet
-            if (getBodyConfiguration(state, REQUEST).logs(LOG) && !state.isRequestLogged()) {
-                logRequest(state, EMPTY);
+            // A request whose resource method read its entity as a stream, or never read it, has not been
+            // logged yet: it is now, with as much of its body as the resource method read
+            state.endStreamedRequestBody();
+            if (getBodyConfiguration(state, REQUEST).logs(LOG)) {
+                logRequest(state, requireNonNullElse(state.getRequestBody(), EMPTY));
             }
 
             putMdc(RESPONSE_STATUS, valueOf(state.getStatus()));
@@ -666,6 +677,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         try {
             long duration = state.getElapsedMillis();
             putMdc(DURATION, valueOf(duration));
+            // Handed over when the response was described, unless that never happened
+            state.endStreamedRequestBody();
 
             if (getBodyConfiguration(state, REQUEST).logs(LogType.MDC)) {
                 putMdc(REQUEST_BODY, state.getRequestBody());

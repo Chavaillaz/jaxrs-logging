@@ -8,6 +8,10 @@ import jakarta.ws.rs.ext.InterceptorContext;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
 import jakarta.ws.rs.ext.WriterInterceptorContext;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.Reader;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 
@@ -73,27 +77,55 @@ public final class BodyCapturer {
     /**
      * Reads the entity of the given context, capturing its body along the way if the given configuration
      * logs it.
+     * <p>
+     * The body of an entity read as a stream - an {@link InputStream} or a {@link Reader} the application
+     * reads once the providers are done with it, as the parameter of a resource method or the entity of a
+     * client response - is handed over once that stream ends, read to its end or closed, and the body of any
+     * other entity once it is read. The handing over of a stream is given to the provider as well, for it to
+     * run once its exchange is done, if the stream has not ended by then: it hands over as much of the body
+     * as the application read, whatever it reads next going uncaptured.
      *
      * @param context       The context of the entity being read
      * @param configuration The body logging configuration of the entity
      * @param handler       What to do with the body captured, which is {@code null} when its capture failed
+     * @param streamed      What to do with the handing over of a body read as a stream, which runs once,
+     *                      whatever runs it first
      * @return The entity read
      * @throws IOException             if an IO error arises while reading the entity
      * @throws WebApplicationException if the entity cannot be read
      */
-    public @Nullable Object read(ReaderInterceptorContext context, LoggedBodyConfiguration configuration, Consumer<@Nullable String> handler) throws IOException, WebApplicationException {
+    public @Nullable Object read(ReaderInterceptorContext context, LoggedBodyConfiguration configuration, Consumer<@Nullable String> handler, Consumer<Runnable> streamed) throws IOException, WebApplicationException {
         if (!configuration.isActive()) {
             return context.proceed();
         }
 
-        LoggedBodyCapture capture = start(configuration,
-                started -> context.setInputStream(new CapturingInputStream(context.getInputStream(), started.sink())));
-        try {
+        // Made along with the capture it hands over, and run by whichever of the end of the stream, the end of
+        // the read and the end of the exchange gets there first
+        AtomicReference<@Nullable Runnable> handingOver = new AtomicReference<>();
+        LoggedBodyCapture capture = start(configuration, started -> {
+            Runnable handOver = once(() -> end(started, configuration, context, handler));
+            handingOver.set(handOver);
+            context.setInputStream(new CapturingInputStream(context.getInputStream(), started.sink(), handOver));
+        });
+        Runnable handOver = handingOver.get();
+        if (capture == null || handOver == null) {
             return context.proceed();
+        }
+
+        boolean streaming = false;
+        try {
+            Object entity = context.proceed();
+            streaming = entity instanceof InputStream || entity instanceof Reader;
+            if (streaming) {
+                streamed.accept(handOver);
+            }
+            return entity;
         } finally {
             // Hands over whatever was captured even if reading the entity failed (a malformed payload), so
             // a deserialization error does not leave the body out of the logs
-            end(capture, configuration, context, handler);
+            if (!streaming) {
+                handOver.run();
+            }
         }
     }
 
@@ -177,6 +209,21 @@ public final class BodyCapturer {
                 capture.close();
             }
         });
+    }
+
+    /**
+     * Makes the given action run once at most, however many times, and from however many threads, it is run.
+     *
+     * @param action The action to run once
+     * @return The action running the given one once
+     */
+    private static Runnable once(Runnable action) {
+        AtomicBoolean ran = new AtomicBoolean();
+        return () -> {
+            if (ran.compareAndSet(false, true)) {
+                action.run();
+            }
+        };
     }
 
     /**

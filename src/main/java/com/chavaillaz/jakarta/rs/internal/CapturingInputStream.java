@@ -15,11 +15,20 @@ import java.io.OutputStream;
  * far reading got and how much of it the capture already holds. A reader skipping bytes would have the
  * wrapped stream skip them unseen, so this stream skips by reading, as {@link InputStream#skip(long)} does,
  * and the bytes skipped reach the capture too.
+ * <p>
+ * It tells when the body it copies has ended - it was read to its end, or closed - for the capture of an
+ * entity read as a stream, which the application reads once the providers are done with it, to be handed
+ * over then.
  */
 final class CapturingInputStream extends InputStream {
 
     private final InputStream in;
     private final OutputStream capture;
+
+    /**
+     * What to do once the body ended, whenever it does, and possibly more than once.
+     */
+    private final Runnable ending;
 
     /**
      * Number of bytes read so far, moved back by {@link #reset()}.
@@ -42,10 +51,13 @@ final class CapturingInputStream extends InputStream {
      *
      * @param in      The entity stream to read
      * @param capture The capture to copy the bytes read to
+     * @param ending  What to do once the body ended, run each time a read reaches the end of the stream and
+     *                when the stream is closed, which it must therefore tolerate
      */
-    CapturingInputStream(InputStream in, OutputStream capture) {
+    CapturingInputStream(InputStream in, OutputStream capture, Runnable ending) {
         this.in = in;
         this.capture = capture;
+        this.ending = ending;
     }
 
     @Override
@@ -57,6 +69,8 @@ final class CapturingInputStream extends InputStream {
                 captured++;
             }
             position++;
+        } else {
+            ending.run();
         }
         return b;
     }
@@ -71,6 +85,8 @@ final class CapturingInputStream extends InputStream {
                 captured = position + read;
             }
             position += read;
+        } else if (read < 0) {
+            ending.run();
         }
         return read;
     }
@@ -99,7 +115,11 @@ final class CapturingInputStream extends InputStream {
 
     @Override
     public void close() throws IOException {
-        in.close();
+        try {
+            in.close();
+        } finally {
+            ending.run();
+        }
     }
 
 }
