@@ -18,7 +18,7 @@ public enum LoggedField {
     REQUEST_METHOD("request-method"),
 
     /**
-     * Path of the request, relative to the base URI of the application.
+     * Path of the request, relative to the base URI of the application and starting with a slash.
      */
     REQUEST_URI("request-uri"),
 

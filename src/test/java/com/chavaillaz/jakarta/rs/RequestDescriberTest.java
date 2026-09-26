@@ -9,8 +9,13 @@ import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 
+import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ResourceInfo;
+import jakarta.ws.rs.core.MultivaluedHashMap;
+import jakarta.ws.rs.core.UriInfo;
 import java.lang.reflect.Method;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -22,6 +27,8 @@ import org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContex
 import org.jboss.resteasy.mock.MockHttpRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 /**
  * Exercises {@link RequestDescriber} directly: the request identifier edge cases are covered through a
@@ -81,6 +88,26 @@ class RequestDescriberTest {
         Map<LoggedField, String> fields = describe("GET", "/articles", resource(null, null));
 
         assertEquals(Set.of(REQUEST_ID, REQUEST_URI, REQUEST_PARAMETERS, REQUEST_METHOD), fields.keySet());
+    }
+
+    @ParameterizedTest
+    @CsvSource({"articles/42, /articles/42", "'', /"})
+    @DisplayName("Check the path of a request starts with a slash, whatever the container gives")
+    void checkPathStartsWithSlash(String path, String described) {
+        // Given: the path relative to the base URI as Jersey gives it, without the slash RESTEasy starts it with
+        UriInfo uriInfo = mock(UriInfo.class);
+        doReturn(path).when(uriInfo).getPath();
+        doReturn(new MultivaluedHashMap<>()).when(uriInfo).getQueryParameters();
+        ContainerRequestContext request = mock(ContainerRequestContext.class);
+        doReturn(uriInfo).when(request).getUriInfo();
+        doReturn("GET").when(request).getMethod();
+        Map<LoggedField, String> fields = new EnumMap<>(LoggedField.class);
+
+        // When
+        describer.describe(request, resource(null, null), "abc-123", fields::put);
+
+        // Then
+        assertEquals(described, fields.get(REQUEST_URI));
     }
 
     @Test

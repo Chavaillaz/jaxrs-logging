@@ -65,7 +65,7 @@ final class RequestDescriber {
     void describe(ContainerRequestContext request, ResourceInfo resource, @Nullable String requestId, BiConsumer<LoggedField, @Nullable String> output) {
         UriInfo uriInfo = request.getUriInfo();
         output.accept(REQUEST_ID, requestIdOf(requestId));
-        output.accept(REQUEST_URI, sanitize(uriInfo.getPath()));
+        output.accept(REQUEST_URI, sanitize(pathOf(uriInfo)));
         output.accept(REQUEST_PARAMETERS, sanitize(describeQuery(uriInfo.getQueryParameters())));
         output.accept(REQUEST_METHOD, sanitize(request.getMethod()));
         Class<?> resourceClass = resource.getResourceClass();
@@ -76,6 +76,18 @@ final class RequestDescriber {
         if (resourceMethod != null) {
             output.accept(RESOURCE_METHOD, resourceMethod.getName());
         }
+    }
+
+    /**
+     * Gets the path of the given request relative to the base URI, starting with a slash, which RESTEasy gives
+     * it and Jersey does not, so the lines logging a request read the same whatever implements JAX-RS.
+     *
+     * @param uriInfo The URI information of the request
+     * @return The path of the request, starting with a slash
+     */
+    private static String pathOf(UriInfo uriInfo) {
+        String path = uriInfo.getPath();
+        return path.startsWith("/") ? path : "/" + path;
     }
 
     /**
