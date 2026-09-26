@@ -458,6 +458,18 @@ client.register(LoggedClientFeature.builder()
         .build());
 ```
 
+The identifier is read from MDC on the thread running the filters, which an asynchronous call (`async()`,
+`rx()`) runs on the executor of the client, where MDC is empty: the call then carries a random one. Give the
+client an executor wrapped with [MdcPropagation](#mdc-propagation-across-threads), for such a call to carry the
+identifier of the request making it:
+
+```java
+Client client = ClientBuilder.newBuilder()
+        .executorService(MdcPropagation.wrap(Executors.newCachedThreadPool()))
+        .register(LoggedClientFeature.builder().build())
+        .build();
+```
+
 It logs `Calling [method] [uri]` before sending the request and `Called [method] [uri] with status [status]
 in [duration]ms` once the response is received, the latter at a level derived from the status the same way
 as on the server side (`getResponseLevel(int)`). The roles are reversed there: a 5xx is the downstream

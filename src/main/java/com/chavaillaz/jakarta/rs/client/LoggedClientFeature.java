@@ -69,7 +69,10 @@ import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
  * Client-side counterpart of {@link LoggedFeature}, logging the calls made through a JAX-RS {@code Client}
  * and propagating the identifier of the current request (see {@link LoggedField#REQUEST_ID}) to the service
  * called, in its {@value LoggedFeature#REQUEST_ID_HEADER} header by default (see
- * {@link Builder#correlationIdHeader(String)}), so both sides of a call are logged under one identifier.
+ * {@link Builder#correlationIdHeader(String)}), so both sides of a call are logged under one identifier. The
+ * identifier is read from MDC on the thread running the filters: an asynchronous call runs them on the
+ * executor of the client, which must propagate MDC for the call to carry it (see
+ * {@link com.chavaillaz.jakarta.rs.mdc.MdcPropagation#wrap(java.util.concurrent.ExecutorService)}).
  * <p>
  * Having no resource method to read annotations from, it is configured through {@link #builder()}, and
  * applies to every call made through the {@code Client} or {@code WebTarget} it is registered on, as a
