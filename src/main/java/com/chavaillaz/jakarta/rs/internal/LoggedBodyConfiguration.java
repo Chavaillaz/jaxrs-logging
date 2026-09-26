@@ -8,12 +8,12 @@ import java.util.Set;
 
 import com.chavaillaz.jakarta.rs.LoggedBody;
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
-import com.chavaillaz.jakarta.rs.client.LoggedClientFilter;
+import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
 /**
  * Body logging configuration resolved for one direction (request or response) of one resource method,
- * or for one side of a {@link LoggedClientFilter}.
+ * or for one side of a {@link LoggedClientFeature}.
  * <p>
  * Holds ready-to-use values rather than the {@link LoggedBody} annotation it is usually derived from, as it
  * is read several times per request: resolving an annotation into a {@link Set} of {@link LogType} and

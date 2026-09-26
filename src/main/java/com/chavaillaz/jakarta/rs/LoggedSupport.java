@@ -2,10 +2,10 @@ package com.chavaillaz.jakarta.rs;
 
 import org.slf4j.event.Level;
 
-import com.chavaillaz.jakarta.rs.client.LoggedClientFilter;
+import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
 
 /**
- * The level {@link LoggedFilter} and {@link LoggedClientFilter} log an exchange at by default, given the
+ * The level {@link LoggedFilter} and {@link LoggedClientFeature} log an exchange at by default, given the
  * status it was answered with: the two providers sit on opposite sides of the JAX-RS API and share no
  * supertype, so it lives here rather than written twice and left to drift apart.
  */

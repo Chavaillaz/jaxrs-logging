@@ -70,11 +70,11 @@ import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.JsonMaskingBodyFilter;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
-@DisplayName("Logged client filter")
+@DisplayName("Logged client feature")
 @ExtendWith(MockitoExtension.class)
-class LoggedClientFilterTest extends AbstractFilterTest {
+class LoggedClientFeatureTest extends AbstractFilterTest {
 
-    private final LoggedClientFilter filter = new LoggedClientFilter();
+    private final LoggedClientFeature feature = new LoggedClientFeature();
 
     private ClientRequestContext requestContext;
     private Map<String, Object> properties;
@@ -104,7 +104,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         MDC.put("request-id", "abc-123");
 
         // When
-        filter.filter(requestContext);
+        feature.filter(requestContext);
 
         // Then
         assertEquals("abc-123", headers.getFirst(REQUEST_ID_HEADER));
@@ -114,7 +114,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     @DisplayName("Check a random correlation identifier is generated when absent from MDC")
     void checkCorrelationIdGeneratedWhenAbsent() {
         // When
-        filter.filter(requestContext);
+        feature.filter(requestContext);
 
         // Then
         assertNotNull(headers.getFirst(REQUEST_ID_HEADER));
@@ -127,7 +127,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         MDC.put("request-id", " ");
 
         // When
-        filter.filter(requestContext);
+        feature.filter(requestContext);
 
         // Then
         assertDoesNotThrow(() -> UUID.fromString((String) headers.getFirst(REQUEST_ID_HEADER)));
@@ -140,7 +140,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         MDC.put("request-id", "abc\r\nX-Forged: yes");
 
         // When
-        filter.filter(requestContext);
+        feature.filter(requestContext);
 
         // Then
         assertEquals("abc  X-Forged: yes", headers.getFirst(REQUEST_ID_HEADER));
@@ -153,7 +153,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         MDC.put("request-id", "a".repeat(REQUEST_ID_MAX_LENGTH + 50));
 
         // When
-        filter.filter(requestContext);
+        feature.filter(requestContext);
 
         // Then
         assertEquals("a".repeat(REQUEST_ID_MAX_LENGTH), headers.getFirst(REQUEST_ID_HEADER));
@@ -165,7 +165,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         // Given: the MDC key a LoggedFilter renaming its request identifier puts it under
         MDC.put("request-id", "not-this-one");
         MDC.put("trace-id", "abc-123");
-        LoggedClientFilter renamed = LoggedClientFilter.builder().correlationIdKey("trace-id").build();
+        LoggedClientFeature renamed = LoggedClientFeature.builder().correlationIdKey("trace-id").build();
 
         // When
         renamed.filter(requestContext);
@@ -179,7 +179,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     void checkCorrelationIdPropagatedInConfiguredHeader() {
         // Given: the header the services called read their identifier from
         MDC.put("request-id", "abc-123");
-        LoggedClientFilter tracing = LoggedClientFilter.builder().correlationIdHeader("X-Trace-ID").build();
+        LoggedClientFeature tracing = LoggedClientFeature.builder().correlationIdHeader("X-Trace-ID").build();
 
         // When
         tracing.filter(requestContext);
@@ -195,7 +195,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         // Given
         headers.putSingle("x-trace-id", "caller-supplied");
         MDC.put("request-id", "from-mdc");
-        LoggedClientFilter tracing = LoggedClientFilter.builder().correlationIdHeader("X-Trace-ID").build();
+        LoggedClientFeature tracing = LoggedClientFeature.builder().correlationIdHeader("X-Trace-ID").build();
 
         // When
         tracing.filter(requestContext);
@@ -213,7 +213,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         MDC.put("request-id", "from-mdc");
 
         // When
-        filter.filter(requestContext);
+        feature.filter(requestContext);
 
         // Then
         assertEquals("caller-supplied", headers.getFirst(REQUEST_ID_HEADER));
@@ -221,9 +221,9 @@ class LoggedClientFilterTest extends AbstractFilterTest {
 
     @Test
     @DisplayName("Check calling the request logs a Calling line")
-    void checkFilterLogsCallingLine() {
+    void checkFeatureLogsCallingLine() {
         // When
-        filter.filter(requestContext);
+        feature.filter(requestContext);
 
         // Then
         LogEvent event = listAppender.findFirstMessage("Calling");
@@ -242,24 +242,24 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         doReturn(200).when(responseContext).getStatus();
 
         // When
-        filter.filter(requestContext);
-        filter.filter(requestContext, responseContext);
+        feature.filter(requestContext);
+        feature.filter(requestContext, responseContext);
 
         // Then: what identifies the call stays readable
         String masked = "https://***@service.company.com/article?topic=news&access_token=***";
         assertEquals("Calling POST " + masked, listAppender.findFirstMessage("Calling").getMessage().getFormattedMessage());
         assertTrue(listAppender.findFirstMessage("Called").getMessage().getFormattedMessage().startsWith("Called POST " + masked + " "));
-        assertEquals(masked, properties.get(LoggedClientFilter.REQUEST_URI_PROPERTY));
+        assertEquals(masked, properties.get(LoggedClientFeature.REQUEST_URI_PROPERTY));
     }
 
     @Test
     @DisplayName("Check the query parameters the configuration reports as sensitive are masked, and only those")
     void checkConfiguredSensitiveParametersMasked() {
         // Given: the predicate a service is given for the requests it receives, extended with the key of a partner
-        LoggedClientFilter extended = LoggedClientFilter.builder()
+        LoggedClientFeature extended = LoggedClientFeature.builder()
                 .sensitiveParameters((type, name) -> isCredential(type, name) || "partner-key".equalsIgnoreCase(name))
                 .build();
-        LoggedClientFilter restricted = LoggedClientFilter.builder()
+        LoggedClientFeature restricted = LoggedClientFeature.builder()
                 .sensitiveParameters((type, name) -> false)
                 .build();
         URI uri = URI.create("https://partner.company.com/a?Partner-Key=k&access_token=t&topic=news");
@@ -285,7 +285,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     })
     @DisplayName("Check a URI is logged as given, but for the credentials it carries")
     void checkLoggedUri(String uri, String expected) {
-        assertEquals(expected, filter.getLoggedUri(URI.create(uri)));
+        assertEquals(expected, feature.getLoggedUri(URI.create(uri)));
     }
 
     @Test
@@ -294,7 +294,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         // Accepted, each of them failed later on every single call: a body limit below -1 by leaving every
         // body out of the logs, a missing MDC key by losing the line announcing the call, a missing filter
         // by dropping every body it was meant to filter
-        LoggedClientFilter.Builder builder = LoggedClientFilter.builder();
+        LoggedClientFeature.Builder builder = LoggedClientFeature.builder();
 
         assertThrows(IllegalArgumentException.class, () -> builder.bodyLimit(-2));
         assertThrows(IllegalArgumentException.class, () -> builder.requestBodyLimit(-2));
@@ -311,12 +311,12 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     @DisplayName("Check the response is logged exactly once with its status and duration")
     void checkResponseLogged() {
         // Given
-        filter.filter(requestContext);
+        feature.filter(requestContext);
         ClientResponseContext responseContext = mock(ClientResponseContext.class);
         doReturn(200).when(responseContext).getStatus();
 
         // When
-        filter.filter(requestContext, responseContext);
+        feature.filter(requestContext, responseContext);
 
         // Then
         LogEvent event = listAppender.findFirstMessage("Called");
@@ -338,7 +338,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         doReturn(503).when(responseContext).getStatus();
 
         // When
-        filter.filter(requestContext, responseContext);
+        feature.filter(requestContext, responseContext);
 
         // Then
         LogEvent event = listAppender.findFirstMessage("Called");
@@ -351,12 +351,12 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     @DisplayName("Check the level of the call line follows the status of the response received")
     void checkResponseLevelFollowsStatus(int status, Level expectedLevel) {
         // Given
-        filter.filter(requestContext);
+        feature.filter(requestContext);
         ClientResponseContext responseContext = mock(ClientResponseContext.class);
         doReturn(status).when(responseContext).getStatus();
 
         // When
-        filter.filter(requestContext, responseContext);
+        feature.filter(requestContext, responseContext);
 
         // Then
         LogEvent event = listAppender.findFirstMessage("Called");
@@ -368,7 +368,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     @DisplayName("Check a call the level override gives no level for is still logged, at its default level")
     void checkResponseLevelWithoutLevel() {
         // Given: an override covering the statuses it cares about, and returning null for the others
-        LoggedClientFilter levelling = new LoggedClientFilter() {
+        LoggedClientFeature levelling = new LoggedClientFeature() {
 
             @Override
             protected Level getResponseLevel(int status) {
@@ -393,7 +393,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     @DisplayName("Check a call the level override fails for is still logged, at its default level")
     void checkResponseLevelFailing() {
         // Given
-        LoggedClientFilter levelling = new LoggedClientFilter() {
+        LoggedClientFeature levelling = new LoggedClientFeature() {
 
             @Override
             protected Level getResponseLevel(int status) {
@@ -422,7 +422,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         WriterInterceptorContext context = mock(WriterInterceptorContext.class);
 
         // When
-        filter.captureRequestBody(context);
+        feature.captureRequestBody(context);
 
         // Then
         assertNull(listAppender.findFirstMessage("Request body"));
@@ -432,12 +432,12 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     @DisplayName("Check the request body is logged as a separate line when activated")
     void checkRequestBodyLogged() throws Exception {
         // Given
-        filter.filter(requestContext);
-        LoggedClientFilter bodyLoggingFilter = LoggedClientFilter.builder().logRequestBody().build();
+        feature.filter(requestContext);
+        LoggedClientFeature bodyLoggingFeature = LoggedClientFeature.builder().logRequestBody().build();
         WriterInterceptorContext context = writerContext(properties, "Hello, world!");
 
         // When
-        bodyLoggingFilter.captureRequestBody(context);
+        bodyLoggingFeature.captureRequestBody(context);
 
         // Then
         LogEvent event = listAppender.findFirstMessage("Request body");
@@ -449,15 +449,15 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     @DisplayName("Check the request body is filtered before being logged")
     void checkRequestBodyFiltered() throws Exception {
         // Given
-        filter.filter(requestContext);
-        LoggedClientFilter bodyLoggingFilter = LoggedClientFilter.builder()
+        feature.filter(requestContext);
+        LoggedClientFeature bodyLoggingFeature = LoggedClientFeature.builder()
                 .logRequestBody()
                 .bodyFilters(SensitiveBodyFilter.class)
                 .build();
         WriterInterceptorContext context = writerContext(properties, "{\"secret-code\": \"1234-ABCD\"}");
 
         // When
-        bodyLoggingFilter.captureRequestBody(context);
+        bodyLoggingFeature.captureRequestBody(context);
 
         // Then
         LogEvent event = listAppender.findFirstMessage("Request body");
@@ -470,15 +470,15 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     @DisplayName("Check body filters are applied in the order they were declared on the builder")
     void checkBodyFiltersAppliedInDeclarationOrder() throws Exception {
         // Given
-        filter.filter(requestContext);
-        LoggedClientFilter bodyLoggingFilter = LoggedClientFilter.builder()
+        feature.filter(requestContext);
+        LoggedClientFeature bodyLoggingFeature = LoggedClientFeature.builder()
                 .logRequestBody()
                 .bodyFilters(AppendA.class, AppendB.class)
                 .build();
         WriterInterceptorContext context = writerContext(properties, "body");
 
         // When
-        bodyLoggingFilter.captureRequestBody(context);
+        bodyLoggingFeature.captureRequestBody(context);
 
         // Then
         LogEvent event = listAppender.findFirstMessage("Request body");
@@ -490,8 +490,8 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     @DisplayName("Check filters given as instances apply after those given as classes, in the order given")
     void checkBodyFilterInstancesApplied() throws Exception {
         // Given: a configured built-in filter, whose configuration only an instance can carry
-        filter.filter(requestContext);
-        LoggedClientFilter bodyLoggingFilter = LoggedClientFilter.builder()
+        feature.filter(requestContext);
+        LoggedClientFeature bodyLoggingFeature = LoggedClientFeature.builder()
                 .logRequestBody()
                 .bodyFilters(new JsonMaskingBodyFilter("password"), body -> body.append("B"))
                 .bodyFilters(AppendA.class)
@@ -499,7 +499,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         WriterInterceptorContext context = writerContext(properties, "{\"password\":\"hunter2\"}");
 
         // When
-        bodyLoggingFilter.captureRequestBody(context);
+        bodyLoggingFeature.captureRequestBody(context);
 
         // Then
         LogEvent event = listAppender.findFirstMessage("Request body");
@@ -530,8 +530,8 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     @DisplayName("Check whatever was written to the request body is still logged when writing it then fails")
     void checkPartialRequestBodyLoggedOnWriteFailure() throws Exception {
         // Given
-        filter.filter(requestContext);
-        LoggedClientFilter bodyLoggingFilter = LoggedClientFilter.builder().logRequestBody().build();
+        feature.filter(requestContext);
+        LoggedClientFeature bodyLoggingFeature = LoggedClientFeature.builder().logRequestBody().build();
         WriterInterceptorContext context = mock(WriterInterceptorContext.class);
         AtomicReference<OutputStream> output = new AtomicReference<>(new ByteArrayOutputStream());
         doAnswer(invocation -> output.get()).when(context).getOutputStream();
@@ -547,7 +547,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
                 .when(context).getProperty(any());
 
         // When
-        assertThrows(IOException.class, () -> bodyLoggingFilter.captureRequestBody(context));
+        assertThrows(IOException.class, () -> bodyLoggingFeature.captureRequestBody(context));
 
         // Then
         LogEvent event = listAppender.findFirstMessage("Request body");
@@ -559,11 +559,11 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     @DisplayName("Check the response body is logged as a separate line when activated")
     void checkResponseBodyLogged() throws Exception {
         // Given
-        LoggedClientFilter bodyLoggingFilter = LoggedClientFilter.builder().logResponseBody().build();
+        LoggedClientFeature bodyLoggingFeature = LoggedClientFeature.builder().logResponseBody().build();
         ReaderInterceptorContext context = readerContext("Received content");
 
         // When
-        Object result = bodyLoggingFilter.captureResponseBody(context);
+        Object result = bodyLoggingFeature.captureResponseBody(context);
 
         // Then
         assertEquals("read", result);
@@ -576,12 +576,12 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     @DisplayName("Check a response the calling code reads as a stream is logged once read to its end")
     void checkStreamedResponseBodyLogged() throws Exception {
         // Given: the entity stream handed over as it is, as for response.readEntity(InputStream.class)
-        LoggedClientFilter bodyLoggingFilter = LoggedClientFilter.builder().logResponseBody().build();
+        LoggedClientFeature bodyLoggingFeature = LoggedClientFeature.builder().logResponseBody().build();
         ReaderInterceptorContext context = readerContext("Received content");
         doAnswer(invocation -> context.getInputStream()).when(context).proceed();
 
         // When
-        InputStream entity = (InputStream) bodyLoggingFilter.captureResponseBody(context);
+        InputStream entity = (InputStream) bodyLoggingFeature.captureResponseBody(context);
 
         // Then: nothing is logged until the calling code read the stream
         assertNull(listAppender.findFirstMessage("Response body"));
@@ -592,18 +592,18 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check registering the filter registers the interceptor capturing bodies on its behalf")
+    @DisplayName("Check registering the feature registers the interceptor capturing bodies on its behalf")
     void checkRegistrationRegistersBodyInterceptor() throws Exception {
         // Given
-        filter.filter(requestContext);
+        feature.filter(requestContext);
         FeatureContext featureContext = mock(FeatureContext.class);
-        LoggedClientFilter bodyLoggingFilter = LoggedClientFilter.builder().logRequestBody().logResponseBody().build();
+        LoggedClientFeature bodyLoggingFeature = LoggedClientFeature.builder().logRequestBody().logResponseBody().build();
 
         // When
-        boolean enabled = bodyLoggingFilter.configure(featureContext);
+        boolean enabled = bodyLoggingFeature.configure(featureContext);
 
         // Then: a single client.register(...) keeps covering bodies, which the interceptor hands back
-        LoggedClientFilter.BodyInterceptor interceptor = registered(featureContext, LoggedClientFilter.BodyInterceptor.class);
+        LoggedClientFeature.BodyInterceptor interceptor = registered(featureContext, LoggedClientFeature.BodyInterceptor.class);
         interceptor.aroundWriteTo(writerContext(properties, "Hello, world!"));
         interceptor.aroundReadFrom(readerContext("Received content"));
         assertTrue(enabled);
@@ -639,7 +639,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     void checkRegistrationRegistersCallFilter() {
         // Given: what every runtime registers of the feature, the filter it registers itself
         FeatureContext featureContext = mock(FeatureContext.class);
-        filter.configure(featureContext);
+        feature.configure(featureContext);
         ClientRequestFilter requestFilter = registered(featureContext, ClientRequestFilter.class);
         ClientResponseFilter responseFilter = registered(featureContext, ClientResponseFilter.class);
         ClientResponseContext responseContext = mock(ClientResponseContext.class);
@@ -657,19 +657,19 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check the filter is a feature alone, which no runtime calls next to the filter it registers")
+    @DisplayName("Check the feature implements no other contract, so no runtime calls it next to the filter it registers")
     void checkFeatureAlone() {
         // Jersey and RESTEasy register a component for every contract it implements: one implementing a filter
         // contract as well would be called next to the filter it registers, logging every call twice
-        assertArrayEquals(new Class<?>[]{Feature.class}, LoggedClientFilter.class.getInterfaces());
+        assertArrayEquals(new Class<?>[]{Feature.class}, LoggedClientFeature.class.getInterfaces());
     }
 
     @Test
-    @DisplayName("Check the filter is left for the application to register rather than discovered")
+    @DisplayName("Check the feature is left for the application to register rather than discovered")
     void checkNotDiscoverable() {
         // A container discovering it in a deployment hands RESTEasy clients one configured by default, which
         // logs every call twice next to the one the application registers, and sends the identifier first
-        assertFalse(LoggedClientFilter.class.isAnnotationPresent(Provider.class));
+        assertFalse(LoggedClientFeature.class.isAnnotationPresent(Provider.class));
     }
 
     @Test
@@ -677,11 +677,11 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     void checkResponseBodyLoggedOnceWhenReadTwice() throws Exception {
         // A buffered entity can be read any number of times - bufferEntity() then readEntity() once per
         // type the calling code tries - and every read goes through the interceptors again
-        LoggedClientFilter bodyLoggingFilter = LoggedClientFilter.builder().logResponseBody().build();
+        LoggedClientFeature bodyLoggingFeature = LoggedClientFeature.builder().logResponseBody().build();
 
         // When
-        bodyLoggingFilter.captureResponseBody(readerContext("Received content"));
-        bodyLoggingFilter.captureResponseBody(readerContext("Received content"));
+        bodyLoggingFeature.captureResponseBody(readerContext("Received content"));
+        bodyLoggingFeature.captureResponseBody(readerContext("Received content"));
 
         // Then
         assertEquals(1, listAppender.getMessages().stream()
@@ -700,8 +700,8 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         lenient().doReturn(200).when(responseContext).getStatus();
 
         // When
-        assertDoesNotThrow(() -> filter.filter(requestContext));
-        assertDoesNotThrow(() -> filter.filter(requestContext, responseContext));
+        assertDoesNotThrow(() -> feature.filter(requestContext));
+        assertDoesNotThrow(() -> feature.filter(requestContext, responseContext));
 
         // Then: the call went out, correlated with the service it reaches, only without the lines describing it
         assertNotNull(headers.getFirst(REQUEST_ID_HEADER));
@@ -714,12 +714,12 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     void checkCaptureReleasedOnceLogged() throws Exception {
         // A capture holding more than memory - one spilling a large body to a temporary file - has
         // nowhere to give it back other than close()
-        filter.filter(requestContext);
+        feature.filter(requestContext);
         ReleasingBodyCapture capture = new ReleasingBodyCapture();
-        LoggedClientFilter bodyLoggingFilter = capturingFilter(capture);
+        LoggedClientFeature bodyLoggingFeature = capturingFeature(capture);
 
         // When
-        bodyLoggingFilter.captureRequestBody(writerContext(properties, "Hello, world!"));
+        bodyLoggingFeature.captureRequestBody(writerContext(properties, "Hello, world!"));
 
         // Then: the body was read from the capture, and the capture released afterwards
         assertNotNull(listAppender.findFirstMessage("Request body"));
@@ -731,7 +731,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     void checkCaptureReleasedWhenContentFails() throws Exception {
         // Rendering a captured body is exactly the step that fails on a payload nobody expected, which
         // is precisely when a temporary file must not be left behind
-        filter.filter(requestContext);
+        feature.filter(requestContext);
         ReleasingBodyCapture capture = new ReleasingBodyCapture() {
 
             @Override
@@ -742,7 +742,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         };
 
         // When
-        assertDoesNotThrow(() -> capturingFilter(capture).captureRequestBody(writerContext(properties, "Hello, world!")));
+        assertDoesNotThrow(() -> capturingFeature(capture).captureRequestBody(writerContext(properties, "Hello, world!")));
 
         // Then
         assertNull(listAppender.findFirstMessage("Request body"));
@@ -753,7 +753,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     @DisplayName("Check a body too large to render with the memory available is left out without failing the call")
     void checkBodyTooLargeToRenderLeftOut() throws Exception {
         // Given: a capture whose rendering needs more memory than the heap has left
-        filter.filter(requestContext);
+        feature.filter(requestContext);
         ReleasingBodyCapture capture = new ReleasingBodyCapture() {
 
             @Override
@@ -765,7 +765,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
 
         // When: an error escaping would be rethrown by JUnit as unrecoverable, crashing the whole test run
         try {
-            capturingFilter(capture).captureRequestBody(writerContext(properties, "Hello, world!"));
+            capturingFeature(capture).captureRequestBody(writerContext(properties, "Hello, world!"));
         } catch (OutOfMemoryError e) {
             fail("Rendering the body failed the call", e);
         }
@@ -781,13 +781,13 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     void checkCaptureReleasedWhenItCannotBeWiredIn() throws Exception {
         // The capture exists by then, holding whatever it reserved, and nothing downstream ever sees it
         // again: releasing it is only possible where it was created
-        filter.filter(requestContext);
+        feature.filter(requestContext);
         ReleasingBodyCapture capture = new ReleasingBodyCapture();
         WriterInterceptorContext context = mock(WriterInterceptorContext.class);
         doThrow(new IllegalStateException("Cannot wrap the entity stream")).when(context).getOutputStream();
 
         // When
-        assertDoesNotThrow(() -> capturingFilter(capture).captureRequestBody(context));
+        assertDoesNotThrow(() -> capturingFeature(capture).captureRequestBody(context));
 
         // Then: the entity was written as if nothing had been asked of it, and nothing was left held
         verify(context).proceed();
@@ -795,14 +795,14 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     }
 
     /**
-     * Builds a filter logging request bodies through the given capture, standing in for whatever
+     * Builds a feature logging request bodies through the given capture, standing in for whatever
      * {@code createBodyCapture} an application plugs in.
      *
-     * @param capture The capture the filter must use
-     * @return The filter created
+     * @param capture The capture the feature must use
+     * @return The feature created
      */
-    LoggedClientFilter capturingFilter(LoggedBodyCapture capture) {
-        return new LoggedClientFilter(LoggedClientFilter.builder().logRequestBody()) {
+    LoggedClientFeature capturingFeature(LoggedBodyCapture capture) {
+        return new LoggedClientFeature(LoggedClientFeature.builder().logRequestBody()) {
 
             @Override
             protected LoggedBodyCapture createBodyCapture(int limit) {
@@ -837,9 +837,9 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         // Putting the capture in place is the one piece of logging work happening before proceed() rather
         // than in a finally block after it, so a failure there does not merely lose a log line: the entity
         // is never written at all and the call fails with an error having nothing to do with it
-        filter.filter(requestContext);
+        feature.filter(requestContext);
         ByteArrayOutputStream written = new ByteArrayOutputStream();
-        LoggedClientFilter bodyLoggingFilter = new LoggedClientFilter(LoggedClientFilter.builder().logRequestBody()) {
+        LoggedClientFeature bodyLoggingFeature = new LoggedClientFeature(LoggedClientFeature.builder().logRequestBody()) {
 
             @Override
             protected LoggedBodyCapture createBodyCapture(int limit) {
@@ -857,7 +857,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         }).when(context).proceed();
 
         // When
-        assertDoesNotThrow(() -> bodyLoggingFilter.captureRequestBody(context));
+        assertDoesNotThrow(() -> bodyLoggingFeature.captureRequestBody(context));
 
         // Then: the entity was written as if nothing had been asked of it, only without a body in the logs
         assertEquals("Hello, world!", written.toString(UTF_8));

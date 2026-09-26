@@ -8,7 +8,7 @@ import org.jspecify.annotations.Nullable;
 
 import com.chavaillaz.jakarta.rs.LoggedBody;
 import com.chavaillaz.jakarta.rs.LoggedFilterConfiguration;
-import com.chavaillaz.jakarta.rs.client.LoggedClientFilter;
+import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
 /**
@@ -25,7 +25,7 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
  * This is the extension point for the mechanics of body capture itself (bounded in-memory buffering by
  * default, see {@link BoundedLoggedBodyCapture}), as opposed to {@link LoggedBodyFilter}, which only
  * transforms content already captured. Pass one to {@link LoggedFilterConfiguration.Builder#bodyCapture}, or
- * override {@code createBodyCapture(int)} on {@link LoggedClientFilter}, to plug in a different strategy,
+ * override {@code createBodyCapture(int)} on {@link LoggedClientFeature}, to plug in a different strategy,
  * for example spilling very large bodies to a temporary file, or capturing a digest of the content.
  */
 public interface LoggedBodyCapture extends AutoCloseable {

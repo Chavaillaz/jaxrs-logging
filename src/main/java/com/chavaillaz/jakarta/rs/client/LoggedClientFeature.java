@@ -88,35 +88,35 @@ import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
  * supported, as nothing marks the end of a call that an MDC entry holding the body could be scoped to.
  */
 @ConstrainedTo(CLIENT)
-public class LoggedClientFilter implements Feature {
+public class LoggedClientFeature implements Feature {
 
     /**
      * Logger the calls, their bodies and the failures to log them are written to.
      */
-    protected static final Logger log = LoggerFactory.getLogger(LoggedClientFilter.class);
+    protected static final Logger log = LoggerFactory.getLogger(LoggedClientFeature.class);
 
     /**
      * Name of the request property holding the moment the call started, to compute its duration.
      */
-    protected static final String REQUEST_TIME_PROPERTY = LoggedClientFilter.class.getName() + ".requestTime";
+    protected static final String REQUEST_TIME_PROPERTY = LoggedClientFeature.class.getName() + ".requestTime";
 
     /**
      * Name of the request property holding the method of the call, for the lines logging its bodies, which an
      * interceptor context does not give access to.
      */
-    protected static final String REQUEST_METHOD_PROPERTY = LoggedClientFilter.class.getName() + ".requestMethod";
+    protected static final String REQUEST_METHOD_PROPERTY = LoggedClientFeature.class.getName() + ".requestMethod";
 
     /**
      * Name of the request property holding the URI of the call as it is logged (see {@link #getLoggedUri(URI)}),
      * for the same reason as {@link #REQUEST_METHOD_PROPERTY}.
      */
-    protected static final String REQUEST_URI_PROPERTY = LoggedClientFilter.class.getName() + ".requestUri";
+    protected static final String REQUEST_URI_PROPERTY = LoggedClientFeature.class.getName() + ".requestUri";
 
     /**
      * Name of the request property recording that the response body of the call has been logged, see
      * {@link #captureResponseBody(ReaderInterceptorContext)}.
      */
-    protected static final String RESPONSE_BODY_LOGGED_PROPERTY = LoggedClientFilter.class.getName() + ".responseBodyLogged";
+    protected static final String RESPONSE_BODY_LOGGED_PROPERTY = LoggedClientFeature.class.getName() + ".responseBodyLogged";
 
     /**
      * Instantiates and caches the body filters given as classes.
@@ -155,19 +155,19 @@ public class LoggedClientFilter implements Feature {
     private final BodyCapturer bodyCapturer = new BodyCapturer(log, this::createBodyCapture);
 
     /**
-     * Creates a new client filter with the default configuration (no body logging, correlation identifier
+     * Creates a new client feature with the default configuration (no body logging, correlation identifier
      * read from the {@code request-id} MDC key). Use {@link #builder()} to customize it.
      */
-    public LoggedClientFilter() {
+    public LoggedClientFeature() {
         this(builder());
     }
 
     /**
-     * Creates a client filter configured by the given builder, for a subclass to call from its constructors.
+     * Creates a client feature configured by the given builder, for a subclass to call from its constructors.
      *
      * @param builder The builder holding the configuration
      */
-    protected LoggedClientFilter(Builder builder) {
+    protected LoggedClientFeature(Builder builder) {
         this.correlationIdMdcKey = builder.correlationIdMdcKey;
         this.correlationIdHeader = builder.correlationIdHeader;
         this.sensitiveParameters = builder.sensitiveParameters;
@@ -196,7 +196,7 @@ public class LoggedClientFilter implements Feature {
     }
 
     /**
-     * Creates a new builder to configure a {@link LoggedClientFilter} instance.
+     * Creates a new builder to configure a {@link LoggedClientFeature} instance.
      *
      * @return The builder created
      */
@@ -205,7 +205,7 @@ public class LoggedClientFilter implements Feature {
     }
 
     /**
-     * Builder of {@link LoggedClientFilter}, starting from the default of every setting.
+     * Builder of {@link LoggedClientFeature}, starting from the default of every setting.
      */
     public static final class Builder {
 
@@ -220,7 +220,7 @@ public class LoggedClientFilter implements Feature {
         private final Set<LoggedBodyFilter> bodyFilterInstances = new LinkedHashSet<>();
 
         private Builder() {
-            // Created through LoggedClientFilter.builder()
+            // Created through LoggedClientFeature.builder()
         }
 
         /**
@@ -374,12 +374,12 @@ public class LoggedClientFilter implements Feature {
         }
 
         /**
-         * Builds the {@link LoggedClientFilter} configured by this builder.
+         * Builds the {@link LoggedClientFeature} configured by this builder.
          *
-         * @return The client filter created
+         * @return The client feature created
          */
-        public LoggedClientFilter build() {
-            return new LoggedClientFilter(this);
+        public LoggedClientFeature build() {
+            return new LoggedClientFeature(this);
         }
 
         /**
@@ -634,7 +634,7 @@ public class LoggedClientFilter implements Feature {
     }
 
     /**
-     * Logs the calls on behalf of the {@link LoggedClientFilter} that registered it, which implements no filter
+     * Logs the calls on behalf of the {@link LoggedClientFeature} that registered it, which implements no filter
      * contract itself, so that every runtime calls this filter alone, once per call: Jersey and RESTEasy
      * register a component for every contract it implements, feature or not, and would call such a feature
      * next to this filter, whereas Apache CXF registers a feature as a feature alone.
@@ -643,30 +643,30 @@ public class LoggedClientFilter implements Feature {
     @Priority(HEADER_DECORATOR)
     private static final class CallFilter implements ClientRequestFilter, ClientResponseFilter {
 
-        private final LoggedClientFilter filter;
+        private final LoggedClientFeature feature;
 
-        private CallFilter(LoggedClientFilter filter) {
-            this.filter = filter;
+        private CallFilter(LoggedClientFeature feature) {
+            this.feature = feature;
         }
 
         @Override
         public void filter(ClientRequestContext requestContext) {
-            filter.filter(requestContext);
+            feature.filter(requestContext);
         }
 
         @Override
         public void filter(ClientRequestContext requestContext, ClientResponseContext responseContext) {
-            filter.filter(requestContext, responseContext);
+            feature.filter(requestContext, responseContext);
         }
 
     }
 
     /**
-     * Captures the bodies logged by the {@link LoggedClientFilter} that registered it, from after any entity
+     * Captures the bodies logged by the {@link LoggedClientFeature} that registered it, from after any entity
      * coder ({@link Priorities#ENTITY_CODER}), so what it captures is the entity rather than its transfer
      * encoding - a {@code Content-Encoding: gzip} body is logged as the payload, not as compressed bytes.
      * <p>
-     * Every decision about a body stays with the filter, which this interceptor calls back, so a subclass
+     * Every decision about a body stays with the feature, which this interceptor calls back, so a subclass
      * overriding {@link #createBodyCapture(int)} or either capture method stays in control.
      */
     @ConstrainedTo(CLIENT)
@@ -674,27 +674,27 @@ public class LoggedClientFilter implements Feature {
     public static class BodyInterceptor implements ReaderInterceptor, WriterInterceptor {
 
         /**
-         * Filter the bodies captured are handed back to.
+         * Feature the bodies captured are handed back to.
          */
-        protected final LoggedClientFilter filter;
+        protected final LoggedClientFeature feature;
 
         /**
-         * Creates the interceptor capturing bodies for the given filter.
+         * Creates the interceptor capturing bodies for the given feature.
          *
-         * @param filter The filter to hand the captured bodies back to
+         * @param feature The feature to hand the captured bodies back to
          */
-        public BodyInterceptor(LoggedClientFilter filter) {
-            this.filter = filter;
+        public BodyInterceptor(LoggedClientFeature feature) {
+            this.feature = feature;
         }
 
         @Override
         public void aroundWriteTo(WriterInterceptorContext context) throws IOException, WebApplicationException {
-            filter.captureRequestBody(context);
+            feature.captureRequestBody(context);
         }
 
         @Override
         public @Nullable Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
-            return filter.captureResponseBody(context);
+            return feature.captureResponseBody(context);
         }
 
     }

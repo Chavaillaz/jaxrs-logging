@@ -52,7 +52,7 @@ import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
 import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
 import com.chavaillaz.jakarta.rs.LoggedResolver.BodyConfiguration;
-import com.chavaillaz.jakarta.rs.client.LoggedClientFilter;
+import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import com.chavaillaz.jakarta.rs.internal.BodyCapturer;
 import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
@@ -111,7 +111,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
     /**
      * Name of the header carrying the request identifier, read from the requests received and set by
-     * {@link LoggedClientFilter} on the calls made, so both sides of a call are logged under one identifier.
+     * {@link LoggedClientFeature} on the calls made, so both sides of a call are logged under one identifier.
      */
     public static final String REQUEST_ID_HEADER = "X-Request-ID";
 

@@ -15,7 +15,7 @@ import org.slf4j.LoggerFactory;
 
 import com.chavaillaz.jakarta.rs.LoggedFilter;
 import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
-import com.chavaillaz.jakarta.rs.client.LoggedClientFilter;
+import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
 /**
@@ -24,7 +24,7 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
  * is only reflectively instantiated once.
  * <p>
  * Not tied to any particular provider: usable from both {@link LoggedFilter} (server side) and
- * {@link LoggedClientFilter} (client side), since a {@link LoggedBodyFilter} is defined as stateless
+ * {@link LoggedClientFeature} (client side), since a {@link LoggedBodyFilter} is defined as stateless
  * and thread-safe regardless of which side captured the body it filters.
  */
 public class LoggedBodyFilterFactory {

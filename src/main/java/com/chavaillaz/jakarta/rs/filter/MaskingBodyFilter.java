@@ -6,7 +6,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import com.chavaillaz.jakarta.rs.LoggedBody;
-import com.chavaillaz.jakarta.rs.client.LoggedClientFilter;
+import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
 
 /**
  * Base for the body filters replacing part of a body matched by a regular expression, so a value that
@@ -26,7 +26,7 @@ import com.chavaillaz.jakarta.rs.client.LoggedClientFilter;
  *
  * }
  * }</pre>
- * {@link LoggedClientFilter.Builder#bodyFilters(LoggedBodyFilter...)} takes instances directly, so no
+ * {@link LoggedClientFeature.Builder#bodyFilters(LoggedBodyFilter...)} takes instances directly, so no
  * subclass is needed there.
  * <p>
  * Masking is deliberately done on the captured text rather than on a parsed representation of it: the

@@ -315,7 +315,7 @@ LoggedFilterConfiguration.builder()
         .build();
 ```
 
-The same goes for the calls logged by [LoggedClientFilter](#client-calls), which log the URI of each call whole:
+The same goes for the calls logged by [LoggedClientFeature](#client-calls), which log the URI of each call whole:
 the value of the same query parameters is masked, and so is the user information a URI may embed, which is
 either a credential or the name going with one:
 
@@ -323,7 +323,7 @@ either a credential or the name going with one:
 Calling GET https://***@service.company.com/article?topic=news&access_token=***
 ```
 
-The builder of the client filter takes a `sensitiveParameters` predicate as well, asked about the query
+The builder of the client feature takes a `sensitiveParameters` predicate as well, asked about the query
 parameters of each call: give it the one of your server configuration, or one of its own for the services your
 application calls, such as the key a partner API expects in its query string.
 
@@ -360,10 +360,10 @@ public class CredentialsMask extends JsonMaskingBodyFilter {
 @Logged(@LoggedBody(value = MDC, filters = CredentialsMask.class))
 ```
 
-`LoggedClientFilter.builder()` accepts instances as well, so no subclass is needed there:
+`LoggedClientFeature.builder()` accepts instances as well, so no subclass is needed there:
 
 ```java
-client.register(LoggedClientFilter.builder()
+client.register(LoggedClientFeature.builder()
         .logRequestBody()
         .bodyFilters(new JsonMaskingBodyFilter("password", "token"))
         .build());
@@ -434,13 +434,13 @@ rather than once per request.
 
 ## Client calls
 
-The client-side counterpart [LoggedClientFilter](src/main/java/com/chavaillaz/jakarta/rs/client/LoggedClientFilter.java)
+The client-side counterpart [LoggedClientFeature](src/main/java/com/chavaillaz/jakarta/rs/client/LoggedClientFeature.java)
 logs outgoing JAX-RS Client calls and propagates the current request identifier (from MDC) to the downstream
 service as `X-Request-ID`, so a service calling another service exposing its own `@Logged` resource produces a
 single, correlated identifier across both sides of the call. A downstream service reading its identifier from
 another header (`requestIdHeader` of its configuration) is given it there with `correlationIdHeader`.
 
-Unlike `@Logged`, which is resolved per resource method from annotations, `LoggedClientFilter` has no resource
+Unlike `@Logged`, which is resolved per resource method from annotations, `LoggedClientFeature` has no resource
 method to attach annotations to: an instance is configured once through its builder and applies to every call
 made through the `Client`/`WebTarget` it is registered on. It is never discovered by the container, so a client
 the application registers nothing on logs nothing. It is a JAX-RS `Feature` registering the filter and the
@@ -448,7 +448,7 @@ interceptor doing the work, each at the priority it needs: register it whole, as
 `register(filter, ClientRequestFilter.class)` registers nothing.
 
 ```java
-client.register(LoggedClientFilter.builder()
+client.register(LoggedClientFeature.builder()
         .logRequestBody()
         .logResponseBody()
         .bodyLimit(10_000)
@@ -472,7 +472,7 @@ and its body logged once the calling code read that stream to its end, or closed
 For the same reason, only logging the body as a new log line is supported, not adding it to MDC: on the server
 side, `@LoggedBody(MDC)` works because `LoggedFilter` has a single, well-defined point (`logResponse`) at which
 the whole request is known to be complete, so an MDC entry can be added and removed around exactly that point.
-`LoggedClientFilter` has no equivalent point to scope such an entry to, since the response body may become
+`LoggedClientFeature` has no equivalent point to scope such an entry to, since the response body may become
 available only after (or never, relative to) the point the call is considered done, so there is nothing for
 an MDC entry holding the body to be reliably paired with.
 
