@@ -60,6 +60,7 @@ import com.chavaillaz.jakarta.rs.AbstractFilterTest;
 import com.chavaillaz.jakarta.rs.SensitiveBodyFilter;
 import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
+import com.chavaillaz.jakarta.rs.filter.JsonMaskingBodyFilter;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
 @DisplayName("Logged client filter")
@@ -426,6 +427,28 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         LogEvent event = listAppender.findFirstMessage("Request body");
         assertNotNull(event);
         assertTrue(event.getMessage().getFormattedMessage().contains("bodyAB"));
+    }
+
+    @Test
+    @DisplayName("Check filters given as instances apply after those given as classes, in the order given")
+    void checkBodyFilterInstancesApplied() throws Exception {
+        // Given: a configured built-in filter, whose configuration only an instance can carry
+        filter.filter(requestContext);
+        LoggedClientFilter bodyLoggingFilter = LoggedClientFilter.builder()
+                .logRequestBody()
+                .bodyFilters(new JsonMaskingBodyFilter("password"), body -> body.append("B"))
+                .bodyFilters(AppendA.class)
+                .build();
+        WriterInterceptorContext context = writerContext(properties, "{\"password\":\"hunter2\"}");
+
+        // When
+        bodyLoggingFilter.captureRequestBody(context);
+
+        // Then
+        LogEvent event = listAppender.findFirstMessage("Request body");
+        assertNotNull(event);
+        assertTrue(event.getMessage().getFormattedMessage().endsWith("{\"password\":\"***\"}AB"),
+                event.getMessage().getFormattedMessage());
     }
 
     public static class AppendA implements LoggedBodyFilter {

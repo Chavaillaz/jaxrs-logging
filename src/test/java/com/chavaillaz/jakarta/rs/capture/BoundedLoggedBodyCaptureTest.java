@@ -226,6 +226,35 @@ class BoundedLoggedBodyCaptureTest {
         assertEquals("a�" + TRUNCATION_MARKER, result);
     }
 
+    @ParameterizedTest(name = "limit={0}")
+    @ValueSource(ints = {2, 3})
+    @DisplayName("Check content leaves out a three-byte UTF-8 character the limit cut, wherever it cut it")
+    void checkContentTrimsTruncatedThreeByteCharacter(int limit) throws IOException {
+        // Given: "a€" in UTF-8 (4 bytes: a, then the euro sign on 3 bytes), cut after 1 or 2 of the sign's bytes
+        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(limit);
+        capture.sink().write("a€".getBytes(UTF_8));
+
+        // When
+        String result = capture.content(Set.of());
+
+        // Then
+        assertEquals("a" + TRUNCATION_MARKER, result);
+    }
+
+    @Test
+    @DisplayName("Check content keeps continuation bytes no character starts, replaced as they would be anywhere else")
+    void checkContentKeepsStrayContinuationBytesAtTheCut() throws IOException {
+        // Given: more continuation bytes than a UTF-8 character has, right where the limit cut
+        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(5);
+        capture.sink().write(new byte[]{'a', (byte) 0x80, (byte) 0x80, (byte) 0x80, (byte) 0x80, 'b'});
+
+        // When
+        String result = capture.content(Set.of());
+
+        // Then: malformed rather than cut in half, they are decoded the way the rest of the body is
+        assertEquals("a����" + TRUNCATION_MARKER, result);
+    }
+
     @ParameterizedTest(name = "{0}")
     @CsvSource({"windows-1252, Café!, 4, Café", "Shift_JIS, 日本語, 3, 日", "UTF-16LE, Café, 7, Caf"})
     @DisplayName("Check content leaves out a character the limit cut in any other charset, and only that one")

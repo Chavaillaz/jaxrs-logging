@@ -103,6 +103,34 @@ class LoggedUtilsTest {
                 .collect(toSet()));
     }
 
+    // The class and the method both map every header automatically, under prefixes of their own
+    @LoggedMapping(type = HEADER, auto = true, mdcPrefix = "class-")
+    static class AutomaticResource {
+
+        @LoggedMapping(type = HEADER, auto = true, mdcPrefix = "method-")
+        @LoggedMapping(type = QUERY, auto = true, mdcPrefix = "query-")
+        public void method() {
+            // No-op
+        }
+
+    }
+
+    @Test
+    @DisplayName("Check a type of parameter mapped automatically at two levels is only mapped by the most specific one")
+    void checkAutomaticMappingsMerged() throws Exception {
+        // Given
+        doReturn(AutomaticResource.class).when(resourceInfo).getResourceClass();
+        doReturn(AutomaticResource.class.getMethod("method")).when(resourceInfo).getResourceMethod();
+
+        // When
+        Set<LoggedMapping> mappings = getMergedMappings(resourceInfo);
+
+        // Then: declaring no parameter name, both automatic header mappings would otherwise map every header
+        assertEquals(Set.of("method-", "query-"), mappings.stream()
+                .map(LoggedMapping::mdcPrefix)
+                .collect(toSet()));
+    }
+
     // Class-level configuration applying (by default) to both request and response
     @Logged(@LoggedBody(MDC))
     interface ConflictingAnnotationsInterface {
