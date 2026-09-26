@@ -258,6 +258,27 @@ class RequestMdcTest {
     }
 
     @Test
+    @DisplayName("Check a sweep removes what the last request left on the thread, and nothing put since")
+    void checkLeftoversSwept() {
+        // Given: a request that never completed on this thread, one of whose keys the thread reused since
+        mdc.start(request());
+        mdc.put(REQUEST_ID, "abc-123");
+        mdc.put("custom-key", "left-behind");
+        MDC.put("custom-key", "put-since");
+
+        // When: swept twice, the thread putting back the very value the request left in between
+        RequestMdc.sweep();
+        String swept = MDC.get(REQUEST_ID.getDefaultField());
+        MDC.put(REQUEST_ID.getDefaultField(), "abc-123");
+        RequestMdc.sweep();
+
+        // Then: swept once, the thread being released from that request
+        assertNull(swept);
+        assertEquals("put-since", MDC.get("custom-key"));
+        assertEquals("abc-123", MDC.get(REQUEST_ID.getDefaultField()));
+    }
+
+    @Test
     @DisplayName("Check a key is taken by a field, whatever renames it, or by an entry the thread carries")
     void checkKeysTaken() {
         fieldNames.put(REQUEST_ID, "request-identifier");

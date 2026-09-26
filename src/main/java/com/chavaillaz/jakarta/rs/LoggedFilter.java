@@ -302,43 +302,60 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     /**
      * {@inheritDoc}
      * <p>
-     * Starts the request of a resource carrying an annotation of this library (see {@link #bound} for a
-     * subclass bound by name): attaches its state, puts the MDC entries describing it, has a subclass put its
-     * own (see {@link #describe(ContainerRequestContext)}), and logs its {@code "Received ..."} line right
-     * away when it has no entity to read - unless another provider applying to the resource started it
-     * already, and logs it (see {@link #handles(LoggedRequestState)}). Nothing done here can fail the
-     * request, which the resource method has yet to serve.
+     * Starts the request (see {@link #start(ContainerRequestContext)}), or when no provider logs it, removes
+     * from the thread serving it what a request logged earlier may have left there (see
+     * {@link RequestMdc#sweep()}). Nothing done here can fail the request, which the resource method has yet
+     * to serve.
      */
     @Override
     public void filter(ContainerRequestContext requestContext) {
         safely(() -> {
-            if (LoggedRequestState.find(requestContext) != null) {
-                // Started by another provider applying to the resource, which logs it
-                return;
-            }
-            if (!bound && !resolver.isLogged(resourceInfo)) {
-                // Applied to every resource, of which this one carries no annotation of this library
-                return;
-            }
-            // Starts measuring the duration, and records this instance as the one handling the request, for
-            // LoggedBodyInterceptor to hand its captures back to
-            LoggedRequestState state = LoggedRequestState.attach(requestContext, this);
-            // Resolved for the whole request right away, while the injected ResourceInfo describes it: a thread
-            // completing the request later on, one resuming a suspended response, may no longer see it
-            LoggedBodyConfiguration requestBody = getBodyConfiguration(state, REQUEST);
-            // From here on, the entries this thread carries are this request's
-            setup().mdc().start(state);
-
-            putMdcFromRequest(state, requestContext);
-            putMdcFromMappings(requestContext);
-            LoggingGuard.safely(log, "Unable to describe the request as the provider asks, its own entries are left out",
-                    () -> describe(requestContext));
-
-            // Without an entity to read, aroundReadFrom is never called
-            if (requestBody.logs(LOG) && !(requestContext.hasEntity() && requestContext.getLength() != 0)) {
-                logRequest(state, EMPTY);
+            // Swept from the request filter alone, which runs on the thread serving the request: a response
+            // filter can run in the middle of another request, whose entries the thread carries
+            if (!start(requestContext)) {
+                RequestMdc.sweep();
             }
         });
+    }
+
+    /**
+     * Starts the given request if its resource carries an annotation of this library (see {@link #bound} for
+     * a subclass bound by name): attaches its state, puts the MDC entries describing it, has a subclass put
+     * its own (see {@link #describe(ContainerRequestContext)}), and logs its {@code "Received ..."} line right
+     * away when it has no entity to read - unless another provider applying to the resource started it
+     * already, and logs it (see {@link #handles(LoggedRequestState)}).
+     *
+     * @param requestContext The context of the request received
+     * @return {@code true} if a provider logs the request, this one or another, {@code false} if none does
+     */
+    private boolean start(ContainerRequestContext requestContext) {
+        if (LoggedRequestState.find(requestContext) != null) {
+            // Started by another provider applying to the resource, which logs it
+            return true;
+        }
+        if (!bound && !resolver.isLogged(resourceInfo)) {
+            // Applied to every resource, of which this one carries no annotation of this library
+            return false;
+        }
+        // Starts measuring the duration, and records this instance as the one handling the request, for
+        // LoggedBodyInterceptor to hand its captures back to
+        LoggedRequestState state = LoggedRequestState.attach(requestContext, this);
+        // Resolved for the whole request right away, while the injected ResourceInfo describes it: a thread
+        // completing the request later on, one resuming a suspended response, may no longer see it
+        LoggedBodyConfiguration requestBody = getBodyConfiguration(state, REQUEST);
+        // From here on, the entries this thread carries are this request's
+        setup().mdc().start(state);
+
+        putMdcFromRequest(state, requestContext);
+        putMdcFromMappings(requestContext);
+        LoggingGuard.safely(log, "Unable to describe the request as the provider asks, its own entries are left out",
+                () -> describe(requestContext));
+
+        // Without an entity to read, aroundReadFrom is never called
+        if (requestBody.logs(LOG) && !(requestContext.hasEntity() && requestContext.getLength() != 0)) {
+            logRequest(state, EMPTY);
+        }
+        return true;
     }
 
     /**
@@ -563,7 +580,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     private @Nullable LoggedRequestState startedState(ContainerRequestContext requestContext) {
         LoggedRequestState state = LoggedRequestState.find(requestContext);
         if (state == null) {
-            filter(requestContext);
+            safely(() -> start(requestContext));
             state = LoggedRequestState.find(requestContext);
         }
         return state != null && handles(state) ? state : null;

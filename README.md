@@ -256,8 +256,10 @@ Every MDC entry the library creates is removed once the request has been logged.
 on a different thread than the one that started it (a resumed `@Suspended` response, a reactive resource
 method), the removal cannot reach the thread that set them, and a wrapper restoring the context map it saved
 before the request completed puts them back, so the library also sweeps its own leftovers at the start of
-every request it logs - mapped keys included, whose names are only known once the client has sent the
-request.
+every request - mapped keys included, whose names are only known once the client has sent the request. The
+same goes for a request failing with an exception no `ExceptionMapper` handles, which Apache CXF and Quarkus
+answer outside of JAX-RS: it is never logged as `Processed ...`, which an `ExceptionMapper<Throwable>` of the
+application avoids.
 
 Automatic mapping never copies a credential-carrying header (`Authorization`, `Cookie`, `X-Api-Key`, ...)
 into MDC, as `auto = true` is a blanket "map whatever the client sent" instruction and is otherwise an easy

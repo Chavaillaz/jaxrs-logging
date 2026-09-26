@@ -1847,6 +1847,42 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check a request no provider logs starts without what a request logged before left on the thread")
+    void checkLeftoversSweptForRequestNotLogged() throws Exception {
+        // Given: a request logged that never completes on this thread, as one failing with an exception no
+        // mapper handles does when the runtime answers it outside of JAX-RS
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+        loggingFilter.filter(getRequestContext());
+        setupTest(PlainResource.class, "plain");
+
+        // When
+        loggingFilter.filter(getRequestContext());
+
+        // Then
+        assertNull(getMdc(REQUEST_ID));
+        assertNull(getMdc(REQUEST_URI));
+    }
+
+    @Test
+    @DisplayName("Check the response of a request no provider logs leaves the entries of the request in progress")
+    void checkLeftoversNotSweptByResponse() throws Exception {
+        // Given: a request logged, in the middle of which the response of a request not logged is written, as
+        // when a request handler resumes the response of a request suspended earlier
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+        loggingFilter.filter(getRequestContext());
+        String requestId = getMdc(REQUEST_ID);
+        setupTest(PlainResource.class, "plain");
+        PreMatchContainerRequestContext resumed = getRequestContext();
+
+        // When
+        loggingFilter.filter(resumed, getEmptyResponseContext(resumed));
+
+        // Then
+        assertNotNull(requestId);
+        assertEquals(requestId, getMdc(REQUEST_ID));
+    }
+
+    @Test
     @DisplayName("Check a request completed on another thread keeps the body logging resolved as it started")
     void checkCompletionOnAnotherThreadKeepsBodyLogging() throws Exception {
         setupTest(AnnotatedResource.class, "bodyAsLog");
@@ -2164,6 +2200,13 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         @Logged
         void inheritParent();
+
+    }
+
+    // Carries no annotation of the library, so no provider logs its requests
+    interface PlainResource {
+
+        void plain();
 
     }
 

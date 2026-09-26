@@ -178,6 +178,32 @@ final class RequestMdc {
     }
 
     /**
+     * Removes from the current thread's context map what the request it carried last left on it, as a request
+     * no provider logs starts on the thread.
+     * <p>
+     * A request leaves its entries on the thread that started it whenever it does not complete there: it
+     * completed on another thread, or the runtime answered an exception no {@code ExceptionMapper} handles
+     * outside of JAX-RS, which Apache CXF does. The next request logged on the thread sweeps them (see
+     * {@link #start(LoggedRequestState)}), but a request logged by none would have every line it logs
+     * mislabelled with them.
+     * <p>
+     * Only an entry still holding the value the request put is removed, as the thread may have put its own
+     * under the same key since, and the thread is then released from that request, so the requests following
+     * on it pay for nothing more than this check.
+     */
+    static void sweep() {
+        Map<String, String> entries = threadEntries.get();
+        if (entries != null) {
+            entries.forEach((key, value) -> {
+                if (value.equals(MDC.get(key))) {
+                    MDC.remove(key);
+                }
+            });
+            threadEntries.remove();
+        }
+    }
+
+    /**
      * Runs the given action on behalf of the given request, with the entries of that request in the current
      * thread's context map, and the entries the action puts recorded as that request's, so they are removed
      * along with its other entries once it completes.
