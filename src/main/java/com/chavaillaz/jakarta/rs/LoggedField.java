@@ -7,7 +7,8 @@ package com.chavaillaz.jakarta.rs;
 public enum LoggedField {
 
     /**
-     * Identifier of the request, from its {@value LoggedFilter#REQUEST_ID_HEADER} header or generated.
+     * Identifier of the request, from its {@value LoggedFilter#REQUEST_ID_HEADER} header by default (see
+     * {@link LoggedFilterConfiguration.Builder#requestIdHeader(String)}), or generated.
      */
     REQUEST_ID("request-id"),
 

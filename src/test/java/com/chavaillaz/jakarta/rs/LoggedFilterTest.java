@@ -426,9 +426,9 @@ class LoggedFilterTest extends AbstractFilterTest {
     @DisplayName("Check the request body is captured after an entity coder decoded it")
     void checkRequestBodyCapturedAfterEntityCoder() throws Exception {
         // Interceptors run in ascending priority and each wraps the stream for the next, so capturing
-        // from LoggedFilter's own (deliberately low) priority captured the bytes as they arrive on the
-        // wire - gzip noise for a Content-Encoding: gzip request. LoggedBodyInterceptor runs after the
-        // coder instead, and must therefore see the decoded entity.
+        // from LoggedFilter's own priority, which runs it before the coder, captured the bytes as they
+        // arrive on the wire - gzip noise for a Content-Encoding: gzip request. LoggedBodyInterceptor runs
+        // after the coder instead, and must therefore see the decoded entity.
         setupTest(AnnotatedResource.class, "bodyAsLog");
 
         // Given: the request as it arrives on the wire, with a coder decoding it between the two

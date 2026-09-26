@@ -57,7 +57,7 @@ import com.chavaillaz.jakarta.rs.internal.Sanitizer;
  * Provider logging the requests received by the resources annotated with {@link Logged}, and describing each
  * of them in {@link MDC} for every line logged while it is processed (see {@link LoggedField}):
  * <ul>
- *     <li>Request identifier (from the {@value #REQUEST_ID_HEADER} header, or a random UUID)</li>
+ *     <li>Request identifier (from the {@value #REQUEST_ID_HEADER} header by default, or a random UUID)</li>
  *     <li>Request method and URI path relative to the base URI</li>
  *     <li>Request query parameters, credentials masked (see
  *     {@link LoggedFilterConfiguration.Builder#sensitiveParameters(java.util.function.BiPredicate)})</li>

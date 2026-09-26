@@ -48,7 +48,7 @@ The logging of requests and responses is done through a filter that can be activ
 It will add the following information to MDC for the request processing
 (meaning that all logs within the processing of the request by the resource will have them):
 
-* Request identifier (from X-Request-ID header or random UUID)
+* Request identifier (from the X-Request-ID header by default, or a random UUID)
 * Request HTTP method
 * Request URI path relative to the base URI
 * Request query parameters
@@ -251,7 +251,8 @@ Every MDC entry the library creates is removed once the request has been logged.
 on a different thread than the one that started it (a resumed `@Suspended` response, a reactive resource
 method), the removal cannot reach the thread that set them, and a wrapper restoring the context map it saved
 before the request completed puts them back, so the library also sweeps its own leftovers at the start of
-every request - mapped keys included, whose names are only known once the client has sent the request.
+every request it logs - mapped keys included, whose names are only known once the client has sent the
+request.
 
 Automatic mapping never copies a credential-carrying header (`Authorization`, `Cookie`, `X-Api-Key`, ...)
 into MDC, as `auto = true` is a blanket "map whatever the client sent" instruction and is otherwise an easy

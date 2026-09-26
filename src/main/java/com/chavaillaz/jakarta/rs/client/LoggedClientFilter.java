@@ -579,8 +579,9 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      * {@inheritDoc}
      * <p>
      * Registers the {@link BodyInterceptor} capturing the bodies of the calls along with this provider, so
-     * registering this provider is enough. The two need priorities of their own: the filters run first on
-     * the request and last on the response, outside any entity coder, while a body is captured inside it.
+     * registering this provider is enough. The two need priorities of their own, which one class cannot
+     * declare: the filters run at {@link Priorities#HEADER_DECORATOR}, before the filters of the application
+     * on the request and after them on the response, while a body is captured after any entity coder.
      */
     @Override
     public boolean configure(FeatureContext context) {

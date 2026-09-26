@@ -23,8 +23,9 @@ import org.jspecify.annotations.Nullable;
  * <p>
  * Interceptors run in ascending priority order, each wrapping the stream for the ones after it, so an entity
  * coder ({@link Priorities#ENTITY_CODER}) sits between the interceptors running before it and the entity:
- * from the low priority its filters need, {@link LoggedFilter} would capture the compressed bytes of a
- * {@code Content-Encoding: gzip} body. This provider runs after the coder, and captures the entity itself.
+ * from the priority its filters need, {@link Priorities#HEADER_DECORATOR}, which runs it before the coder,
+ * {@link LoggedFilter} would capture the compressed bytes of a {@code Content-Encoding: gzip} body. This
+ * provider runs after the coder, and captures the entity itself.
  * <p>
  * Every decision about a body - whether it is captured, how it is filtered, where it is logged - stays with
  * the {@link LoggedFilter} handling the request, which this provider calls back. An application registering
