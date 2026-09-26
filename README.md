@@ -37,6 +37,26 @@ The API is annotated with [JSpecify](https://jspecify.dev): every package is `@N
 parameter, return value and field is non-null unless explicitly marked `@Nullable`, so static analysis tools
 (IDE inspections, NullAway, the Checker Framework, ...) can catch null-safety issues in your code at build time.
 
+## Compatibility
+
+A runtime scanning the application for providers discovers `LoggedFilter` and `LoggedBodyInterceptor`; any other
+has the application register both. The library runs on these, smoke-tested with the same resources on each:
+
+| Runtime         | JAX-RS implementation                     | Providers                                            |
+|-----------------|-------------------------------------------|------------------------------------------------------|
+| WildFly 41      | RESTEasy 7 (Jakarta REST 4.0)             | Discovered                                           |
+| Open Liberty 26 | RESTEasy, `restfulWS-4.0`                 | Discovered                                           |
+| Payara 7        | Jersey 4 (Jakarta REST 4.0)               | Discovered                                           |
+| Quarkus 3.39    | Quarkus REST or RESTEasy Classic (3.1)    | Discovered, through the index the jar carries        |
+| Spring Boot 4.1 | Jersey 4, `spring-boot-starter-jersey`    | Registered in the `ResourceConfig`                   |
+| Helidon MP 4.5  | Jersey 3.1                                | Returned by `Application.getClasses()`               |
+| Apache CXF 4.2  | CXF (Jakarta REST 4.0)                    | Given to the `JAXRSServerFactoryBean`                |
+
+Quarkus and CXF answer an exception no `ExceptionMapper` handles outside of JAX-RS, so the request failing with
+it is not logged as `Processed ...`, which an `ExceptionMapper<Throwable>` of the application avoids. Micronaut is
+not supported: its JAX-RS module is no JAX-RS implementation, and neither discovers the providers of a library
+nor runs the writer interceptors completing the requests answered with an entity.
+
 ## Usage
 
 The logging of requests and responses is done through a filter that can be activated on a resource with:
@@ -257,9 +277,8 @@ on a different thread than the one that started it (a resumed `@Suspended` respo
 method), the removal cannot reach the thread that set them, and a wrapper restoring the context map it saved
 before the request completed puts them back, so the library also sweeps its own leftovers at the start of
 every request - mapped keys included, whose names are only known once the client has sent the request. The
-same goes for a request failing with an exception no `ExceptionMapper` handles, which Apache CXF and Quarkus
-answer outside of JAX-RS: it is never logged as `Processed ...`, which an `ExceptionMapper<Throwable>` of the
-application avoids.
+same goes for a request failing with an exception no `ExceptionMapper` handles, on a runtime answering it
+outside of JAX-RS (see [Compatibility](#compatibility)).
 
 Automatic mapping never copies a credential-carrying header (`Authorization`, `Cookie`, `X-Api-Key`, ...)
 into MDC, as `auto = true` is a blanket "map whatever the client sent" instruction and is otherwise an easy
