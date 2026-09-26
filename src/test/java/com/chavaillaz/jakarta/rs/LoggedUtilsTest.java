@@ -10,6 +10,7 @@ import static com.chavaillaz.jakarta.rs.LoggedUtils.getAnnotation;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.getMergedMappings;
 import static java.util.stream.Collectors.toSet;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doReturn;
@@ -288,6 +289,8 @@ class LoggedUtilsTest {
 
         public abstract void save(E entity);
 
+        public abstract void saveAll(E[] entities);
+
     }
 
     static class ConcreteResource extends GenericBaseResource<String> implements Api {
@@ -300,6 +303,15 @@ class LoggedUtilsTest {
         @Override
         public void save(String entity) {
             // No-op
+        }
+
+        @Override
+        public void saveAll(String[] entities) {
+            // No-op
+        }
+
+        public void saveAll(Integer[] ids) {
+            // Overloads the method above, overriding nothing
         }
 
     }
@@ -329,6 +341,19 @@ class LoggedUtilsTest {
 
         // Then
         assertTrue(sites.contains(GenericBaseResource.class.getMethod("save", Object.class)), sites::toString);
+    }
+
+    @Test
+    @DisplayName("Check a method overriding a generic method taking an array has it as a declaration site")
+    void checkDeclarationSitesWithGenericArray() throws Exception {
+        // When: saveAll(String[]) overrides saveAll(E[]), which erases to saveAll(Object[])
+        Method overridden = GenericBaseResource.class.getMethod("saveAll", Object[].class);
+        List<AnnotatedElement> sites = declarationSites(ConcreteResource.class, ConcreteResource.class.getMethod("saveAll", String[].class));
+        List<AnnotatedElement> overloadSites = declarationSites(ConcreteResource.class, ConcreteResource.class.getMethod("saveAll", Integer[].class));
+
+        // Then: the overload taking another array overrides nothing
+        assertTrue(sites.contains(overridden), sites::toString);
+        assertFalse(overloadSites.contains(overridden), overloadSites::toString);
     }
 
     @Test

@@ -9,12 +9,14 @@ import static java.util.Collections.emptyList;
 import static java.util.Collections.emptySet;
 import static org.apache.commons.lang3.ClassUtils.getAllInterfaces;
 import static org.apache.commons.lang3.ClassUtils.getAllSuperclasses;
+import static org.apache.commons.lang3.reflect.TypeUtils.genericArrayType;
 import static org.apache.commons.lang3.reflect.TypeUtils.getTypeArguments;
 import static org.apache.commons.lang3.reflect.TypeUtils.unrollVariables;
 
 import jakarta.ws.rs.container.ResourceInfo;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.AnnotatedElement;
+import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.Method;
 import java.lang.reflect.Type;
 import java.lang.reflect.TypeVariable;
@@ -314,12 +316,33 @@ public final class LoggedUtils {
         Type[] declaredParameters = method.getGenericParameterTypes();
         Type[] resourceParameters = resourceMethod.getGenericParameterTypes();
         for (int i = 0; i < declaredParameters.length; i++) {
-            if (!TypeUtils.equals(unrollVariables(typeArguments, declaredParameters[i]),
-                    unrollVariables(typeArguments, resourceParameters[i]))) {
+            if (!TypeUtils.equals(resolve(typeArguments, declaredParameters[i]),
+                    resolve(typeArguments, resourceParameters[i]))) {
                 return false;
             }
         }
         return true;
+    }
+
+    /**
+     * Resolves the type variables of the given type against the given type arguments, arrays of them
+     * included: {@link TypeUtils#unrollVariables(Map, Type)} leaves an {@code E[]} as it is, which no
+     * {@code String[]} is then equal to, whereas it resolves an {@code E} to {@code String}.
+     *
+     * @param typeArguments The type arguments of the resource class, by the type variable they are given for
+     * @param type          The type to resolve
+     * @return The type resolved, the class of an array whose component resolves to one, or {@code null} for a
+     * type variable the type arguments give nothing for
+     */
+    private static @Nullable Type resolve(Map<TypeVariable<?>, Type> typeArguments, Type type) {
+        if (type instanceof GenericArrayType array) {
+            Type component = resolve(typeArguments, array.getGenericComponentType());
+            if (component instanceof Class<?> componentClass) {
+                return componentClass.arrayType();
+            }
+            return component == null ? null : genericArrayType(component);
+        }
+        return unrollVariables(typeArguments, type);
     }
 
 }
