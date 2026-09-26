@@ -323,6 +323,9 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             // Starts measuring the duration, and records this instance as the one handling the request, for
             // LoggedBodyInterceptor to hand its captures back to
             LoggedRequestState state = LoggedRequestState.attach(requestContext, this);
+            // Resolved for the whole request right away, while the injected ResourceInfo describes it: a thread
+            // completing the request later on, one resuming a suspended response, may no longer see it
+            LoggedBodyConfiguration requestBody = getBodyConfiguration(state, REQUEST);
             // From here on, the entries this thread carries are this request's
             setup().mdc().start(state);
 
@@ -332,7 +335,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                     () -> describe(requestContext));
 
             // Without an entity to read, aroundReadFrom is never called
-            if (getBodyConfiguration(state, REQUEST).logs(LOG) && !(requestContext.hasEntity() && requestContext.getLength() != 0)) {
+            if (requestBody.logs(LOG) && !(requestContext.hasEntity() && requestContext.getLength() != 0)) {
                 logRequest(state, EMPTY);
             }
         });

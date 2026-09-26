@@ -113,8 +113,9 @@ final class LoggedRequestState {
     private volatile int status;
 
     /**
-     * Body logging configuration resolved for this request, kept so the several callbacks asking for it
-     * share one resolution. See {@link LoggedFilter#getBodyConfiguration(LoggedRequestState, LoggedBody.Direction)}.
+     * Body logging configuration resolved for this request as it starts, on the thread serving it, and kept
+     * so the callbacks asking for it later on, on whatever thread, share that resolution. See
+     * {@link LoggedFilter#getBodyConfiguration(LoggedRequestState, LoggedBody.Direction)}.
      */
     private volatile @Nullable BodyConfiguration bodyConfiguration;
 

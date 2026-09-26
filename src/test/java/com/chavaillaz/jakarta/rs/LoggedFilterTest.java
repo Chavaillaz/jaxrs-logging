@@ -1846,6 +1846,31 @@ class LoggedFilterTest extends AbstractFilterTest {
         assertTrue(left == null || left.isEmpty(), () -> "Left on the worker: " + left);
     }
 
+    @Test
+    @DisplayName("Check a request completed on another thread keeps the body logging resolved as it started")
+    void checkCompletionOnAnotherThreadKeepsBodyLogging() throws Exception {
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+
+        // Given: a request whose resource method never reads the entity, logged once it is answered, from a
+        // worker on which the injected ResourceInfo resolves nothing, as a proxy of the container would not
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        loggingFilter.filter(requestContext);
+        lenient().doReturn(null).when(resourceInfo).getResourceClass();
+        lenient().doReturn(null).when(resourceInfo).getResourceMethod();
+        ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext);
+        ExecutorService worker = newSingleThreadExecutor();
+
+        // When
+        try {
+            worker.submit(() -> loggingFilter.filter(requestContext, responseContext)).get();
+        } finally {
+            worker.shutdown();
+        }
+
+        // Then
+        assertEquals(List.of("Received POST /service"), getReceivedMessages());
+    }
+
     /**
      * Gets the {@code "Processed ..."} lines logged so far, in the order they were logged, without the
      * duration they end with.
