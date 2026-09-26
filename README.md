@@ -122,7 +122,7 @@ Additional logging features can be activated by adding `@LoggedBody` (repeatable
   [LoggedBodyFilter](src/main/java/com/chavaillaz/jakarta/rs/filter/LoggedBodyFilter.java) to filter any body
   before writing it in logs, for example to remove sensitive data that could be present
   (see [Body filters](#body-filters) for the ready-made ones).
-* **limit**: Size limit in bytes of the body logged (not limited by default).
+* **limit**: Size limit in bytes of the body logged, 64 KiB by default (`-1` for none).
 * **targets**: Whether the configuration applies to the request, the response, or both (default).
 
 By default, `@LoggedBody` applies to both the request and the response. Repeat the annotation with different
@@ -139,17 +139,17 @@ one another, the first one declared wins.
 `@LoggedBody` and `@LoggedMapping` activate the logging too, as they configure it: a method declaring a single
 `@LoggedBody`, or several, has its requests logged, bodies included, whether it is `@Logged` or not.
 
-Be careful when activating any body logging, as it may produce performance or memory issues if the body size
-is not limited: the captured body is buffered in memory, so an endpoint accepting large (or client-controlled)
-payloads should always set a `limit`. A body cut short by that limit ends with `...[truncated]`, so a partial
-payload is never mistaken for what the application actually sent or received. Without a limit, a body is cut
-the same way where the heap has no room for more of it, and one too large to be rendered with the memory left
-is left out of the logs: logging it fails neither way the request it only observes.
+A captured body is buffered in memory, which is why `limit` defaults to 64 KiB: enough for the payloads of most
+APIs, while a large (or client-controlled) one costs no more than that, in memory and in the logs. A body cut
+short by that limit ends with `...[truncated]`, so a partial payload is never mistaken for what the application
+actually sent or received. `limit = -1` removes the limit, at the risk of performance or memory issues: a body
+is then cut the same way where the heap has no room for more of it, and one too large to be rendered with the
+memory left is left out of the logs: logging it fails neither way the request it only observes.
 
 A body is captured while its entity is read or written, which a resource method taking it as a stream (an
 `InputStream` or a `Reader` parameter) does once the providers are done with it: such a body is logged once the
 method read it to its end or closed it, and at the latest once the request is answered, as far as the method
-read it - so set a `limit` for a resource taking large uploads that way, as for any other.
+read it. Like any other body, it is captured up to the `limit`.
 
 A body whose content type is not text-based (for example `application/octet-stream`, `application/pdf` or
 an `image/*`/`multipart/*` type) is logged as a lowercase hexadecimal string instead of being decoded as
@@ -467,7 +467,8 @@ two: the response body is only available if/when the calling code actually reads
 may happen after (or not at all after) the `Called ...` line, so there is no single point to merge them into,
 unlike the server-side filter.
 A response read as a stream (`readEntity(InputStream.class)`) is read once the providers are done with it,
-and its body logged once the calling code read that stream to its end, or closed it.
+and its body logged once the calling code read that stream to its end, or closed it. As on the server side, a
+body is cut at 64 KiB by default, which `bodyLimit` changes.
 
 For the same reason, only logging the body as a new log line is supported, not adding it to MDC: on the server
 side, `@LoggedBody(MDC)` works because `LoggedFilter` has a single, well-defined point (`logResponse`) at which

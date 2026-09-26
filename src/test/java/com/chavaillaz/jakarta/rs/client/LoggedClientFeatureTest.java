@@ -2,6 +2,8 @@ package com.chavaillaz.jakarta.rs.client;
 
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedFilterConfiguration.isCredential;
+import static com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture.TRUNCATION_MARKER;
+import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.DEFAULT_LIMIT;
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
 import static com.chavaillaz.jakarta.rs.internal.BodyCapturer.MEMORY_FAILURE;
 import static com.chavaillaz.jakarta.rs.internal.Sanitizer.REQUEST_ID_MAX_LENGTH;
@@ -443,6 +445,23 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
         LogEvent event = listAppender.findFirstMessage("Request body");
         assertNotNull(event);
         assertTrue(event.getMessage().getFormattedMessage().contains("Hello, world!"));
+    }
+
+    @Test
+    @DisplayName("Check a body is cut at the default limit when the builder sets none")
+    void checkBodyLimitedByDefault() throws Exception {
+        // Given: a body larger than the default limit, which was captured whole, however large
+        feature.filter(requestContext);
+        LoggedClientFeature bodyLoggingFeature = LoggedClientFeature.builder().logRequestBody().build();
+        WriterInterceptorContext context = writerContext(properties, "a".repeat(DEFAULT_LIMIT + 100));
+
+        // When
+        bodyLoggingFeature.captureRequestBody(context);
+
+        // Then
+        LogEvent event = listAppender.findFirstMessage("Request body");
+        assertNotNull(event);
+        assertTrue(event.getMessage().getFormattedMessage().endsWith(LF + "a".repeat(DEFAULT_LIMIT) + TRUNCATION_MARKER));
     }
 
     @Test

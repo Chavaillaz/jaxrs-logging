@@ -5,6 +5,7 @@ import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.RESPONSE;
 import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.LOG;
 import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.MDC;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
+import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.DEFAULT_LIMIT;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -212,6 +213,20 @@ class LoggedResolverTest {
         // Then
         assertSame(BodyConfiguration.NONE, configuration);
         assertThrows(IllegalArgumentException.class, () -> new LoggedBodyConfiguration(Set.of(LOG), -2, Set.of()));
+    }
+
+    @Test
+    @DisplayName("Check a body configuration declaring no limit is given the default one")
+    void checkDefaultLimit() throws Exception {
+        // Without a limit, a body was captured whole, however large the client made it
+        setup("bothMethod");
+
+        // When
+        BodyConfiguration configuration = resolver.getBodyConfiguration(resourceInfo);
+
+        // Then
+        assertEquals(DEFAULT_LIMIT, configuration.of(REQUEST).limit());
+        assertEquals(DEFAULT_LIMIT, configuration.of(RESPONSE).limit());
     }
 
     @Test

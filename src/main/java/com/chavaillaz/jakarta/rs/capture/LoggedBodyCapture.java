@@ -36,6 +36,12 @@ public interface LoggedBodyCapture extends AutoCloseable {
     int NO_LIMIT = -1;
 
     /**
+     * Limit a body is captured with when none is configured, 64 KiB: enough for the payloads of most APIs,
+     * while a large one, or one a client makes large, costs no more than that in memory and in the logs.
+     */
+    int DEFAULT_LIMIT = 64 * 1024;
+
+    /**
      * Checks the given limit, which is valid when it is {@link #NO_LIMIT} or a number of bytes.
      *
      * @param limit The limit to check

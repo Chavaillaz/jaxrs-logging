@@ -5,7 +5,7 @@ import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
 import static com.chavaillaz.jakarta.rs.LoggedSupport.levelOf;
-import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
+import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.DEFAULT_LIMIT;
 import static com.chavaillaz.jakarta.rs.filter.MaskingBodyFilter.DEFAULT_MASK;
 import static com.chavaillaz.jakarta.rs.internal.Sanitizer.requestIdOf;
 import static jakarta.ws.rs.Priorities.ENTITY_CODER;
@@ -214,8 +214,8 @@ public class LoggedClientFeature implements Feature {
         private BiPredicate<MappingType, String> sensitiveParameters = LoggedFilterConfiguration::isCredential;
         private boolean logRequestBody = false;
         private boolean logResponseBody = false;
-        private int requestBodyLimit = NO_LIMIT;
-        private int responseBodyLimit = NO_LIMIT;
+        private int requestBodyLimit = DEFAULT_LIMIT;
+        private int responseBodyLimit = DEFAULT_LIMIT;
         private final Set<Class<? extends LoggedBodyFilter>> bodyFilterClasses = new LinkedHashSet<>();
         private final Set<LoggedBodyFilter> bodyFilterInstances = new LinkedHashSet<>();
 
@@ -304,7 +304,8 @@ public class LoggedClientFeature implements Feature {
         }
 
         /**
-         * Sets the size limit in bytes applied to both the request and response body when logged.
+         * Sets the size limit in bytes applied to both the request and response body when logged, which defaults
+         * to {@link LoggedBodyCapture#DEFAULT_LIMIT}, 64 KiB.
          *
          * @param limit The maximum size of the body to be logged in bytes, or {@code -1} for no limit
          * @return This builder
@@ -315,7 +316,8 @@ public class LoggedClientFeature implements Feature {
         }
 
         /**
-         * Sets the size limit in bytes applied to the request body when logged.
+         * Sets the size limit in bytes applied to the request body when logged, which defaults to
+         * {@link LoggedBodyCapture#DEFAULT_LIMIT}, 64 KiB.
          *
          * @param limit The maximum size of the body to be logged in bytes, or {@code -1} for no limit
          * @return This builder
@@ -327,7 +329,8 @@ public class LoggedClientFeature implements Feature {
         }
 
         /**
-         * Sets the size limit in bytes applied to the response body when logged.
+         * Sets the size limit in bytes applied to the response body when logged, which defaults to
+         * {@link LoggedBodyCapture#DEFAULT_LIMIT}, 64 KiB.
          *
          * @param limit The maximum size of the body to be logged in bytes, or {@code -1} for no limit
          * @return This builder
