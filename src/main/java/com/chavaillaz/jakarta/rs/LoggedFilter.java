@@ -13,6 +13,7 @@ import static jakarta.ws.rs.Priorities.HEADER_DECORATOR;
 import static jakarta.ws.rs.RuntimeType.SERVER;
 import static jakarta.ws.rs.core.MediaType.WILDCARD_TYPE;
 import static java.lang.String.valueOf;
+import static java.util.Arrays.stream;
 import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElse;
 import static org.apache.commons.lang3.StringUtils.EMPTY;
@@ -20,6 +21,7 @@ import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
 import jakarta.annotation.Priority;
 import jakarta.ws.rs.ConstrainedTo;
+import jakarta.ws.rs.NameBinding;
 import jakarta.ws.rs.Priorities;
 import jakarta.ws.rs.WebApplicationException;
 import jakarta.ws.rs.container.ContainerRequestContext;
@@ -58,8 +60,9 @@ import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
 import com.chavaillaz.jakarta.rs.internal.Sanitizer;
 
 /**
- * Provider logging the requests received by the resources annotated with {@link Logged}, and describing each
- * of them in {@link MDC} for every line logged while it is processed (see {@link LoggedField}):
+ * Provider logging the requests received by the resources carrying an annotation of this library -
+ * {@link Logged}, {@link LoggedBody} or {@link LoggedMapping} - and describing each of them in {@link MDC} for
+ * every line logged while it is processed (see {@link LoggedField}):
  * <ul>
  *     <li>Request identifier (from the {@value #REQUEST_ID_HEADER} header by default, or a random UUID)</li>
  *     <li>Request method and URI path relative to the base URI</li>
@@ -84,17 +87,18 @@ import com.chavaillaz.jakarta.rs.internal.Sanitizer;
  * {@code ContextResolver<LoggedFilterConfiguration>} (see {@link LoggedFilterConfiguration}), or constructed
  * with its configuration by an application registering its providers explicitly.
  * <p>
- * A request is logged once, by the first {@code LoggedFilter} to see it, however many of them are bound to
- * its resource: the others stand aside. A subclass putting entries of its own therefore declares both its
- * binding and a priority running it before this class, which the container may discover in this library, as
- * neither {@link Logged} nor {@link Priority} is inherited: a subclass declaring neither logs the requests of
- * every resource, and runs at {@link Priorities#USER}.
+ * It applies to every resource, and logs the requests of those carrying an annotation of this library,
+ * wherever it is declared (see {@link Logged}); a subclass bound by a name binding annotation of its own
+ * logs the requests of whatever resource the container binds it to instead. A request is logged once, by the
+ * first {@code LoggedFilter} to see it, however many of them apply to its resource: the others stand aside.
+ * A subclass putting entries of its own (see {@link #describe(ContainerRequestContext)}) therefore declares
+ * a priority running it before this class, which the container may discover in this library, as
+ * {@link Priority} is not inherited: a subclass declaring none runs at {@link Priorities#USER}.
  * <p>
  * The configuration resolved from the annotations of a resource method, and the body filters it names, are
  * cached for the lifetime of the provider, which suits the fixed set of resources of an application but not
  * one generating resource classes at runtime.
  */
-@Logged
 @Provider
 @ConstrainedTo(SERVER)
 @Priority(HEADER_DECORATOR)
@@ -123,6 +127,14 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      */
     @Context
     protected ResourceInfo resourceInfo;
+
+    /**
+     * Whether the class of this provider binds it to the resources it applies to, by a name binding
+     * annotation of its own: a subclass bound that way logs the requests of whatever resource the container
+     * binds it to, while this class, applied to every resource, logs those carrying an annotation of this
+     * library (see {@link Logged}).
+     */
+    private final boolean bound = isBoundByName(getClass());
 
     /**
      * Provides the context resolvers of the application, through which a provider the container instantiated
@@ -290,16 +302,22 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     /**
      * {@inheritDoc}
      * <p>
-     * Starts the request: attaches its state, puts the MDC entries describing it, and logs its
-     * {@code "Received ..."} line right away when it has no entity to read - unless another provider bound
-     * to the resource started it already, and logs it (see {@link #handles(LoggedRequestState)}). Nothing
-     * done here can fail the request, which the resource method has yet to serve.
+     * Starts the request of a resource carrying an annotation of this library (see {@link #bound} for a
+     * subclass bound by name): attaches its state, puts the MDC entries describing it, has a subclass put its
+     * own (see {@link #describe(ContainerRequestContext)}), and logs its {@code "Received ..."} line right
+     * away when it has no entity to read - unless another provider applying to the resource started it
+     * already, and logs it (see {@link #handles(LoggedRequestState)}). Nothing done here can fail the
+     * request, which the resource method has yet to serve.
      */
     @Override
     public void filter(ContainerRequestContext requestContext) {
         safely(() -> {
             if (LoggedRequestState.find(requestContext) != null) {
-                // Started by another provider bound to the resource, which logs it
+                // Started by another provider applying to the resource, which logs it
+                return;
+            }
+            if (!bound && !resolver.isLogged(resourceInfo)) {
+                // Applied to every resource, of which this one carries no annotation of this library
                 return;
             }
             // Starts measuring the duration, and records this instance as the one handling the request, for
@@ -310,6 +328,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
 
             putMdcFromRequest(state, requestContext);
             putMdcFromMappings(requestContext);
+            LoggingGuard.safely(log, "Unable to describe the request as the provider asks, its own entries are left out",
+                    () -> describe(requestContext));
 
             // Without an entity to read, aroundReadFrom is never called
             if (getBodyConfiguration(state, REQUEST).logs(LOG) && !(requestContext.hasEntity() && requestContext.getLength() != 0)) {
@@ -319,9 +339,39 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
+     * Describes the request received in MDC the way a subclass needs to, once this provider put its own
+     * entries: called for the requests it logs only, before any line logging them, and guarded, so a
+     * subclass failing here costs the request its own entries alone. They go through
+     * {@link #putMdc(String, String)}, to be removed once the request is done.
+     * <p>
+     * This is where a subclass puts entries of its own, rather than in an override of
+     * {@link #filter(ContainerRequestContext)}, which runs for the requests of every resource, those it does
+     * not log included: what it put there for them would stay on the thread serving them.
+     * <p>
+     * Does nothing by default.
+     *
+     * @param requestContext The context of the request received
+     */
+    protected void describe(ContainerRequestContext requestContext) {
+        // Nothing to add to the entries of this provider
+    }
+
+    /**
+     * Indicates whether the given class of provider carries a name binding annotation, which binds it to the
+     * resources carrying the same annotation, rather than to all of them.
+     *
+     * @param type The class of the provider
+     * @return {@code true} if the class is bound by name, {@code false} if it applies to every resource
+     */
+    private static boolean isBoundByName(Class<?> type) {
+        return stream(type.getAnnotations())
+                .anyMatch(annotation -> annotation.annotationType().isAnnotationPresent(NameBinding.class));
+    }
+
+    /**
      * Indicates whether this provider is the one logging the request of the given state.
      * <p>
-     * A request is logged by a single provider, however many are bound to its resource - a
+     * A request is logged by a single provider, however many apply to its resource - a
      * {@link LoggedFilter} the container discovers in this library next to a subclass of the application,
      * for instance - as two of them would log it twice, under two identifiers, each sweeping the MDC entries
      * of the other. That provider is the one starting the request, along with the other instances of its

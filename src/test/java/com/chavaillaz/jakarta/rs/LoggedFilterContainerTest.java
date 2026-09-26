@@ -81,6 +81,9 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
         dispatcher.getRegistry().addPerRequestResource(DraftResource.class);
         dispatcher.getRegistry().addPerRequestResource(ResumedResource.class);
         dispatcher.getRegistry().addPerRequestResource(ClearingResource.class);
+        dispatcher.getRegistry().addPerRequestResource(SingleBodyResource.class);
+        dispatcher.getRegistry().addPerRequestResource(MappedResource.class);
+        dispatcher.getRegistry().addPerRequestResource(PlainResource.class);
     }
 
     /**
@@ -213,6 +216,70 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
         assertEquals(200, response.getStatus());
         assertEquals("Received POST /drafts" + LF + "hello", received().getMessage().getFormattedMessage());
         assertTrue(processed().getMessage().getFormattedMessage().endsWith(LF + "drafted hello"));
+    }
+
+    @Test
+    @DisplayName("Check a method declaring a single @LoggedBody is logged, as one repeating it is")
+    void checkSingleLoggedBodyActivatesLogging() throws Exception {
+        // When
+        MockHttpResponse response = invoke(MockHttpRequest.post("/single")
+                .contentType(TEXT_PLAIN)
+                .content("hello".getBytes(UTF_8)));
+
+        // Then
+        assertEquals(200, response.getStatus());
+        assertEquals("Received POST /single" + LF + "hello", received().getMessage().getFormattedMessage());
+        assertTrue(processed().getMessage().getFormattedMessage().endsWith(LF + "single hello"));
+    }
+
+    @Test
+    @DisplayName("Check a resource declaring a mapping alone is logged, the mapping applied")
+    void checkLoggedMappingActivatesLogging() throws Exception {
+        // When
+        MockHttpResponse response = invoke(MockHttpRequest.get("/mapped").header("X-Tenant", "acme"));
+
+        // Then
+        assertEquals(200, response.getStatus());
+        assertEquals("acme", processed().getContextData().getValue("tenant"));
+    }
+
+    @Test
+    @DisplayName("Check a resource carrying no annotation of this library is served without being logged")
+    void checkUnannotatedResourceNotLogged() throws Exception {
+        // When: the providers apply to every resource
+        MockHttpResponse response = invoke(MockHttpRequest.post("/plain")
+                .contentType(TEXT_PLAIN)
+                .content("hello".getBytes(UTF_8)));
+
+        // Then
+        assertEquals(200, response.getStatus());
+        assertEquals("plain hello", response.getContentAsString());
+        assertNull(listAppender.findFirstMessage("Received"));
+        assertNull(listAppender.findFirstMessage("Processed"));
+        assertNull(response.getOutputHeaders().getFirst(REQUEST_ID_HEADER));
+        Map<String, String> left = MDC.getCopyOfContextMap();
+        assertTrue(left == null || left.isEmpty(), () -> "Left in MDC: " + left);
+    }
+
+    @Test
+    @DisplayName("Check a subclass bound to an annotation of its own logs its resources, bodies included")
+    void checkSubclassBoundByNameLogsItsResources() throws Exception {
+        // Given: a subclass bound to its own annotation, next to the interceptor capturing the bodies alone
+        Dispatcher bound = MockDispatcherFactory.createDispatcher();
+        bound.getProviderFactory().registerProvider(UserLoggedFilter.class);
+        bound.getProviderFactory().registerProvider(LoggedBodyInterceptor.class);
+        bound.getRegistry().addPerRequestResource(UserResource.class);
+
+        // When
+        MockHttpResponse response = invoke(bound, MockHttpRequest.post("/user")
+                .contentType(TEXT_PLAIN)
+                .content("hello".getBytes(UTF_8)));
+
+        // Then: described the way the subclass does, with the body the interceptor captured for it
+        assertEquals(200, response.getStatus());
+        assertEquals("Received POST /user" + LF + "hello", received().getMessage().getFormattedMessage());
+        assertEquals("Doe", processed().getContextData().getValue("user-id"));
+        assertNotNull(processed().getContextData().getValue("request-identifier"));
     }
 
     @Test
@@ -506,6 +573,70 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
         @GET
         public Response get() {
             return Response.serverError().build();
+        }
+
+    }
+
+    /**
+     * Configures its body logging with a single {@link LoggedBody}, which no {@link Logged} wraps.
+     */
+    @Path("/single")
+    public static class SingleBodyResource {
+
+        @POST
+        @Consumes(TEXT_PLAIN)
+        @Produces(TEXT_PLAIN)
+        @LoggedBody(LOG)
+        public String create(String body) {
+            return "single " + body;
+        }
+
+    }
+
+    /**
+     * Declares a mapping alone, and nothing else of this library.
+     */
+    @Path("/mapped")
+    @LoggedMapping(type = HEADER, mdcKey = "tenant", paramNames = "X-Tenant")
+    public static class MappedResource {
+
+        @GET
+        @Produces(TEXT_PLAIN)
+        public String get() {
+            return "mapped";
+        }
+
+    }
+
+    /**
+     * Carries no annotation of this library.
+     */
+    @Path("/plain")
+    public static class PlainResource {
+
+        @POST
+        @Consumes(TEXT_PLAIN)
+        @Produces(TEXT_PLAIN)
+        public String create(String body) {
+            return "plain " + body;
+        }
+
+    }
+
+    /**
+     * Bound to the subclass of an application by the annotation it binds itself to, the body logging being
+     * configured as usual.
+     */
+    @Path("/user")
+    @UserLogged
+    @LoggedBody(LOG)
+    public static class UserResource {
+
+        @POST
+        @Consumes(TEXT_PLAIN)
+        @Produces(TEXT_PLAIN)
+        public String create(String body) {
+            return "user " + body;
         }
 
     }

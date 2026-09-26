@@ -18,10 +18,8 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 /**
  * Configuration for body logging of HTTP requests or responses.
  * <p>
- * Only takes effect on a resource {@link Logged} activates, either as its content
- * ({@code @Logged(@LoggedBody(...))}) or next to it on the resource method or class. Declared once on a
- * resource that is not {@code @Logged}, it activates nothing: JAX-RS binds {@link LoggedFilter} to
- * {@code @Logged}, which the compiler only synthesizes from several repeated {@code @LoggedBody}.
+ * Declared as the content of {@link Logged} ({@code @Logged(@LoggedBody(...))}), or on its own, once or
+ * repeated: either way, it activates the logging of the requests of the resource, as {@code @Logged} does.
  * <p>
  * A body is captured while its entity is read or written, which a resource method taking it as a stream - an
  * {@code InputStream} or a {@code Reader} parameter - only does once the providers are done with it: such a

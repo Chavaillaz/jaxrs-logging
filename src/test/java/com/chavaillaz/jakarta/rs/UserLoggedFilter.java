@@ -10,11 +10,11 @@ import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.ext.Provider;
 
 /**
- * Example of a subclass putting entries of its own in MDC, bound to an annotation of its own.
+ * Example of a subclass putting entries of its own in MDC, bound to an annotation of its own: it logs the
+ * requests of the resources carrying it.
  * <p>
- * Neither the binding nor the priority of {@link LoggedFilter} being inherited, it declares both, its
- * priority running it before a {@link LoggedFilter} bound to the same resources, so it is the one logging
- * their requests.
+ * The priority of {@link LoggedFilter} not being inherited, it declares its own, running it before a
+ * {@link LoggedFilter} applying to the same resources, so it is the one logging their requests.
  */
 @Provider
 @UserLogged
@@ -38,9 +38,7 @@ public class UserLoggedFilter extends LoggedFilter {
     }
 
     @Override
-    public void filter(ContainerRequestContext requestContext) {
-        super.filter(requestContext);
-
+    protected void describe(ContainerRequestContext requestContext) {
         // Add the user currently logged in, possibly by querying injected entity.
         // Uses putMdc (rather than MDC.put directly) so it is removed once the request is done.
         putMdc(USER_ID, "Doe");

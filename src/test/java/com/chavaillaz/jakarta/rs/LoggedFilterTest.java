@@ -1996,6 +1996,8 @@ class LoggedFilterTest extends AbstractFilterTest {
         // The request filter runs before the resource method does, so anything it lets out does not
         // merely lose the "Received ..." line, it answers a perfectly serviceable request with an error
         // having nothing to do with it
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
         // Given: a context failing to describe the request it carries, standing in for whatever can go
         // wrong while this provider reads one (a container returning the unexpected, a subclass
         // overriding one of these methods, an appender that ran out of disk, ...)

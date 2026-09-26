@@ -2,6 +2,7 @@ package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.REQUEST;
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.RESPONSE;
+import static com.chavaillaz.jakarta.rs.LoggedUtils.declarationSites;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.getAnnotation;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.getMergedMappings;
 import static com.chavaillaz.jakarta.rs.MappingApplier.inApplicationOrder;
@@ -9,6 +10,7 @@ import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import jakarta.ws.rs.container.ResourceInfo;
+import java.lang.annotation.Annotation;
 import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.EnumSet;
@@ -28,8 +30,9 @@ import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
 import com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory;
 
 /**
- * Resolves which {@link LoggedMapping} and {@link LoggedBody} configuration applies to a given resource
- * method, by walking the annotations present on its class, its interfaces and the method itself.
+ * Resolves whether the requests of a given resource method are logged, and which {@link LoggedMapping} and
+ * {@link LoggedBody} configuration applies to them, by walking the annotations present on its class, its
+ * interfaces and the method itself.
  * <p>
  * Resolution only depends on those annotations, so it is cached - body configurations in their ready-to-use
  * form ({@link LoggedBodyConfiguration}, filters instantiated) - keyed on the resource class and method
@@ -102,6 +105,20 @@ final class LoggedResolver {
     }
 
     /**
+     * Annotations of this library whose presence on a declaration site of a resource method has its requests
+     * logged: each of them configures how the requests are logged, and declaring any asks for it. The
+     * repeatable ones come with the annotation containing them, which the compiler declares in their place
+     * once they are repeated - {@link Logged}, for {@link LoggedBody}.
+     */
+    private static final List<Class<? extends Annotation>> ACTIVATING =
+            List.of(Logged.class, LoggedBody.class, LoggedMapping.class, LoggedMappings.class);
+
+    /**
+     * Cache of whether the requests of each resource are logged.
+     */
+    final Map<ResourceKey, Boolean> loggedCache = new ConcurrentHashMap<>();
+
+    /**
      * Cache of the {@link LoggedMapping} definitions resolved for each resource, in the order they apply in.
      */
     final Map<ResourceKey, List<LoggedMapping>> mappingsCache = new ConcurrentHashMap<>();
@@ -130,6 +147,39 @@ final class LoggedResolver {
      */
     LoggedResolver(LoggedBodyFilterFactory bodyFilterFactory) {
         this.bodyFilterFactory = bodyFilterFactory;
+    }
+
+    /**
+     * Indicates whether the requests of the resource method matched by the given resource are logged: whether
+     * one of its declaration sites (see {@link LoggedUtils#declarationSites}) carries an annotation of this
+     * library, which is found out once per resource.
+     *
+     * @param resourceInfo The instance to access resource class and method
+     * @return {@code true} if the requests of the resource method are logged, {@code false} otherwise
+     */
+    boolean isLogged(ResourceInfo resourceInfo) {
+        ResourceKey key = ResourceKey.of(resourceInfo);
+        return key != null && loggedCache.computeIfAbsent(key, ignored -> resolveLogged(key, resourceInfo));
+    }
+
+    /**
+     * Finds out whether the requests of the given resource are logged, reporting a resource whose declaration
+     * sites cannot be walked - for the reasons its mappings cannot be resolved, see
+     * {@link #resolveMappings(ResourceKey, ResourceInfo)} - and leaving it unlogged, as it is when none of
+     * them carries an annotation of this library.
+     *
+     * @param key          The key identifying the resource, for the report of a failure
+     * @param resourceInfo The instance to access resource class and method
+     * @return {@code true} if the requests of the resource are logged, {@code false} otherwise
+     */
+    private boolean resolveLogged(ResourceKey key, ResourceInfo resourceInfo) {
+        try {
+            return declarationSites(resourceInfo.getResourceClass(), resourceInfo.getResourceMethod()).stream()
+                    .anyMatch(site -> ACTIVATING.stream().anyMatch(site::isAnnotationPresent));
+        } catch (RuntimeException e) {
+            log.error("Unable to find out whether the requests of {} are logged, they are not", key, e);
+            return false;
+        }
     }
 
     /**

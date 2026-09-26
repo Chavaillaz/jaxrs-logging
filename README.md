@@ -45,6 +45,8 @@ The logging of requests and responses is done through a filter that can be activ
 @Logged
 ```
 
+or any other annotation of this library configuring it, `@LoggedBody` and `@LoggedMapping` (see below).
+
 It will add the following information to MDC for the request processing
 (meaning that all logs within the processing of the request by the resource will have them):
 
@@ -114,10 +116,8 @@ By default, `@LoggedBody` applies to both the request and the response. Repeat t
 A configuration targeting a single direction wins over one targeting both, and among several as specific as
 one another, the first one declared wins.
 
-`@LoggedBody` and `@LoggedMapping` configure the logging `@Logged` activates, they do not activate it: on a
-resource that is not `@Logged` at its method or class level, they do nothing. Repeating `@LoggedBody` is the
-one exception, as the compiler wraps the repeated annotations into the `@Logged` they are repeatable in - so
-two of them on a method log its bodies, while a single one silently does not.
+`@LoggedBody` and `@LoggedMapping` activate the logging too, as they configure it: a method declaring a single
+`@LoggedBody`, or several, has its requests logged, bodies included, whether it is `@Logged` or not.
 
 Be careful when activating any body logging, as it may produce performance or memory issues if the body size
 is not limited: the captured body is buffered in memory, so an endpoint accepting large (or client-controlled)
@@ -144,7 +144,8 @@ Bodies are captured by a second provider,
 any entity coder so that what is logged is the entity itself rather than its transfer encoding - a
 `Content-Encoding: gzip` request or response is logged as the payload, not as gzip noise. It is discovered
 like any other `@Provider`; if you register providers explicitly, register it alongside `LoggedFilter`
-(without it you only lose the bodies, not the log lines).
+(without it you only lose the bodies, not the log lines). Both apply to every resource, and leave the requests
+of those carrying no annotation of this library alone.
 
 ## Example
 
@@ -367,7 +368,8 @@ the exchange actually failed with (or turn a good response into a 500).
 ## Annotation resolution
 
 `@Logged`, `@LoggedBody` and `@LoggedMapping` are looked up, for the resource method matched by the request,
-at four declaration sites, from the most to the least specific:
+at four declaration sites, from the most to the least specific, any of them declared at any of these sites
+having its requests logged:
 
 1. the resource method itself
 2. the methods it overrides on the interfaces implemented by the resource class
@@ -560,26 +562,26 @@ public class LoggingConfiguration implements ContextResolver<LoggedFilterConfigu
 returns `null` for, as to all of them without such a resolver. An application registering its providers
 explicitly can pass the configuration to `new LoggedFilter(configuration)` instead.
 
-A subclass of `LoggedFilter` can put entries of its own in MDC, through `putMdc` so they are removed once the
-request is done. An example is available with [UserLogged](src/test/java/com/chavaillaz/jakarta/rs/UserLogged.java)
-and [UserLoggedFilter](src/test/java/com/chavaillaz/jakarta/rs/UserLoggedFilter.java), which:
+A subclass of `LoggedFilter` can put entries of its own in MDC, from `describe(ContainerRequestContext)`, which
+is called for the requests it logs once it put its own, and through `putMdc`, so they are removed once the
+request is done - rather than from an override of `filter`, which runs for the requests of every resource. An
+example is available with [UserLogged](src/test/java/com/chavaillaz/jakarta/rs/UserLogged.java) and
+[UserLoggedFilter](src/test/java/com/chavaillaz/jakarta/rs/UserLoggedFilter.java), which:
 
 * Logs a new **user-id** field in MDC
 * Logs a new **user-agent** field in MDC if activated in its annotation
 * Reads the **request-id** from another header
 * Renames the MDC field of **request-id** to **request-identifier**
 
-Neither the binding nor the priority of `LoggedFilter` is inherited, so a subclass declares both: without a
-binding, it would log the requests of every resource, annotated or not, and without `@Priority`, it would run
+A subclass logs the requests of the resources carrying an annotation of this library, as `LoggedFilter` does,
+unless it is bound to an annotation of its own, as `UserLoggedFilter` is to `@UserLogged`: it then logs those
+of the resources carrying that one, bodies included, their configuration still read from `@LoggedBody`.
+
+The priority of `LoggedFilter` is not inherited, so a subclass declares one: without `@Priority`, it would run
 among the filters of your application (at `Priorities.USER`) rather than before them. A priority one less than
-the one of `LoggedFilter` makes it the one logging the requests both are bound to, as a container scanning the
+the one of `LoggedFilter` makes it the one logging the requests both apply to, as a container scanning the
 jars it deploys for providers registers `LoggedFilter` as well: a request is logged once, by the first of them
 to see it.
-
-A subclass bound to an annotation of its own, as `UserLoggedFilter` is to `@UserLogged`, logs bodies only if
-[LoggedBodyInterceptor](src/main/java/com/chavaillaz/jakarta/rs/LoggedBodyInterceptor.java) runs for the same
-resources: it is bound to `@Logged`, so declare a subclass of it bound to your annotation too. The body logging
-configuration itself is still read from `@Logged` and `@LoggedBody`, declared on the resources as usual.
 
 ## Contributing
 

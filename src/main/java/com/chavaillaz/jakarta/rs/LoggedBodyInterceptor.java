@@ -28,10 +28,11 @@ import org.jspecify.annotations.Nullable;
  * provider runs after the coder, and captures the entity itself.
  * <p>
  * Every decision about a body - whether it is captured, how it is filtered, where it is logged - stays with
- * the {@link LoggedFilter} handling the request, which this provider calls back. An application registering
- * its providers explicitly and forgetting this one therefore loses the bodies, not the log lines.
+ * the {@link LoggedFilter} handling the request, which this provider calls back: it applies to every
+ * resource, and passes the entities of the requests no {@code LoggedFilter} logs through untouched. An
+ * application registering its providers explicitly and forgetting this one therefore loses the bodies, not
+ * the log lines.
  */
-@Logged
 @Provider
 @ConstrainedTo(SERVER)
 @Priority(ENTITY_CODER + 100)

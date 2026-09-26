@@ -82,6 +82,15 @@ class LoggedResolverTest {
         @LoggedBody(value = LOG, limit = -2)
         void invalidLimitMethod();
 
+        @LoggedMapping(type = QUERY, mdcKey = "topic", paramNames = "topic")
+        void singleMappingMethod();
+
+        @LoggedMapping(type = QUERY, mdcKey = "topic", paramNames = "topic")
+        @LoggedMapping(type = QUERY, mdcKey = "page", paramNames = "page")
+        void repeatedMappingMethod();
+
+        void plainMethod();
+
     }
 
     void setup(String methodName) throws Exception {
@@ -214,6 +223,47 @@ class LoggedResolverTest {
 
         assertEquals(1, mappings.size());
         assertEquals("topic", mappings.iterator().next().mdcKey());
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @ValueSource(strings = {"competingMethod", "bothMethod", "repeatedTargetMethod", "singleMappingMethod", "repeatedMappingMethod"})
+    @DisplayName("Check a resource method declaring an annotation of this library, once or repeated, is logged")
+    void checkAnnotatedMethodLogged(String methodName) throws Exception {
+        setup(methodName);
+
+        assertTrue(resolver.isLogged(resourceInfo));
+    }
+
+    @Test
+    @DisplayName("Check a resource method declaring no annotation of this library is not logged, found out once")
+    void checkPlainMethodNotLogged() throws Exception {
+        setup("plainMethod");
+
+        assertFalse(resolver.isLogged(resourceInfo));
+        assertFalse(resolver.isLogged(resourceInfo));
+        assertEquals(1, resolver.loggedCache.size());
+    }
+
+    @Test
+    @DisplayName("Check a resource whose declaration sites cannot be walked is not logged, and not walked again")
+    void checkUnresolvableResourceNotLogged() throws Exception {
+        // Given: the resource method failing to be read once the cache keyed the resource on it
+        Method method = Resource.class.getMethod("mappedMethod");
+        doReturn(Resource.class).when(resourceInfo).getResourceClass();
+        doReturn(method)
+                .doThrow(new TypeNotPresentException("com.company.MissingType", null))
+                .doReturn(method)
+                .when(resourceInfo).getResourceMethod();
+
+        // Then
+        assertFalse(assertDoesNotThrow(() -> resolver.isLogged(resourceInfo)));
+        assertFalse(resolver.isLogged(resourceInfo));
+    }
+
+    @Test
+    @DisplayName("Check a request no resource was matched for is not logged")
+    void checkUnmatchedResourceNotLogged() {
+        assertFalse(resolver.isLogged(resourceInfo));
     }
 
     @Test
