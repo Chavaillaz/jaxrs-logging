@@ -18,8 +18,9 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
  * An instance is meant to be used once, for a single request or response body: {@link #sink()} receives a
  * copy of the body while it is being read or written, {@link #content(Set)} is called once that is done to
  * retrieve what was captured, and {@link #close()} releases whatever the capture held. For a body the
- * application reads as a stream once the providers are done with it, that is once the stream ends - or once
- * its request is answered, if it never does - possibly on another thread than the one that read it.
+ * application reads as a stream once the providers are done with it, that is once the stream ends - or, on
+ * the server, once its request is answered if it never does - possibly on another thread than the one that
+ * read it.
  * <p>
  * This is the extension point for the mechanics of body capture itself (bounded in-memory buffering by
  * default, see {@link BoundedLoggedBodyCapture}), as opposed to {@link LoggedBodyFilter}, which only
@@ -88,8 +89,11 @@ public interface LoggedBodyCapture extends AutoCloseable {
      * Releases whatever this capture holds, the exchange being done with it: a temporary file a large body
      * was spilled to, a buffer taken from a pool.
      * <p>
-     * Called exactly once per capture created, by the provider that created it, whatever happened: after the
-     * content has been read, after reading it failed, or after the entity stream could not be wrapped at all.
+     * Called once per capture created, by the provider that created it, whatever happened: after the content
+     * has been read, after reading it failed, or after the entity stream could not be wrapped at all. The one
+     * capture never released is that of a client response read as a stream that the calling code neither
+     * reads to its end nor closes itself, which a capture holding more than memory must allow for.
+     * <p>
      * Whatever it throws is reported and swallowed like every other failure of logging, hence no checked
      * exception. Does nothing by default, which suits a capture holding nothing but memory.
      */
