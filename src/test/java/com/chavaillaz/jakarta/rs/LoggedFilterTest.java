@@ -658,6 +658,29 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check automatic MDC mapping neither replaces nor removes an entry the application put")
+    void checkAutoMappingLeavesApplicationEntries() throws Exception {
+        setupTest(AnnotatedResource.class, "autoMappedQueryParameters");
+
+        // Given: an entry a tracer put before the request reached the provider, and a client naming a
+        // parameter after it
+        MDC.put("trace-id", "4bf92f3577b34da6");
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
+                MockHttpRequest.create("GET", "example.company.com/service?trace-id=forged&topic=news"));
+        ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext);
+
+        // When
+        loggingFilter.filter(requestContext);
+        loggingFilter.filter(requestContext, responseContext);
+
+        // Then: the request is logged under the trace, which outlives it, not being the provider's to remove
+        Map<String, String> processed = listAppender.findFirstMessage("Processed").getContextData().toMap();
+        assertEquals("4bf92f3577b34da6", processed.get("trace-id"));
+        assertEquals("news", processed.get("topic"));
+        assertEquals("4bf92f3577b34da6", MDC.get("trace-id"));
+    }
+
+    @Test
     @DisplayName("Check automatic header mapping skips credential-carrying headers")
     void checkAutoMappingSkipsSensitiveHeaders() throws Exception {
         setupTest(AnnotatedResource.class, "autoMappedHeaders");

@@ -56,6 +56,10 @@ class MappingApplierTest {
         @LoggedMapping(type = QUERY, mdcKey = "a", paramNames = "a")
         void unordered();
 
+        @LoggedMapping(type = QUERY, auto = true)
+        @LoggedMapping(type = HEADER, mdcKey = "tenant", paramNames = "X-Tenant")
+        void overlapping();
+
     }
 
     static List<LoggedMapping> mappingsOf(String method) throws Exception {
@@ -104,7 +108,7 @@ class MappingApplierTest {
     }
 
     @Test
-    @DisplayName("Check an automatic mapping leaves sensitive parameters and reserved keys out")
+    @DisplayName("Check an automatic mapping leaves sensitive parameters and taken keys out")
     void checkAutomaticMappingGuards() throws Exception {
         Map<String, List<String>> parameters = Map.of(
                 "password", List.of("hunter2"),
@@ -158,6 +162,25 @@ class MappingApplierTest {
         Map<String, List<String>> parameters = Map.of("id", List.of("42"), "other", List.of("7"));
 
         assertEquals(Map.of("first", "42"), apply("competing", QUERY, parameters));
+    }
+
+    @Test
+    @DisplayName("Check an automatic mapping puts nothing under the key of an explicit one, applied or not")
+    void checkAutomaticMappingLeavesExplicitKeysAlone() throws Exception {
+        // Given: a tenant the gateway sets in a header, and a client adding a parameter named after its key
+        Map<String, List<String>> query = Map.of("tenant", List.of("forged"), "page", List.of("2"));
+        Map<String, List<String>> withTenant = headers(Map.of("X-Tenant", List.of("acme")));
+        List<LoggedMapping> mappings = inApplicationOrder(mappingsOf("overlapping"));
+        Map<String, String> entries = new HashMap<>();
+        Map<String, String> entriesWithoutTenant = new HashMap<>();
+
+        // When
+        applier.apply(mappings, type -> type == HEADER ? withTenant : query, entries::put);
+        applier.apply(mappings, type -> type == HEADER ? Map.of() : query, entriesWithoutTenant::put);
+
+        // Then: without the header, the key is left without any entry rather than given the client's value
+        assertEquals(Map.of("tenant", "acme", "page", "2"), entries);
+        assertEquals(Map.of("page", "2"), entriesWithoutTenant);
     }
 
     @Test

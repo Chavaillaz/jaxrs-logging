@@ -36,7 +36,8 @@ import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
  * declaring no MDC key means "never map this"), then explicit mappings, then automatic ones. Each explicit
  * mapping claims the names of the parameters it reads, per type of parameter, and a later mapping leaves a
  * claimed parameter alone, so no parameter is mapped twice under two different keys, nor at all once
- * excluded.
+ * excluded. An automatic mapping only ever adds entries, and never replaces one (see
+ * {@link #applyAutomatic}).
  */
 final class MappingApplier {
 
@@ -49,17 +50,18 @@ final class MappingApplier {
             .thenComparing(LoggedMapping::mdcKey);
 
     private final BiPredicate<MappingType, String> sensitive;
-    private final Predicate<String> reserved;
+    private final Predicate<String> taken;
 
     /**
      * Creates an applier guarding automatic mappings with the given predicates.
      *
      * @param sensitive Whether the value of the parameter of the given type and name must be kept out of the logs
-     * @param reserved  Whether the given MDC key is one of the provider's own fields
+     * @param taken     Whether the given MDC key is taken already, by one of the provider's own fields or by an
+     *                  entry the request carries
      */
-    MappingApplier(BiPredicate<MappingType, String> sensitive, Predicate<String> reserved) {
+    MappingApplier(BiPredicate<MappingType, String> sensitive, Predicate<String> taken) {
         this.sensitive = sensitive;
-        this.reserved = reserved;
+        this.taken = taken;
     }
 
     /**
@@ -88,12 +90,17 @@ final class MappingApplier {
         }
 
         Map<MappingType, Set<String>> claimed = new EnumMap<>(MappingType.class);
+        // The keys of the explicit mappings, which apply first: whether the request carries the parameters
+        // they read or not, an automatic mapping never puts an entry under one of them
+        Set<String> explicitKeys = new HashSet<>();
         for (LoggedMapping mapping : mappings) {
             Set<String> claimedNames = claimed.computeIfAbsent(mapping.type(), MappingApplier::newClaimedNames);
             if (mapping.auto()) {
-                applyAutomatic(mapping, parameters.apply(mapping.type()), claimedNames, output);
+                applyAutomatic(mapping, parameters.apply(mapping.type()), claimedNames, explicitKeys, output);
             } else if (claim(mapping, claimedNames) && isNotBlank(mapping.mdcKey())) {
-                applyExplicit(mapping, parameters.apply(mapping.type()), output);
+                String key = mapping.mdcPrefix() + mapping.mdcKey();
+                explicitKeys.add(key);
+                applyExplicit(mapping, key, parameters.apply(mapping.type()), output);
             }
         }
     }
@@ -145,14 +152,15 @@ final class MappingApplier {
      * declared twice is merely read twice rather than being an error.
      *
      * @param mapping    The explicit mapping to apply
+     * @param key        The MDC key the mapping declares, its prefix included
      * @param parameters The parameters of the request of the type of the mapping, by name
      * @param output     What to do with the MDC entry the mapping asks for
      */
-    private static void applyExplicit(LoggedMapping mapping, Map<String, List<String>> parameters, BiConsumer<String, @Nullable String> output) {
+    private static void applyExplicit(LoggedMapping mapping, String key, Map<String, List<String>> parameters, BiConsumer<String, @Nullable String> output) {
         for (String name : mapping.paramNames()) {
             List<String> values = parameters.get(name);
             if (values != null && !values.isEmpty()) {
-                output.accept(mapping.mdcPrefix() + mapping.mdcKey(), sanitize(values.getFirst()));
+                output.accept(key, sanitize(values.getFirst()));
                 return;
             }
         }
@@ -162,17 +170,20 @@ final class MappingApplier {
      * Maps every parameter the client sent and no explicit mapping claimed to an MDC entry named after it,
      * for a mapping declared with {@link LoggedMapping#auto()}.
      * <p>
-     * The MDC key is therefore chosen by the caller, not by the application, which is what the two guards
-     * here are about: a parameter carrying a credential is skipped outright rather than logged, and a key
-     * colliding with one of the provider's own fields is dropped, so no client can relabel its request as
-     * somebody else's by naming a parameter {@code request-id}.
+     * The MDC key is therefore chosen by the caller, not by the application, which is what the guards here
+     * are about: a parameter carrying a credential is skipped outright rather than logged, and an entry is
+     * only ever added, never put under a key already taken - one of the provider's own fields, the key of an
+     * explicit mapping, or an entry the request carries, put by the application or by another library - so
+     * no client can relabel its request by naming a parameter {@code request-id}, or the {@code tenant} an
+     * explicit mapping reads from a header the gateway sets.
      *
      * @param mapping      The automatic mapping to apply
      * @param parameters   The parameters of the request of the type of the mapping, by name
      * @param claimedNames The names of the parameters of that type claimed by explicit mappings
+     * @param explicitKeys The MDC keys of the explicit mappings
      * @param output       What to do with each MDC entry the mapping asks for
      */
-    private void applyAutomatic(LoggedMapping mapping, Map<String, List<String>> parameters, Set<String> claimedNames, BiConsumer<String, @Nullable String> output) {
+    private void applyAutomatic(LoggedMapping mapping, Map<String, List<String>> parameters, Set<String> claimedNames, Set<String> explicitKeys, BiConsumer<String, @Nullable String> output) {
         for (Map.Entry<String, List<String>> parameter : parameters.entrySet()) {
             String name = parameter.getKey();
             List<String> values = parameter.getValue();
@@ -180,7 +191,7 @@ final class MappingApplier {
                 continue;
             }
             String key = mapping.mdcPrefix() + sanitize(name);
-            if (!reserved.test(key)) {
+            if (!explicitKeys.contains(key) && !taken.test(key)) {
                 output.accept(key, sanitize(values.getFirst()));
             }
         }

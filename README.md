@@ -223,8 +223,10 @@ public Article create(@PathParam("topic") String topicId, @QueryParam("draft") B
 }
 ```
 
-Automatic mapping can also be enabled to create MDC entries with the same names as the parameters.
-A prefix can be specified to avoid conflicts with other MDC entries:
+Automatic mapping can also be enabled to create MDC entries with the same names as the parameters. It only
+ever adds entries: a parameter named after an entry already taken - a field of the library, the key of an
+explicit mapping, or an entry the application or another library put before - is left out. A prefix keeps the
+names the client chooses apart from those of the entries the application puts later on:
 
 ```java
 @LoggedMapping(type = HEADER, auto = true, mdcPrefix = "header-")

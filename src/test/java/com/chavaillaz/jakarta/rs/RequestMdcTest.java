@@ -258,12 +258,14 @@ class RequestMdcTest {
     }
 
     @Test
-    @DisplayName("Check the fields are recognized by name, whatever renames them")
-    void checkFieldsRecognized() {
+    @DisplayName("Check a key is taken by a field, whatever renames it, or by an entry the thread carries")
+    void checkKeysTaken() {
         fieldNames.put(REQUEST_ID, "request-identifier");
+        MDC.put("trace-id", "4bf92f3577b34da6");
 
-        assertTrue(mdc.isField("request-identifier"));
-        assertFalse(mdc.isField("request-id"));
+        assertTrue(mdc.isTaken("request-identifier"));
+        assertTrue(mdc.isTaken("trace-id"));
+        assertFalse(mdc.isTaken("request-id"));
     }
 
 }

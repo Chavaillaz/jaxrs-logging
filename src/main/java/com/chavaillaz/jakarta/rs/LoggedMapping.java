@@ -37,11 +37,12 @@ public @interface LoggedMapping {
      * Flag indicating if the mapping must be done automatically
      * (one to one, without changing the names of parameters) for the given type.
      * <p>
-     * As the resulting MDC key is derived from the parameter or header name, which is controlled by
-     * the client sending the request, always set a non-empty {@link #mdcPrefix()} when enabling this
-     * for an untrusted source. Without it, a client could choose a parameter name that collides with
-     * another MDC entry. Note that a collision with a field reserved by {@link LoggedFilter} itself
-     * (e.g. {@code request-id}, {@code duration}) is always ignored, regardless of the prefix used.
+     * The resulting MDC key is derived from the parameter or header name, which is controlled by the
+     * client sending the request, so an automatic mapping only ever adds entries: a parameter whose key is
+     * taken already - by a field of {@link LoggedFilter} (e.g. {@code request-id}, {@code duration}), by an
+     * explicit mapping, or by an entry already in MDC - is left out, whatever the prefix. Always set a
+     * non-empty {@link #mdcPrefix()} all the same when enabling this for an untrusted source: without it, a
+     * client could choose the key of an entry the application only puts later on.
      *
      * @return {@code true} to automatically map the parameters, {@code false} otherwise
      */
@@ -51,8 +52,8 @@ public @interface LoggedMapping {
      * Prefix to be added to the MDC key.
      * <p>
      * Effectively mandatory when using {@link #auto()} on client-controlled input (headers, query or
-     * path parameters), as it is otherwise the only protection against a client choosing a parameter
-     * name that collides with another MDC entry.
+     * path parameters), as it keeps the keys a client chooses apart from those of the entries the
+     * application puts while serving the request.
      *
      * @return The prefix
      */

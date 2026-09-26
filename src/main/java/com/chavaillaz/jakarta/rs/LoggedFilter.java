@@ -741,7 +741,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      *                       reports as sensitive
      * @param mappingApplier Puts the MDC entries the {@link LoggedMapping} annotations ask for, keeping the
      *                       parameters the configuration reports as sensitive out of automatic mappings, as
-     *                       well as the names of the fields
+     *                       well as the keys already taken
      * @param bodyCapturer   Captures the bodies of the requests read and the responses written, as configured
      * @param exchangeLogger Writes the lines logging the requests and returns their identifier to the caller,
      *                       as configured
@@ -759,7 +759,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             RequestMdc mdc = new RequestMdc(configuration.fieldNames());
             return new Setup(configuration, mdc,
                     new RequestDescriber(configuration::isSensitive),
-                    new MappingApplier(configuration::isSensitive, mdc::isField),
+                    new MappingApplier(configuration::isSensitive, mdc::isTaken),
                     new BodyCapturer(log, configuration::createBodyCapture),
                     new ExchangeLogger(log, configuration));
         }

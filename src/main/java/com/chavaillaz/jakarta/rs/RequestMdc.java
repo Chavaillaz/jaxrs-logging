@@ -143,14 +143,15 @@ final class RequestMdc {
     }
 
     /**
-     * Indicates whether the given key is the name of one of the fields, which an entry the client chose the
-     * name of must never overwrite.
+     * Indicates whether the given key is taken, which an entry the client chose the name of must never
+     * replace: it names one of the fields, or an entry the current thread carries already - put for the
+     * request, by the application, or by another library such as a tracer.
      *
      * @param key The MDC key to check
-     * @return {@code true} if the key names a field, {@code false} otherwise
+     * @return {@code true} if the key is taken, {@code false} otherwise
      */
-    boolean isField(String key) {
-        return fieldNames.containsValue(key);
+    boolean isTaken(String key) {
+        return fieldNames.containsValue(key) || MDC.get(key) != null;
     }
 
     /**
