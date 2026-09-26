@@ -6,6 +6,7 @@ import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedSupport.levelOf;
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
 import static com.chavaillaz.jakarta.rs.filter.MaskingBodyFilter.DEFAULT_MASK;
+import static com.chavaillaz.jakarta.rs.internal.Sanitizer.requestIdOf;
 import static jakarta.ws.rs.Priorities.ENTITY_CODER;
 import static jakarta.ws.rs.Priorities.HEADER_DECORATOR;
 import static jakarta.ws.rs.RuntimeType.CLIENT;
@@ -15,11 +16,9 @@ import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
 import static java.util.Collections.unmodifiableSet;
 import static java.util.Objects.requireNonNull;
-import static java.util.UUID.randomUUID;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.stream.Collectors.joining;
 import static org.apache.commons.lang3.StringUtils.LF;
-import static org.apache.commons.lang3.StringUtils.isBlank;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
 import jakarta.annotation.Priority;
@@ -211,6 +210,9 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
          * is active on the calling thread) or blank. Defaults to {@code request-id}; change it to match a
          * renamed {@link LoggedField#REQUEST_ID} MDC key (see
          * {@link LoggedFilterConfiguration.Builder#fieldName(LoggedField, String)}).
+         * <p>
+         * The identifier is propagated the way a {@link LoggedFilter} logs one it receives, sanitized and
+         * truncated to 128 characters, as the entry read can hold whatever the application put in MDC.
          *
          * @param mdcKey The MDC key to read the correlation identifier from
          * @return This builder
@@ -380,9 +382,10 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         // is a plain MultivaluedMap in the JAX-RS Client API), so a caller having already set the header under
         // a different casing would otherwise get it sent twice with two different values
         if (requestContext.getHeaders().keySet().stream().noneMatch(REQUEST_ID_HEADER::equalsIgnoreCase)) {
-            // A blank identifier correlates nothing, and is replaced as a missing one is
-            String correlationId = MDC.get(correlationIdMdcKey);
-            requestContext.getHeaders().putSingle(REQUEST_ID_HEADER, isBlank(correlationId) ? randomUUID().toString() : correlationId);
+            // Made what a LoggedFilter logs of an identifier it receives, as MDC holds whatever the application
+            // put there: a control character in a header fails the call in the HTTP clients of the JDK, among
+            // others, and a blank identifier correlates nothing, so it is replaced as a missing one is
+            requestContext.getHeaders().putSingle(REQUEST_ID_HEADER, requestIdOf(MDC.get(correlationIdMdcKey)));
         }
     }
 

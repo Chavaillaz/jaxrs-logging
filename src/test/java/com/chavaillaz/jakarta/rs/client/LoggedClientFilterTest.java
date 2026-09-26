@@ -3,6 +3,7 @@ package com.chavaillaz.jakarta.rs.client;
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
 import static com.chavaillaz.jakarta.rs.internal.BodyCapturer.MEMORY_FAILURE;
+import static com.chavaillaz.jakarta.rs.internal.Sanitizer.REQUEST_ID_MAX_LENGTH;
 import static jakarta.ws.rs.HttpMethod.POST;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -122,6 +123,47 @@ class LoggedClientFilterTest extends AbstractFilterTest {
 
         // Then
         assertDoesNotThrow(() -> UUID.fromString((String) headers.getFirst(REQUEST_ID_HEADER)));
+    }
+
+    @Test
+    @DisplayName("Check the correlation identifier is propagated the way a LoggedFilter logs one it receives")
+    void checkCorrelationIdSanitized() {
+        // Given: an identifier the application put in MDC as it got it, which no HTTP client of the JDK sends
+        MDC.put("request-id", "abc\r\nX-Forged: yes");
+
+        // When
+        filter.filter(requestContext);
+
+        // Then
+        assertEquals("abc  X-Forged: yes", headers.getFirst(REQUEST_ID_HEADER));
+    }
+
+    @Test
+    @DisplayName("Check an oversized correlation identifier is truncated")
+    void checkCorrelationIdTruncated() {
+        // Given
+        MDC.put("request-id", "a".repeat(REQUEST_ID_MAX_LENGTH + 50));
+
+        // When
+        filter.filter(requestContext);
+
+        // Then
+        assertEquals("a".repeat(REQUEST_ID_MAX_LENGTH), headers.getFirst(REQUEST_ID_HEADER));
+    }
+
+    @Test
+    @DisplayName("Check the correlation identifier is read from the MDC key configured")
+    void checkCorrelationIdReadFromConfiguredKey() {
+        // Given: the MDC key a LoggedFilter renaming its request identifier puts it under
+        MDC.put("request-id", "not-this-one");
+        MDC.put("trace-id", "abc-123");
+        LoggedClientFilter renamed = LoggedClientFilter.builder().correlationIdKey("trace-id").build();
+
+        // When
+        renamed.filter(requestContext);
+
+        // Then
+        assertEquals("abc-123", headers.getFirst(REQUEST_ID_HEADER));
     }
 
     @Test
