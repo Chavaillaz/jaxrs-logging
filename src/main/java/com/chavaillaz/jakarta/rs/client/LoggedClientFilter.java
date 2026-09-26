@@ -3,6 +3,7 @@ package com.chavaillaz.jakarta.rs.client;
 import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.LOG;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
+import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
 import static com.chavaillaz.jakarta.rs.LoggedSupport.levelOf;
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
 import static com.chavaillaz.jakarta.rs.filter.MaskingBodyFilter.DEFAULT_MASK;
@@ -19,6 +20,7 @@ import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.stream.Collectors.joining;
 import static org.apache.commons.lang3.StringUtils.LF;
+import static org.apache.commons.lang3.StringUtils.isBlank;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
 import jakarta.annotation.Priority;
@@ -42,6 +44,7 @@ import java.net.URLDecoder;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.BiPredicate;
 
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -53,12 +56,12 @@ import com.chavaillaz.jakarta.rs.LoggedBody;
 import com.chavaillaz.jakarta.rs.LoggedField;
 import com.chavaillaz.jakarta.rs.LoggedFilter;
 import com.chavaillaz.jakarta.rs.LoggedFilterConfiguration;
+import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
 import com.chavaillaz.jakarta.rs.LoggedSupport;
 import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import com.chavaillaz.jakarta.rs.internal.BodyCapturer;
-import com.chavaillaz.jakarta.rs.internal.CredentialNames;
 import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
 import com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory;
 import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
@@ -66,7 +69,8 @@ import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
 /**
  * Client-side counterpart of {@link LoggedFilter}, logging the calls made through a JAX-RS {@code Client}
  * and propagating the identifier of the current request (see {@link LoggedField#REQUEST_ID}) to the service
- * called, as {@value LoggedFilter#REQUEST_ID_HEADER}, so both sides of a call are logged under one identifier.
+ * called, in its {@value LoggedFilter#REQUEST_ID_HEADER} header by default (see
+ * {@link Builder#correlationIdHeader(String)}), so both sides of a call are logged under one identifier.
  * <p>
  * Having no resource method to read annotations from, it is configured through {@link #builder()}, and
  * applies to every call made through the {@code Client} or {@code WebTarget} it is registered on. It logs,
@@ -124,6 +128,16 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     protected final String correlationIdMdcKey;
 
     /**
+     * Name of the header the identifier is propagated in to the services called.
+     */
+    private final String correlationIdHeader;
+
+    /**
+     * Whether the value of the query parameter of the given type and name must be kept out of the logs.
+     */
+    private final BiPredicate<MappingType, String> sensitiveParameters;
+
+    /**
      * Body logging configuration of the requests sent, fixed when this provider is built.
      */
     private final LoggedBodyConfiguration requestBody;
@@ -154,6 +168,8 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      */
     protected LoggedClientFilter(Builder builder) {
         this.correlationIdMdcKey = builder.correlationIdMdcKey;
+        this.correlationIdHeader = builder.correlationIdHeader;
+        this.sensitiveParameters = builder.sensitiveParameters;
         // Classes first, then instances, keeping the declaration order within each: a filter given as a
         // class cannot depend on one given as an instance without the caller having built both anyway
         Set<LoggedBodyFilter> filters = new LinkedHashSet<>(bodyFilterFactory.getInstances(builder.bodyFilterClasses));
@@ -193,6 +209,8 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     public static final class Builder {
 
         private String correlationIdMdcKey = REQUEST_ID.getDefaultField();
+        private String correlationIdHeader = REQUEST_ID_HEADER;
+        private BiPredicate<MappingType, String> sensitiveParameters = LoggedFilterConfiguration::isCredential;
         private boolean logRequestBody = false;
         private boolean logResponseBody = false;
         private int requestBodyLimit = NO_LIMIT;
@@ -205,10 +223,10 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         }
 
         /**
-         * Sets the MDC key read to obtain the identifier propagated as {@value LoggedFilter#REQUEST_ID_HEADER}
-         * on outgoing requests, falling back to a random one when absent from MDC (e.g. no {@link LoggedFilter}
-         * is active on the calling thread) or blank. Defaults to {@code request-id}; change it to match a
-         * renamed {@link LoggedField#REQUEST_ID} MDC key (see
+         * Sets the MDC key read to obtain the identifier propagated to the services called (see
+         * {@link #correlationIdHeader(String)}), falling back to a random one when absent from MDC (e.g. no
+         * {@link LoggedFilter} is active on the calling thread) or blank. Defaults to {@code request-id};
+         * change it to match a renamed {@link LoggedField#REQUEST_ID} MDC key (see
          * {@link LoggedFilterConfiguration.Builder#fieldName(LoggedField, String)}).
          * <p>
          * The identifier is propagated the way a {@link LoggedFilter} logs one it receives, sanitized and
@@ -220,6 +238,46 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
          */
         public Builder correlationIdKey(String mdcKey) {
             this.correlationIdMdcKey = requireNonNull(mdcKey, "The MDC key of the correlation identifier is required");
+            return this;
+        }
+
+        /**
+         * Sets the header the correlation identifier is propagated in, to match the one the services called
+         * read theirs from (see {@link LoggedFilterConfiguration.Builder#requestIdHeader(String)}). Defaults to
+         * {@value LoggedFilter#REQUEST_ID_HEADER}.
+         * <p>
+         * A call already carrying the header, in any casing, keeps the value the calling code gave it.
+         *
+         * @param header The name of the header
+         * @return This builder
+         * @throws IllegalArgumentException if the name is blank
+         */
+        public Builder correlationIdHeader(String header) {
+            if (isBlank(header)) {
+                throw new IllegalArgumentException("The name of the correlation identifier header is required");
+            }
+            this.correlationIdHeader = header;
+            return this;
+        }
+
+        /**
+         * Sets which query parameters of the calls have their value masked in the lines logging them, the way
+         * {@link LoggedFilterConfiguration.Builder#sensitiveParameters(BiPredicate)} does for the requests a
+         * service receives, so both can be given the same predicate: it is asked about the
+         * {@link MappingType#QUERY} parameters of the URI of each call, by their decoded name.
+         * <p>
+         * Defaults to {@link LoggedFilterConfiguration#isCredential(MappingType, String)}, which only knows
+         * what callers conventionally name their secrets. Compose with it to also mask, for example, the key a
+         * partner API expects in its query string:
+         * <pre>{@code
+         * .sensitiveParameters((type, name) -> isCredential(type, name) || "partner-key".equalsIgnoreCase(name))
+         * }</pre>
+         *
+         * @param predicate Whether the value of the parameter of the given type and name must be kept out of the logs
+         * @return This builder
+         */
+        public Builder sensitiveParameters(BiPredicate<MappingType, String> predicate) {
+            this.sensitiveParameters = requireNonNull(predicate, "The sensitive parameters predicate is required");
             return this;
         }
 
@@ -381,11 +439,11 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
         // HTTP header names are case-insensitive, but the client-side header map is not guaranteed to be (it
         // is a plain MultivaluedMap in the JAX-RS Client API), so a caller having already set the header under
         // a different casing would otherwise get it sent twice with two different values
-        if (requestContext.getHeaders().keySet().stream().noneMatch(REQUEST_ID_HEADER::equalsIgnoreCase)) {
+        if (requestContext.getHeaders().keySet().stream().noneMatch(correlationIdHeader::equalsIgnoreCase)) {
             // Made what a LoggedFilter logs of an identifier it receives, as MDC holds whatever the application
             // put there: a control character in a header fails the call in the HTTP clients of the JDK, among
             // others, and a blank identifier correlates nothing, so it is replaced as a missing one is
-            requestContext.getHeaders().putSingle(REQUEST_ID_HEADER, requestIdOf(MDC.get(correlationIdMdcKey)));
+            requestContext.getHeaders().putSingle(correlationIdHeader, requestIdOf(MDC.get(correlationIdMdcKey)));
         }
     }
 
@@ -395,9 +453,9 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      * signature of a presigned URL.
      * <p>
      * The user information is replaced as a whole, being either a credential or the name going with one,
-     * and the value of every query parameter {@link #isSensitiveQueryParameter(String)} reports is masked
-     * while its name stays visible, as {@link LoggedFilter} does for the requests it receives. Everything else
-     * is left exactly as it was given.
+     * and the value of every query parameter the configuration reports as sensitive (see
+     * {@link Builder#sensitiveParameters(BiPredicate)}) is masked while its name stays visible, as
+     * {@link LoggedFilter} does for the requests it receives. Everything else is left exactly as it was given.
      *
      * @param uri The URI of the call
      * @return The URI as it must be logged
@@ -434,8 +492,8 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     }
 
     /**
-     * Masks the value of every parameter of the given raw query that {@link #isSensitiveQueryParameter(String)}
-     * reports, leaving the other parameters, and the encoding of all of them, as they were.
+     * Masks the value of every parameter of the given raw query the configuration reports as sensitive, leaving
+     * the other parameters, and the encoding of all of them, as they were.
      *
      * @param rawQuery The query of a URI, still encoded
      * @return The query with the values of its sensitive parameters masked
@@ -446,33 +504,11 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
                     int separator = parameter.indexOf('=');
                     // Decoded before being compared, so a name the caller escaped is recognized all the same;
                     // the raw components of a java.net.URI are always validly encoded, so this cannot fail
-                    return separator >= 0 && isSensitiveQueryParameter(URLDecoder.decode(parameter.substring(0, separator), UTF_8))
+                    return separator >= 0 && sensitiveParameters.test(QUERY, URLDecoder.decode(parameter.substring(0, separator), UTF_8))
                             ? parameter.substring(0, separator + 1) + DEFAULT_MASK
                             : parameter;
                 })
                 .collect(joining("&"));
-    }
-
-    /**
-     * Indicates whether the value of the query parameter of the given name must be kept out of the logs,
-     * see {@link #getLoggedUri(URI)}.
-     * <p>
-     * The default reports the names callers conventionally give their secrets, the way
-     * {@link LoggedFilterConfiguration#isCredential} does for the query parameters a server receives.
-     * Override to extend (or restrict) them for the services an application calls, for example to also
-     * mask the key a partner API expects in its query string:
-     * <pre>{@code
-     * @Override
-     * protected boolean isSensitiveQueryParameter(String name) {
-     *     return super.isSensitiveQueryParameter(name) || "partner-key".equalsIgnoreCase(name);
-     * }
-     * }</pre>
-     *
-     * @param name The decoded name of the query parameter
-     * @return {@code true} if the value must be kept out of the logs, {@code false} otherwise
-     */
-    protected boolean isSensitiveQueryParameter(String name) {
-        return CredentialNames.isQueryParameter(name);
     }
 
     /**

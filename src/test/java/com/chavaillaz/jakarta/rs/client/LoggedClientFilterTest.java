@@ -1,6 +1,7 @@
 package com.chavaillaz.jakarta.rs.client;
 
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
+import static com.chavaillaz.jakarta.rs.LoggedFilterConfiguration.isCredential;
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
 import static com.chavaillaz.jakarta.rs.internal.BodyCapturer.MEMORY_FAILURE;
 import static com.chavaillaz.jakarta.rs.internal.Sanitizer.REQUEST_ID_MAX_LENGTH;
@@ -168,6 +169,37 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check the correlation identifier is propagated in the header configured")
+    void checkCorrelationIdPropagatedInConfiguredHeader() {
+        // Given: the header the services called read their identifier from
+        MDC.put("request-id", "abc-123");
+        LoggedClientFilter tracing = LoggedClientFilter.builder().correlationIdHeader("X-Trace-ID").build();
+
+        // When
+        tracing.filter(requestContext);
+
+        // Then
+        assertEquals("abc-123", headers.getFirst("X-Trace-ID"));
+        assertNull(headers.getFirst(REQUEST_ID_HEADER));
+    }
+
+    @Test
+    @DisplayName("Check a header configured the call already carries, in another casing, is not overwritten")
+    void checkConfiguredCorrelationHeaderNotOverwritten() {
+        // Given
+        headers.putSingle("x-trace-id", "caller-supplied");
+        MDC.put("request-id", "from-mdc");
+        LoggedClientFilter tracing = LoggedClientFilter.builder().correlationIdHeader("X-Trace-ID").build();
+
+        // When
+        tracing.filter(requestContext);
+
+        // Then
+        assertEquals(1, headers.size());
+        assertEquals("caller-supplied", headers.getFirst("x-trace-id"));
+    }
+
+    @Test
     @DisplayName("Check an already present correlation header is not overwritten")
     void checkCorrelationIdNotOverwritten() {
         // Given
@@ -214,6 +246,23 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         assertEquals(masked, properties.get(LoggedClientFilter.REQUEST_URI_PROPERTY));
     }
 
+    @Test
+    @DisplayName("Check the query parameters the configuration reports as sensitive are masked, and only those")
+    void checkConfiguredSensitiveParametersMasked() {
+        // Given: the predicate a service is given for the requests it receives, extended with the key of a partner
+        LoggedClientFilter extended = LoggedClientFilter.builder()
+                .sensitiveParameters((type, name) -> isCredential(type, name) || "partner-key".equalsIgnoreCase(name))
+                .build();
+        LoggedClientFilter restricted = LoggedClientFilter.builder()
+                .sensitiveParameters((type, name) -> false)
+                .build();
+        URI uri = URI.create("https://partner.company.com/a?Partner-Key=k&access_token=t&topic=news");
+
+        // Then: asked about the query parameters by type, the predicate can be shared with the server side
+        assertEquals("https://partner.company.com/a?Partner-Key=***&access_token=***&topic=news", extended.getLoggedUri(uri));
+        assertEquals("https://partner.company.com/a?Partner-Key=k&access_token=t&topic=news", restricted.getLoggedUri(uri));
+    }
+
     @ParameterizedTest(name = "{0}")
     @CsvSource(delimiter = '|', value = {
             "https://service.company.com/article                   | https://service.company.com/article",
@@ -245,6 +294,8 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         assertThrows(IllegalArgumentException.class, () -> builder.requestBodyLimit(-2));
         assertThrows(IllegalArgumentException.class, () -> builder.responseBodyLimit(Integer.MIN_VALUE));
         assertThrows(NullPointerException.class, () -> builder.correlationIdKey(null));
+        assertThrows(IllegalArgumentException.class, () -> builder.correlationIdHeader(" "));
+        assertThrows(NullPointerException.class, () -> builder.sensitiveParameters(null));
         assertThrows(NullPointerException.class, () -> builder.bodyFilters((LoggedBodyFilter) null));
         assertThrows(NullPointerException.class, () -> builder.bodyFilters(AppendA.class, null));
         assertDoesNotThrow(() -> builder.bodyLimit(0).bodyLimit(-1).build());

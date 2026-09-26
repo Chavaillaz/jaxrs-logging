@@ -298,7 +298,8 @@ either a credential or the name going with one:
 Calling GET https://***@service.company.com/article?topic=news&access_token=***
 ```
 
-Override `isSensitiveQueryParameter(String)` on the client filter to mask the parameters of the services your
+The builder of the client filter takes a `sensitiveParameters` predicate as well, asked about the query
+parameters of each call: give it the one of your server configuration, or one of its own for the services your
 application calls, such as the key a partner API expects in its query string.
 
 ## Body filters
@@ -409,7 +410,8 @@ rather than once per request.
 The client-side counterpart [LoggedClientFilter](src/main/java/com/chavaillaz/jakarta/rs/client/LoggedClientFilter.java)
 logs outgoing JAX-RS Client calls and propagates the current request identifier (from MDC) to the downstream
 service as `X-Request-ID`, so a service calling another service exposing its own `@Logged` resource produces a
-single, correlated identifier across both sides of the call.
+single, correlated identifier across both sides of the call. A downstream service reading its identifier from
+another header (`requestIdHeader` of its configuration) is given it there with `correlationIdHeader`.
 
 Unlike `@Logged`, which is resolved per resource method from annotations, `LoggedClientFilter` has no resource
 method to attach annotations to: an instance is configured once through its builder and applies to every call
