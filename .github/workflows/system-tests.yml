@@ -8,10 +8,7 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Set up
-        uses: actions/setup-java@v6
-        with:
-          java-version: '21'
-          distribution: 'temurin'
+        uses: ./.github/actions/setup
 
       - name: Build project
         run: mvn -B -Pcoverage verify
