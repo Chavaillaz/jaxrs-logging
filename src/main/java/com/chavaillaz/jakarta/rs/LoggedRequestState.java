@@ -12,40 +12,35 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.MDC;
 
-import com.chavaillaz.jakarta.rs.LoggedResolver.BodyConfiguration;
-
 /**
- * Everything {@link LoggedFilter} remembers about one request while it is being processed.
+ * Everything a {@link MethodFilter} remembers about one request while it is being processed.
  * <p>
- * A JAX-RS provider is shared by every concurrent request, and can even be instantiated once per contract it
- * implements - RESTEasy does for one registered as a class, its request filter then being another instance
- * than its response filter - so what it carries from one callback to the next lives on the request, in its
- * property map, under a single property. Every callback reaches it through the context it is handed - a
- * filter's request context or an interceptor's context, which share that map - rather than through an
- * injected {@code @Context ContainerRequestContext}, which the JAX-RS contract does not provide for, and
- * RESTEasy refuses.
+ * A provider is shared by every concurrent request, so what it carries from one callback to the next lives on
+ * the request, in its property map, under a single property. Every callback reaches it through the context it
+ * is handed - a filter's request context or an interceptor's context, which share that map - rather than
+ * through an injected {@code @Context ContainerRequestContext}, which the JAX-RS contract does not provide
+ * for, and RESTEasy refuses.
+ * <p>
+ * It records the filter logging the request, the first to start it: the filters another feature registered on
+ * the same resource method leave the request alone.
  * <p>
  * A request can start on one thread and complete on another (a {@code @Suspended} response resumed from a
  * worker, a reactive resource method), so the flags are atomic and the mutable fields volatile.
  *
- * @see #attach(ContainerRequestContext, LoggedFilter)
+ * @see #attach(ContainerRequestContext, MethodFilter)
  */
 final class LoggedRequestState {
 
     /**
-     * Name of the single container property this state is stored under.
-     * <p>
-     * Qualified with the class name, as the property map is shared with the container, the application
-     * and every other provider registered alongside this one.
+     * Name of the single container property this state is stored under, qualified with the class name, as the
+     * property map is shared with the container, the application and every other provider.
      */
     private static final String PROPERTY = LoggedRequestState.class.getName();
 
     /**
-     * Provider handling this request, which {@link LoggedBodyInterceptor} hands the bodies it captures back
-     * to: read from the request rather than injected there, as several providers, each configured its own
-     * way, can be registered. The providers of its class are the only ones logging the request.
+     * Filter logging this request, the only one to.
      */
-    private final LoggedFilter provider;
+    private final MethodFilter filter;
 
     /**
      * Moment the request started, read back once it completes to report how long it took.
@@ -53,24 +48,21 @@ final class LoggedRequestState {
     private final long startTime;
 
     /**
-     * Every {@link MDC} entry put for this request through {@link LoggedFilter#putMdc(String, String)}, so a
-     * thread completing the request without carrying its entries can be lent them, and so they are removed
-     * once the request is done (see {@link RequestMdc}).
+     * Every {@link MDC} entry put for this request (see {@link RequestMdc#put(String, String)}), so a thread
+     * completing the request without carrying its entries can be lent them, and so they are removed once the
+     * request is done.
      * <p>
-     * This map is bound to the thread carrying the request, which is how {@code putMdc} records an entry
-     * without being told which request it belongs to. It holds nothing but strings, as a value bound to a
-     * pooled thread can outlive the application and must not pin its class loader, and is concurrent, as
-     * entries can be recorded and read from different threads.
+     * This map is bound to the thread carrying the request, which is how an entry is recorded without being told
+     * which request it belongs to. It holds nothing but strings, as a value bound to a pooled thread can outlive
+     * the application and must not pin its class loader, and is concurrent, as entries can be recorded and read
+     * from different threads.
      */
     private final Map<String, String> mdcEntries = new ConcurrentHashMap<>();
 
     /**
-     * Whether the {@code "Received ..."} line has already been logged for this request.
-     * <p>
-     * The line is logged by {@link LoggedFilter#filter(ContainerRequestContext)} for a request without an
-     * entity, by {@link LoggedFilter#aroundReadFrom(jakarta.ws.rs.ext.ReaderInterceptorContext)} once the
-     * entity is read, and otherwise - for a resource method that never reads it - by the response filter,
-     * which this tells whether the line is still due.
+     * Whether the {@code "Received ..."} line has already been logged for this request: by the request filter
+     * for a request without an entity, by the reader interceptor once the entity is read, and otherwise - for a
+     * resource method that never reads it - by the response filter, which this tells whether the line is due.
      */
     private final AtomicBoolean requestLogged = new AtomicBoolean();
 
@@ -87,10 +79,8 @@ final class LoggedRequestState {
 
     /**
      * Whether the request has already been completed, guarding
-     * {@link LoggedFilter#logResponse(LoggedRequestState, String)} against running more than once.
-     * <p>
-     * A request completes in the response filter when the response has no entity, and in the writer
-     * interceptor otherwise: whichever callback gets there first completes it, and the other does nothing.
+     * {@link MethodFilter#logResponse(LoggedRequestState, String)} against running more than once: whichever of
+     * the response filter and the writer interceptor gets there first completes it.
      */
     private final AtomicBoolean completed = new AtomicBoolean();
 
@@ -113,13 +103,6 @@ final class LoggedRequestState {
     private volatile int status;
 
     /**
-     * Body logging configuration resolved for this request as it starts, on the thread serving it, and kept
-     * so the callbacks asking for it later on, on whatever thread, share that resolution. See
-     * {@link LoggedFilter#getBodyConfiguration(LoggedRequestState, LoggedBody.Direction)}.
-     */
-    private volatile @Nullable BodyConfiguration bodyConfiguration;
-
-    /**
      * Request body as captured and filtered, waiting for the callback that logs it.
      */
     private volatile @Nullable String requestBody;
@@ -136,24 +119,24 @@ final class LoggedRequestState {
     private volatile @Nullable Runnable streamedRequestBody;
 
     /**
-     * Creates the state of a request handled by the given provider, starting its duration measurement.
+     * Creates the state of a request logged by the given filter, starting its duration measurement.
      *
-     * @param provider The provider handling the request
+     * @param filter The filter logging the request
      */
-    LoggedRequestState(LoggedFilter provider) {
-        this.provider = provider;
+    LoggedRequestState(MethodFilter filter) {
+        this.filter = filter;
         this.startTime = nanoTime();
     }
 
     /**
      * Creates the state of a request starting, and attaches it to the request.
      *
-     * @param context  The context of the request starting
-     * @param provider The provider handling the request
+     * @param context The context of the request starting
+     * @param filter  The filter logging the request
      * @return The state of the request
      */
-    static LoggedRequestState attach(ContainerRequestContext context, LoggedFilter provider) {
-        LoggedRequestState state = new LoggedRequestState(provider);
+    static LoggedRequestState attach(ContainerRequestContext context, MethodFilter filter) {
+        LoggedRequestState state = new LoggedRequestState(filter);
         context.setProperty(PROPERTY, state);
         return state;
     }
@@ -162,29 +145,27 @@ final class LoggedRequestState {
      * Gets the state of the request carried by the given context, without creating one.
      *
      * @param context The context of the request being processed
-     * @return The state of the request, or {@code null} if no {@link LoggedFilter} is active on it
+     * @return The state of the request, or {@code null} if no filter logs it
      */
     static @Nullable LoggedRequestState find(ContainerRequestContext context) {
         return asState(context.getProperty(PROPERTY));
     }
 
     /**
-     * Gets the state of the request carried by the given context, without creating one.
-     * <p>
-     * The overload an interceptor uses: {@link InterceptorContext} shares the property map of the request,
-     * but has no supertype in common with {@link ContainerRequestContext} to read it through.
+     * Gets the state of the request carried by the given context, without creating one: the overload of an
+     * interceptor, whose context shares the property map of the request but has no supertype in common with
+     * {@link ContainerRequestContext}.
      *
      * @param context The context of the entity being read or written
-     * @return The state of the request, or {@code null} if no {@link LoggedFilter} is active on it
+     * @return The state of the request, or {@code null} if no filter logs it
      */
     static @Nullable LoggedRequestState find(InterceptorContext context) {
         return asState(context.getProperty(PROPERTY));
     }
 
     /**
-     * Reads a container property as a state, tolerating both its absence and anything else found under
-     * that name: no state simply means no {@link LoggedFilter} is active for this request (the resource
-     * is not annotated, or {@link LoggedBodyInterceptor} was registered without it).
+     * Reads a container property as a state, tolerating both its absence and anything else found under that
+     * name.
      *
      * @param property The value found in the property map
      * @return The state, or {@code null} if there is none
@@ -194,12 +175,12 @@ final class LoggedRequestState {
     }
 
     /**
-     * Gets the provider handling this request, see {@link #provider}.
+     * Gets the filter logging this request.
      *
-     * @return The provider handling this request
+     * @return The filter logging this request
      */
-    LoggedFilter getProvider() {
-        return provider;
+    MethodFilter getFilter() {
+        return filter;
     }
 
     /**
@@ -222,11 +203,8 @@ final class LoggedRequestState {
 
     /**
      * Records that the {@code "Received ..."} line is being logged for this request, with or without its
-     * body, and tells whether that line says anything the ones logged before it did not.
-     * <p>
-     * A line without a body is new for a request not logged at all yet, and a line with a body for a
-     * request whose body has not been logged yet, whatever was logged without it (see
-     * {@link #requestBodyLogged}).
+     * body, and tells whether that line says anything the ones logged before it did not: a line without a body
+     * for a request not logged at all yet, a line with a body for a request whose body has not been logged yet.
      *
      * @param withBody Whether the line carries the request body
      * @return {@code true} if the line is new and must be logged, {@code false} if it would repeat one
@@ -313,24 +291,6 @@ final class LoggedRequestState {
      */
     void setStatus(int status) {
         this.status = status;
-    }
-
-    /**
-     * Gets the body logging configuration resolved for this request, see {@link #bodyConfiguration}.
-     *
-     * @return The configuration, or {@code null} if it has not been resolved yet
-     */
-    @Nullable BodyConfiguration getBodyConfiguration() {
-        return bodyConfiguration;
-    }
-
-    /**
-     * Sets the body logging configuration resolved for this request.
-     *
-     * @param bodyConfiguration The configuration resolved
-     */
-    void setBodyConfiguration(BodyConfiguration bodyConfiguration) {
-        this.bodyConfiguration = bodyConfiguration;
     }
 
     /**

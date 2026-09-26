@@ -10,7 +10,7 @@ import java.lang.annotation.Target;
 
 /**
  * Annotation defining a list of mappings from parameters to MDC entries
- * to be used by the {@link LoggedFilter} when logging a request.
+ * to be used by the {@link LoggedFeature} when logging a request.
  */
 @Documented
 @Retention(RUNTIME)

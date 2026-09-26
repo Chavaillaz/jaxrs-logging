@@ -1,6 +1,6 @@
 package com.chavaillaz.jakarta.rs;
 
-import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
+import static com.chavaillaz.jakarta.rs.LoggedFeature.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedSupport.levelOf;
 import static java.util.Collections.unmodifiableMap;
 import static java.util.Objects.requireNonNull;
@@ -8,10 +8,12 @@ import static java.util.Objects.requireNonNullElseGet;
 import static org.apache.commons.lang3.StringUtils.isBlank;
 
 import jakarta.ws.rs.container.ContainerRequestContext;
+import jakarta.ws.rs.container.ResourceInfo;
 import jakarta.ws.rs.core.MultivaluedMap;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.function.BiFunction;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
 import java.util.function.IntFunction;
@@ -27,11 +29,11 @@ import com.chavaillaz.jakarta.rs.internal.CredentialNames;
 import com.chavaillaz.jakarta.rs.internal.Sanitizer;
 
 /**
- * Configuration of a {@link LoggedFilter}: the names of its MDC entries, how it identifies a request and
+ * Configuration of a {@link LoggedFeature}: the names of its MDC entries, how it identifies a request and
  * whether it returns that identifier to the caller, which parameters it keeps out of the logs, the level it
- * logs a request at, and how it captures bodies.
+ * logs a request at, how it captures bodies, and the MDC entries the application adds.
  * <p>
- * Immutable, and built through {@link #builder()}. A {@link LoggedFilter} the container instantiates looks
+ * Immutable, and built through {@link #builder()}. A {@link LoggedFeature} the container instantiates looks
  * its configuration up in the application, which declares it through a provider resolving it:
  * <pre>{@code
  * @Provider
@@ -49,12 +51,12 @@ import com.chavaillaz.jakarta.rs.internal.Sanitizer;
  *
  * }
  * }</pre>
- * The resolver is asked for the class of the provider looking it up, and a provider it resolves nothing for,
- * as one of an application declaring no resolver at all, uses the default configuration (see
+ * The resolver is asked for the class of the feature looking it up, and a feature it resolves nothing for, as
+ * one of an application declaring no resolver at all, uses the default configuration (see
  * {@link #defaults()}). An application registering its providers explicitly passes the configuration to
- * {@link LoggedFilter#LoggedFilter(LoggedFilterConfiguration)} instead.
+ * {@link LoggedFeature#LoggedFeature(LoggedFilterConfiguration)} instead.
  * <p>
- * It applies to every resource the provider logs: what varies from a resource to another - which bodies are
+ * It applies to every resource the feature logs: what varies from a resource to another - which bodies are
  * logged and how they are filtered, which parameters are mapped - is declared on the resource itself, with
  * {@link LoggedBody} and {@link LoggedMapping}.
  */
@@ -69,6 +71,7 @@ public final class LoggedFilterConfiguration {
     private final BiPredicate<MappingType, String> sensitiveParameters;
     private final IntFunction<@Nullable Level> responseLevel;
     private final IntFunction<LoggedBodyCapture> bodyCapture;
+    private final BiFunction<ContainerRequestContext, ResourceInfo, Map<String, String>> mdcEntries;
 
     private LoggedFilterConfiguration(Builder builder) {
         this.fieldNames = unmodifiableMap(new EnumMap<>(builder.fieldNames));
@@ -79,11 +82,12 @@ public final class LoggedFilterConfiguration {
         this.sensitiveParameters = builder.sensitiveParameters;
         this.responseLevel = builder.responseLevel;
         this.bodyCapture = builder.bodyCapture;
+        this.mdcEntries = builder.mdcEntries;
     }
 
     /**
-     * Gets the default configuration, used by a {@link LoggedFilter} the application declares none for (see
-     * {@link LoggedFilter#LoggedFilter()}).
+     * Gets the default configuration, used by a {@link LoggedFeature} the application declares none for (see
+     * {@link LoggedFeature#LoggedFeature()}).
      *
      * @return The configuration every setting of {@link Builder} documents the default of
      */
@@ -193,6 +197,17 @@ public final class LoggedFilterConfiguration {
     }
 
     /**
+     * Gets the MDC entries the application describes the given request with.
+     *
+     * @param request  The context of the request received
+     * @param resource The resource method matched by the request
+     * @return The entries, by MDC key
+     */
+    Map<String, String> mdcEntriesOf(ContainerRequestContext request, ResourceInfo resource) {
+        return mdcEntries.apply(request, resource);
+    }
+
+    /**
      * Gets the identifier of the given request from the given header.
      *
      * @param request The context of the request received
@@ -216,6 +231,7 @@ public final class LoggedFilterConfiguration {
         private BiPredicate<MappingType, String> sensitiveParameters = LoggedFilterConfiguration::isCredential;
         private IntFunction<@Nullable Level> responseLevel = LoggedSupport::levelOf;
         private IntFunction<LoggedBodyCapture> bodyCapture = BoundedLoggedBodyCapture::new;
+        private BiFunction<ContainerRequestContext, ResourceInfo, Map<String, String>> mdcEntries = (request, resource) -> Map.of();
 
         private Builder() {
             for (LoggedField field : LoggedField.values()) {
@@ -256,7 +272,7 @@ public final class LoggedFilterConfiguration {
 
         /**
          * Sets the header a request identifier is read from, and returned to the caller in (see
-         * {@link #withoutReturnedRequestId()}). Defaults to {@value LoggedFilter#REQUEST_ID_HEADER}.
+         * {@link #withoutReturnedRequestId()}). Defaults to {@value LoggedFeature#REQUEST_ID_HEADER}.
          * <p>
          * The identifier is sanitized and truncated to 128 characters, and a random UUID is generated for a
          * request without one. Note that it is taken from the client as-is beyond that: it is a correlation
@@ -359,6 +375,26 @@ public final class LoggedFilterConfiguration {
          */
         public Builder bodyCapture(IntFunction<LoggedBodyCapture> factory) {
             this.bodyCapture = requireNonNull(factory, "The body capture factory is required");
+            return this;
+        }
+
+        /**
+         * Sets the MDC entries of the application describing a request, put along with the fields of this
+         * library before any line logging the request, and removed along with them once it is done. For example,
+         * to put the user an authentication filter identified:
+         * <pre>{@code
+         * .mdcEntries((request, resource) -> Optional.ofNullable(request.getSecurityContext().getUserPrincipal())
+         *         .map(user -> Map.of("user-id", user.getName()))
+         *         .orElse(Map.of()))
+         * }</pre>
+         * Their values are sanitized as the fields are, and ignored when blank. A function failing costs the
+         * request these entries alone. Defaults to none.
+         *
+         * @param entries The entries describing the given request, by MDC key, given the resource method matched
+         * @return This builder
+         */
+        public Builder mdcEntries(BiFunction<ContainerRequestContext, ResourceInfo, Map<String, String>> entries) {
+            this.mdcEntries = requireNonNull(entries, "The MDC entries function is required");
             return this;
         }
 

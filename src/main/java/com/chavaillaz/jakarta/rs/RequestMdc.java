@@ -12,7 +12,7 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.MDC;
 
 /**
- * The MDC entries of the requests {@link LoggedFilter} logs: puts them, records which request each of them
+ * The MDC entries of the requests {@link LoggedFeature} logs: puts them, records which request each of them
  * belongs to, and removes them once that request is done, whichever thread it completes on.
  * <p>
  * MDC is thread-local, while a request is not bound to a thread: it can start on one thread and complete on
@@ -35,9 +35,9 @@ final class RequestMdc {
      * It is also what lets {@link #start(LoggedRequestState)} sweep every entry a previous request left
      * behind, and not just the fixed {@link #fieldNames}. A request completed elsewhere, or never completed
      * at all, leaves its entries on the thread that set them, including those whose names are only known at
-     * runtime: an automatic {@link LoggedMapping} derives them from the parameters the client sent, and a
-     * subclass of {@link LoggedFilter} can put anything it likes. Left there, they would mislabel every log
-     * line of the unrelated requests the (pooled) thread goes on to serve.
+     * runtime: an automatic {@link LoggedMapping} derives them from the parameters the client sent, and the
+     * application names its own (see {@link LoggedFilterConfiguration.Builder#mdcEntries}). Left there, they would
+     * mislabel every log line of the unrelated requests the (pooled) thread goes on to serve.
      * <p>
      * A thread stays bound to the last request it carried until the next one starts, even once that request is
      * done: its entries can come back after it completed, as a wrapper restoring the context map it saved before
@@ -54,7 +54,7 @@ final class RequestMdc {
     private static final List<LoggedField> BODIES = List.of(REQUEST_BODY, RESPONSE_BODY);
 
     /**
-     * Names of the MDC entries of the fields {@link LoggedFilter} logs, a field without a name being left out
+     * Names of the MDC entries of the fields {@link LoggedFeature} logs, a field without a name being left out
      * (see {@link LoggedFilterConfiguration.Builder#withoutField(LoggedField)}).
      */
     private final Map<LoggedField, String> fieldNames;
@@ -282,8 +282,8 @@ final class RequestMdc {
      * Removes from the current thread's context map every entry put for the given request (see
      * {@link LoggedRequestState#getMdcEntries()}).
      * <p>
-     * Also sweeps the fixed fields as a safety net, in case a subclass of {@link LoggedFilter} still puts one
-     * of those directly through {@link MDC#put(String, String)}.
+     * Also removes the fixed fields as a safety net, whatever put them: the application may put one directly
+     * through {@link MDC#put(String, String)}.
      * <p>
      * The entries stay recorded against the request, for the thread that carried it to sweep them again once
      * the next request starts on it (see {@link #threadEntries}), but for the bodies: put as the request

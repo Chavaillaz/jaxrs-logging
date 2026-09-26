@@ -17,12 +17,12 @@ import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.MDC;
 
-import com.chavaillaz.jakarta.rs.LoggedFilter;
+import com.chavaillaz.jakarta.rs.LoggedFeature;
 
 /**
  * Propagates the calling thread's MDC context map to a task run on another thread.
  * <p>
- * MDC is backed by a thread-local, so entries set by {@link LoggedFilter} (or by application code) on the
+ * MDC is backed by a thread-local, so entries set by {@link LoggedFeature} (or by application code) on the
  * thread handling a request are not visible to a task submitted to an {@link ExecutorService}, a manually
  * started {@link Thread}, or any other thread hand-off - including a {@code @Suspended AsyncResponse} or a
  * reactive resource method resuming on a different worker thread. Wrap a task (or a whole
@@ -242,7 +242,7 @@ public final class MdcPropagation {
      * A resource method taking a {@code @Suspended AsyncResponse} returns before the response exists, and
      * the container only runs the response filters and writes the entity when {@code resume} is called -
      * on whatever thread the application calls it from. Without this, that thread has none of the MDC of
-     * the request: {@link LoggedFilter} still logs its {@code Processed ...} line with the entries it put
+     * the request: {@link LoggedFeature} still logs its {@code Processed ...} line with the entries it put
      * for the request, but every other line logged while completing it - by a response filter or a message
      * body writer of the application, for instance - lands with no request identifier, no URI and no method.
      * <pre>{@code

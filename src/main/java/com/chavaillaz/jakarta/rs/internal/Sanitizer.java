@@ -8,7 +8,7 @@ import java.util.regex.Pattern;
 
 import org.jspecify.annotations.Nullable;
 
-import com.chavaillaz.jakarta.rs.LoggedFilter;
+import com.chavaillaz.jakarta.rs.LoggedFeature;
 
 /**
  * What a value coming from outside the application goes through before this library logs it: its control
@@ -17,7 +17,7 @@ import com.chavaillaz.jakarta.rs.LoggedFilter;
 public final class Sanitizer {
 
     /**
-     * Maximum length kept from a client-supplied {@value LoggedFilter#REQUEST_ID_HEADER} header before it
+     * Maximum length kept from a client-supplied {@value LoggedFeature#REQUEST_ID_HEADER} header before it
      * is stored in MDC.
      * <p>
      * A container's overall header size limit is shared across every header of the request, not applied
@@ -56,7 +56,7 @@ public final class Sanitizer {
 
     /**
      * Gets the identifier to log a request under from the one obtained for it - read from its
-     * {@value LoggedFilter#REQUEST_ID_HEADER} header by default - sanitized and truncated to
+     * {@value LoggedFeature#REQUEST_ID_HEADER} header by default - sanitized and truncated to
      * {@link #REQUEST_ID_MAX_LENGTH} characters, or a random UUID when none was obtained.
      *
      * @param obtained The identifier obtained for the request, {@code null} if there is none

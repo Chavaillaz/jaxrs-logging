@@ -24,7 +24,7 @@ The jar is a named module, `com.chavaillaz.jakarta.rs`, exporting the following 
 
 | Package                             | Content                                                                    |
 |-------------------------------------|----------------------------------------------------------------------------|
-| `com.chavaillaz.jakarta.rs`         | Annotations activating and configuring the logging, and the providers      |
+| `com.chavaillaz.jakarta.rs`         | Annotations activating and configuring the logging, and the feature        |
 | `com.chavaillaz.jakarta.rs.client`  | Logging of the calls made through a JAX-RS client                          |
 | `com.chavaillaz.jakarta.rs.filter`  | Filters keeping values out of the bodies logged                            |
 | `com.chavaillaz.jakarta.rs.capture` | How the bodies logged are captured                                         |
@@ -39,10 +39,10 @@ parameter, return value and field is non-null unless explicitly marked `@Nullabl
 
 ## Compatibility
 
-A runtime scanning the application for providers discovers `LoggedFilter` and `LoggedBodyInterceptor`; any other
-has the application register both. The library runs on these, smoke-tested with the same resources on each:
+A runtime scanning the application for providers discovers `LoggedFeature`; any other has the application
+register it. The library runs on these, smoke-tested with the same resources on each:
 
-| Runtime         | JAX-RS implementation                     | Providers                                            |
+| Runtime         | JAX-RS implementation                     | `LoggedFeature`                                      |
 |-----------------|-------------------------------------------|------------------------------------------------------|
 | WildFly 41      | RESTEasy 7 (Jakarta REST 4.0)             | Discovered                                           |
 | Open Liberty 26 | RESTEasy, `restfulWS-4.0`                 | Discovered                                           |
@@ -59,7 +59,7 @@ nor runs the writer interceptors completing the requests answered with an entity
 
 ## Usage
 
-The logging of requests and responses is done through a filter that can be activated on a resource with:
+The logging of requests and responses is done by `LoggedFeature`, activated on a resource with:
 
 ```java
 @Logged
@@ -160,13 +160,9 @@ example), and as UTF-8 when it declares none.
 Nothing is captured at all when the logger is configured above `INFO`, so an application that turns this
 logging off does not pay for buffering and filtering bodies it will never write.
 
-Bodies are captured by a second provider,
-[LoggedBodyInterceptor](src/main/java/com/chavaillaz/jakarta/rs/LoggedBodyInterceptor.java), which runs after
-any entity coder so that what is logged is the entity itself rather than its transfer encoding - a
-`Content-Encoding: gzip` request or response is logged as the payload, not as gzip noise. It is discovered
-like any other `@Provider`; if you register providers explicitly, register it alongside `LoggedFilter`
-(without it you only lose the bodies, not the log lines). Both apply to every resource, and leave the requests
-of those carrying no annotation of this library alone.
+Bodies are captured by an interceptor `LoggedFeature` registers on the resource methods logging one, after any
+entity coder, so that what is logged is the entity itself rather than its transfer encoding - a
+`Content-Encoding: gzip` request or response is logged as the payload, not as gzip noise.
 
 ## Example
 
@@ -393,9 +389,9 @@ the exchange actually failed with (or turn a good response into a 500).
 
 ## Annotation resolution
 
-`@Logged`, `@LoggedBody` and `@LoggedMapping` are looked up, for the resource method matched by the request,
-at six declaration sites, from the most to the least specific, any of them declared at any of these sites
-having its requests logged:
+`@Logged`, `@LoggedBody` and `@LoggedMapping` are looked up, for each resource method, at six declaration
+sites, from the most to the least specific, any of them declared at any of these sites having its requests
+logged:
 
 1. the resource method itself
 2. the methods it overrides on the superclasses of the resource class, an abstract base resource for instance
@@ -429,8 +425,11 @@ public class ArticleResource {
 `@LoggedMapping` is the exception: the mappings of every site are merged, a mapping only giving way to one
 naming the same parameter at a more specific site (see [MDC Mappings](#mdc-mappings)).
 
-Resolution is cached per resource class and method, so the reflection above happens once per endpoint
-rather than once per request.
+`LoggedFeature` reads these annotations once per resource method, as the application is deployed, so none of
+the reflection above happens on a request, and a resource method carrying none of them gets no filter of the
+library but the one removing what a request logged earlier may have left on the thread serving it. An
+annotation that cannot be read - a `filters` class missing at runtime, say - is reported as the application
+starts, and the method logs no body rather than one whose redaction cannot be guaranteed.
 
 ## Client calls
 
@@ -471,8 +470,8 @@ and its body logged once the calling code read that stream to its end, or closed
 body is cut at 64 KiB by default, which `bodyLimit` changes.
 
 For the same reason, only logging the body as a new log line is supported, not adding it to MDC: on the server
-side, `@LoggedBody(MDC)` works because `LoggedFilter` has a single, well-defined point (`logResponse`) at which
-the whole request is known to be complete, so an MDC entry can be added and removed around exactly that point.
+side, `@LoggedBody(MDC)` works because a request has a single, well-defined point at which it is known to be
+complete, once its response is written, so an MDC entry can be added and removed around exactly that point.
 `LoggedClientFeature` has no equivalent point to scope such an entry to, since the response body may become
 available only after (or never, relative to) the point the call is considered done, so there is nothing for
 an MDC entry holding the body to be reliably paired with.
@@ -552,7 +551,7 @@ public void get(@Suspended AsyncResponse response) {
 
 ## Configuration
 
-`LoggedFilter` applies the same configuration to every resource it logs: what varies from a resource to
+`LoggedFeature` applies the same configuration to every resource it logs: what varies from a resource to
 another is declared on the resource itself with `@LoggedBody` and `@LoggedMapping`. That configuration is a
 [LoggedFilterConfiguration](src/main/java/com/chavaillaz/jakarta/rs/LoggedFilterConfiguration.java), built
 with `LoggedFilterConfiguration.builder()`:
@@ -569,9 +568,11 @@ with `LoggedFilterConfiguration.builder()`:
 * **responseLevel**: Level the `Processed ...` line is logged at, given the response status.
 * **bodyCapture**: How bodies are captured (in memory by default), for example to spill very large ones to
   a temporary file.
+* **mdcEntries**: Entries of your own describing a request, for example the user an authentication filter
+  identified, put along with those of the library and removed with them once the request is done.
 
-The container instantiates the providers, so declare the configuration with a provider resolving it, which
-they look up when they log their first request:
+The container instantiates the feature, so declare the configuration with a provider resolving it, which the
+feature looks up when it logs its first request:
 
 ```java
 @Provider
@@ -591,30 +592,22 @@ public class LoggingConfiguration implements ContextResolver<LoggedFilterConfigu
 }
 ```
 
-`getContext` is given the class of the provider asking, and the default configuration applies to a provider it
-returns `null` for, as to all of them without such a resolver. An application registering its providers
-explicitly can pass the configuration to `new LoggedFilter(configuration)` instead.
+`getContext` is given the class of the feature asking, and the default configuration applies when it returns
+`null`, as without such a resolver. An application registering its providers explicitly can pass the
+configuration to `new LoggedFeature(configuration)` instead.
 
-A subclass of `LoggedFilter` can put entries of its own in MDC, from `describe(ContainerRequestContext)`, which
-is called for the requests it logs once it put its own, and through `putMdc`, so they are removed once the
-request is done - rather than from an override of `filter`, which runs for the requests of every resource. An
-example is available with [UserLogged](src/test/java/com/chavaillaz/jakarta/rs/UserLogged.java) and
-[UserLoggedFilter](src/test/java/com/chavaillaz/jakarta/rs/UserLoggedFilter.java), which:
+The entries of `mdcEntries` are given the request and its resource method, so an annotation of your own can
+drive them. An example is available with [UserLogged](src/test/java/com/chavaillaz/jakarta/rs/UserLogged.java)
+and [UserLoggingConfiguration](src/test/java/com/chavaillaz/jakarta/rs/UserLoggingConfiguration.java), which:
 
 * Logs a new **user-id** field in MDC
-* Logs a new **user-agent** field in MDC if activated in its annotation
+* Logs a new **user-agent** field in MDC for the resources whose `@UserLogged` asks for it
 * Reads the **request-id** from another header
 * Renames the MDC field of **request-id** to **request-identifier**
 
-A subclass logs the requests of the resources carrying an annotation of this library, as `LoggedFilter` does,
-unless it is bound to an annotation of its own, as `UserLoggedFilter` is to `@UserLogged`: it then logs those
-of the resources carrying that one, bodies included, their configuration still read from `@LoggedBody`.
-
-The priority of `LoggedFilter` is not inherited, so a subclass declares one: without `@Priority`, it would run
-among the filters of your application (at `Priorities.USER`) rather than before them. A priority one less than
-the one of `LoggedFilter` makes it the one logging the requests both apply to, as a container scanning the
-jars it deploys for providers registers `LoggedFilter` as well: a request is logged once, by the first of them
-to see it.
+An application registers a single `LoggedFeature`, which a container scanning the jars it deploys discovers:
+configure it rather than subclass it, as RESTEasy and Jersey keep a single filter of a class on a resource
+method, which leaves two features - a subclass next to the one discovered - competing for its requests.
 
 ## Contributing
 

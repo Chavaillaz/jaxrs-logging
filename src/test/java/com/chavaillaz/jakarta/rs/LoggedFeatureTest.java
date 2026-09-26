@@ -2,6 +2,7 @@ package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.REQUEST;
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.RESPONSE;
+import static com.chavaillaz.jakarta.rs.LoggedFeature.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedField.DURATION;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
@@ -12,13 +13,14 @@ import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_CLASS;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
-import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedFilterConfiguration.isCredential;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
 import static com.chavaillaz.jakarta.rs.LoggedSupport.levelOf;
 import static com.chavaillaz.jakarta.rs.internal.BodyCapturer.MEMORY_FAILURE;
 import static com.chavaillaz.jakarta.rs.internal.Sanitizer.REQUEST_ID_MAX_LENGTH;
+import static jakarta.ws.rs.Priorities.ENTITY_CODER;
+import static jakarta.ws.rs.Priorities.HEADER_DECORATOR;
 import static jakarta.ws.rs.core.HttpHeaders.CONTENT_TYPE;
 import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN_TYPE;
 import static jakarta.ws.rs.core.MediaType.WILDCARD_TYPE;
@@ -29,6 +31,7 @@ import static org.apache.commons.lang3.StringUtils.LF;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -37,6 +40,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
@@ -48,7 +53,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import jakarta.ws.rs.container.ContainerRequestContext;
+import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.container.ResourceInfo;
+import jakarta.ws.rs.core.FeatureContext;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.ext.ContextResolver;
 import jakarta.ws.rs.ext.InterceptorContext;
@@ -65,6 +72,7 @@ import java.io.OutputStream;
 import java.lang.reflect.Method;
 import java.net.URISyntaxException;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -103,15 +111,14 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.slf4j.MDC;
 import org.slf4j.event.Level;
 
-import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
+import com.chavaillaz.jakarta.rs.MethodFilter.BodyInterceptor;
 import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
-import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
 
-@DisplayName("Original filter")
+@DisplayName("Logged feature")
 @ExtendWith(MockitoExtension.class)
-class LoggedFilterTest extends AbstractFilterTest {
+class LoggedFeatureTest extends AbstractFilterTest {
 
     private static final LogType[] NO_LOGGING = new LogType[]{};
     private static final LogType[] LOG_LOGGING = new LogType[]{LogType.LOG};
@@ -150,13 +157,21 @@ class LoggedFilterTest extends AbstractFilterTest {
     @Mock
     ResourceInfo resourceInfo;
 
-    LoggedFilter loggingFilter;
+    /**
+     * Feature under test, with the default configuration.
+     */
+    LoggedFeature feature;
 
     /**
-     * Second half of the provider pair under test: the container registers it alongside the filter, at a
+     * Filter the feature registers on the resource method of the test (see {@link #setupTest(Class, String)}).
+     */
+    MethodFilter loggingFilter;
+
+    /**
+     * Second half of the provider pair under test: the feature registers it along with the filter, at a
      * priority placing it after any entity coder, and it hands every body it captures back to the filter.
      */
-    final LoggedBodyInterceptor bodyInterceptor = new LoggedBodyInterceptor();
+    final AnyBodyInterceptor bodyInterceptor = new AnyBodyInterceptor();
 
     static Stream<Arguments> arguments() {
         return Stream.of(
@@ -174,26 +189,32 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @BeforeEach
-    void setupFilter() {
-        loggingFilter = filterWith(LoggedFilterConfiguration.defaults());
+    void setupFeature() {
+        feature = new LoggedFeature(LoggedFilterConfiguration.defaults());
     }
 
     /**
-     * Builds a filter with the given configuration, sharing the mocks the container would inject into it.
+     * Builds the filter a feature with the given configuration registers on the resource method of the test.
      *
-     * @param configuration The configuration of the filter
+     * @param configuration The configuration of the feature
      * @return The filter created
      */
-    LoggedFilter filterWith(LoggedFilterConfiguration configuration) {
-        LoggedFilter filter = new LoggedFilter(configuration);
-        filter.resourceInfo = resourceInfo;
-        return filter;
+    MethodFilter filterWith(LoggedFilterConfiguration configuration) {
+        return new LoggedFeature(configuration).filterFor(resourceInfo);
     }
 
+    /**
+     * Describes the given resource method, and builds the filter the feature under test registers on it.
+     *
+     * @param type   The resource class
+     * @param method The name of the resource method
+     * @throws Exception if the class declares no such method
+     */
     void setupTest(Class<?> type, String method) throws Exception {
         doReturn(type).when(resourceInfo).getResourceClass();
         Method resourceMethod = type.getDeclaredMethod(method);
         doReturn(resourceMethod).when(resourceInfo).getResourceMethod();
+        loggingFilter = feature.filterFor(resourceInfo);
     }
 
     /**
@@ -215,8 +236,8 @@ class LoggedFilterTest extends AbstractFilterTest {
 
     /**
      * Builds a reader interceptor context driving the same two-provider chain a container would: the
-     * first {@code proceed()}, made by {@link LoggedFilter} at its own priority, hands over to
-     * {@link LoggedBodyInterceptor} (which the container places after the entity coder), and the second,
+     * first {@code proceed()}, made by the {@link MethodFilter} at its own priority, hands over to its
+     * {@link BodyInterceptor} (which the container places after the entity coder), and the second,
      * made by the capture the latter delegates back, runs the given read as the message body reader would.
      *
      * @param request The request whose entity is read
@@ -374,68 +395,37 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check body logging configuration is resolved once per resource method and cached")
-    void checkBodyConfigurationCaching() throws Exception {
+    @DisplayName("Check the configuration of a resource method is resolved as it is deployed, and read by no request")
+    void checkConfigurationResolvedOnceDeployed() throws Exception {
+        // The ResourceInfo a container injects is request-scoped, usually a proxy resolving through a
+        // thread-local: a callback running where no resource is bound, a thread completing a suspended
+        // response, would read nothing from it, and silently log the request without its bodies
         setupTest(AnnotatedResource.class, "bodyAsMdc");
+        clearInvocations(resourceInfo);
 
         // Given
         PreMatchContainerRequestContext requestContext = getRequestContext();
-        loggingFilter.filter(requestContext);
-        LoggedRequestState state = LoggedRequestState.find(requestContext);
+        ReaderInterceptorContext requestInterceptorContext = readerContext(requestContext, requestContext.getEntityStream(), InputStream::readAllBytes);
 
         // When
-        LoggedBodyConfiguration request = loggingFilter.getBodyConfiguration(state, REQUEST);
-        LoggedBodyConfiguration response = loggingFilter.getBodyConfiguration(state, RESPONSE);
-
-        // Then
-        assertTrue(request.isActive());
-        assertEquals(request, response);
-        assertEquals(1, loggingFilter.resolver.bodyConfigurationCache.size());
-    }
-
-    @Test
-    @DisplayName("Check the body configuration resolved for a request survives losing the matched resource")
-    void checkBodyConfigurationSurvivesUnresolvableResource() throws Exception {
-        // Resolution reads the resource class and method from ResourceInfo, a request-scoped object the
-        // container usually hands out as a proxy resolving through a thread-local. A callback running
-        // where no resource is bound would resolve to nothing and silently turn body logging off for a
-        // request that had asked for it, so the configuration is kept on the request instead.
-        setupTest(AnnotatedResource.class, "bodyAsMdc");
-
-        // Given
-        PreMatchContainerRequestContext requestContext = getRequestContext();
         loggingFilter.filter(requestContext);
-        LoggedRequestState state = LoggedRequestState.find(requestContext);
+        loggingFilter.aroundReadFrom(requestInterceptorContext);
+        loggingFilter.filter(requestContext, getEmptyResponseContext(requestContext));
 
-        // When: a later callback sees no matched resource at all (stubbed leniently, as the whole point
-        // is that the calls below no longer reach ResourceInfo)
-        lenient().doReturn(null).when(resourceInfo).getResourceClass();
-        lenient().doReturn(null).when(resourceInfo).getResourceMethod();
-
-        // Then
-        assertTrue(loggingFilter.getBodyConfiguration(state, REQUEST).isActive());
-        assertTrue(loggingFilter.getBodyConfiguration(state, RESPONSE).isActive());
-    }
-
-    @Test
-    @DisplayName("Check merged mappings are resolved once per resource method and cached")
-    void checkMergedMappingsCaching() throws Exception {
-        setupTest(AnnotatedResource.class, "autoMappedQueryParameters");
-
-        // When: two requests to the same resource method
-        loggingFilter.filter(getRequestContext());
-        loggingFilter.filter(getRequestContext());
-
-        // Then
-        assertEquals(1, loggingFilter.resolver.mappingsCache.size());
+        // Then: logged as the annotations of the method say, which no callback read again
+        assertTrue(loggingFilter.method().body(REQUEST).isActive());
+        assertEquals(loggingFilter.method().body(REQUEST), loggingFilter.method().body(RESPONSE));
+        assertEquals(INPUT, getMdcLogged(REQUEST_BODY));
+        assertEquals("bodyAsMdc", getMdcLogged(RESOURCE_METHOD));
+        verifyNoInteractions(resourceInfo);
     }
 
     @Test
     @DisplayName("Check the request body is captured after an entity coder decoded it")
     void checkRequestBodyCapturedAfterEntityCoder() throws Exception {
         // Interceptors run in ascending priority and each wraps the stream for the next, so capturing
-        // from LoggedFilter's own priority, which runs it before the coder, captured the bytes as they
-        // arrive on the wire - gzip noise for a Content-Encoding: gzip request. LoggedBodyInterceptor runs
+        // from the priority of the filter, which runs it before the coder, captured the bytes as they
+        // arrive on the wire - gzip noise for a Content-Encoding: gzip request. The body interceptor runs
         // after the coder instead, and must therefore see the decoded entity.
         setupTest(AnnotatedResource.class, "bodyAsLog");
 
@@ -958,7 +948,7 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         // Given
         AtomicInteger captures = new AtomicInteger();
-        LoggedFilter countingFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter countingFilter = filterWith(LoggedFilterConfiguration.builder()
                 .bodyCapture(limit -> {
                     captures.incrementAndGet();
                     return new BoundedLoggedBodyCapture(limit);
@@ -1101,7 +1091,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given
-        LoggedFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
                 .fieldName(REQUEST_ID, "trace-id")
                 .requestIdHeader("X-Trace-ID")
                 .build());
@@ -1121,29 +1111,40 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     /**
-     * Builds a filter the way the container instantiates one, the application resolving its configuration
+     * Mocks the context resolvers of an application declaring the given resolver.
+     *
+     * @param resolver The resolver the application declares, {@code null} for none
+     * @return The context resolvers of the application
+     */
+    static Providers providersDeclaring(@Nullable ContextResolver<LoggedFilterConfiguration> resolver) {
+        Providers providers = mock(Providers.class);
+        doReturn(resolver).when(providers).getContextResolver(LoggedFilterConfiguration.class, WILDCARD_TYPE);
+        return providers;
+    }
+
+    /**
+     * Builds a feature the way the container instantiates one, the application resolving its configuration
      * through the given resolver.
      *
      * @param resolver The resolver the application declares, {@code null} for none
-     * @return The filter created
+     * @return The feature created
      */
-    LoggedFilter filterDeclaring(@Nullable ContextResolver<LoggedFilterConfiguration> resolver) {
-        LoggedFilter filter = new LoggedFilter();
-        filter.resourceInfo = resourceInfo;
-        filter.providers = mock(Providers.class);
-        doReturn(resolver).when(filter.providers).getContextResolver(LoggedFilterConfiguration.class, WILDCARD_TYPE);
-        return filter;
+    static LoggedFeature featureDeclaring(@Nullable ContextResolver<LoggedFilterConfiguration> resolver) {
+        LoggedFeature declaring = new LoggedFeature();
+        declaring.providers = providersDeclaring(resolver);
+        return declaring;
     }
 
     @Test
-    @DisplayName("Check a provider the container instantiates is configured the way the application declares")
+    @DisplayName("Check a feature the container instantiates is configured the way the application declares")
     void checkConfigurationDeclaredByApplication() throws Exception {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
-        // Given: a configuration the application declares for the class of the provider asking alone
-        LoggedFilter declaredFilter = filterDeclaring(type -> type == LoggedFilter.class
+        // Given: a configuration the application declares for the class of the feature asking alone
+        LoggedFeature declaring = featureDeclaring(type -> type == LoggedFeature.class
                 ? LoggedFilterConfiguration.builder().fieldName(REQUEST_ID, "trace-id").build()
                 : null);
+        MethodFilter declaredFilter = declaring.filterFor(resourceInfo);
         PreMatchContainerRequestContext requestContext = getRequestContext();
 
         // When
@@ -1152,35 +1153,55 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         // Then: looked up once, when the first request is logged
         assertNotNull(listAppender.findFirstMessage("Processed").getContextData().getValue("trace-id"));
-        assertEquals("trace-id", declaredFilter.configuration().fieldName(REQUEST_ID));
-        verify(declaredFilter.providers, times(1)).getContextResolver(LoggedFilterConfiguration.class, WILDCARD_TYPE);
+        assertEquals("trace-id", declaring.setup(null).configuration().fieldName(REQUEST_ID));
+        verify(declaring.providers, times(1)).getContextResolver(LoggedFilterConfiguration.class, WILDCARD_TYPE);
     }
 
     @Test
-    @DisplayName("Check a provider uses the default configuration when the application declares none, or fails to")
+    @DisplayName("Check a feature is configured the way the application declares when the runtime injects the filters alone")
+    void checkConfigurationDeclaredThroughFilter() throws Exception {
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given: a runtime injecting nothing into a dynamic feature, as Apache CXF does, but the filters it registers
+        LoggedFeature declaring = new LoggedFeature();
+        MethodFilter declaredFilter = declaring.filterFor(resourceInfo);
+        declaredFilter.providers = providersDeclaring(type -> LoggedFilterConfiguration.builder().fieldName(REQUEST_ID, "trace-id").build());
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+
+        // When
+        declaredFilter.filter(requestContext);
+        declaredFilter.filter(requestContext, getEmptyResponseContext(requestContext));
+
+        // Then
+        assertNotNull(listAppender.findFirstMessage("Processed").getContextData().getValue("trace-id"));
+        assertEquals("trace-id", declaring.setup(null).configuration().fieldName(REQUEST_ID));
+    }
+
+    @Test
+    @DisplayName("Check a feature uses the default configuration when the application declares none, or fails to")
     void checkDefaultConfigurationWhenNoneDeclared() {
         ContextResolver<LoggedFilterConfiguration> failing = type -> {
             throw new IllegalStateException("Configuration not loaded yet");
         };
 
-        assertSame(LoggedFilterConfiguration.defaults(), new LoggedFilter().configuration());
-        assertSame(LoggedFilterConfiguration.defaults(), filterDeclaring(null).configuration());
-        assertSame(LoggedFilterConfiguration.defaults(), filterDeclaring(type -> null).configuration());
-        assertSame(LoggedFilterConfiguration.defaults(), filterDeclaring(failing).configuration());
+        assertSame(LoggedFilterConfiguration.defaults(), new LoggedFeature().setup(null).configuration());
+        assertSame(LoggedFilterConfiguration.defaults(), featureDeclaring(null).setup(null).configuration());
+        assertSame(LoggedFilterConfiguration.defaults(), featureDeclaring(type -> null).setup(null).configuration());
+        assertSame(LoggedFilterConfiguration.defaults(), featureDeclaring(failing).setup(null).configuration());
         assertNotNull(listAppender.findFirstMessage("Unable to look up the configuration of the application"));
     }
 
     @Test
-    @DisplayName("Check a provider constructed with its configuration looks none up")
+    @DisplayName("Check a feature constructed with its configuration looks none up")
     void checkGivenConfigurationNotLookedUp() {
         // Given
         LoggedFilterConfiguration given = LoggedFilterConfiguration.builder().build();
-        LoggedFilter givenFilter = new LoggedFilter(given);
-        givenFilter.providers = mock(Providers.class);
+        LoggedFeature givenFeature = new LoggedFeature(given);
+        givenFeature.providers = mock(Providers.class);
 
         // Then
-        assertSame(given, givenFilter.configuration());
-        verifyNoInteractions(givenFilter.providers);
+        assertSame(given, givenFeature.setup(null).configuration());
+        verifyNoInteractions(givenFeature.providers);
     }
 
     @ParameterizedTest(name = "strategy obtaining \"{0}\"")
@@ -1191,7 +1212,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given
-        LoggedFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
                 .requestId(request -> obtained)
                 .build());
         PreMatchContainerRequestContext requestContext = getRequestContext();
@@ -1213,7 +1234,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given
-        LoggedFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
                 .requestId(request -> {
                     throw new IllegalStateException("No trace context on this request");
                 })
@@ -1239,7 +1260,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given
-        LoggedFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
                 .withoutReturnedRequestId()
                 .build());
         PreMatchContainerRequestContext requestContext = getRequestContext();
@@ -1260,7 +1281,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given: an application expecting its 404, which is no reason to warn anybody
-        LoggedFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
                 .responseLevel(status -> status == 404 ? Level.INFO : levelOf(status))
                 .build());
         PreMatchContainerRequestContext requestContext = getRequestContext();
@@ -1279,7 +1300,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given: a function covering the statuses it cares about, and returning null for the others
-        LoggedFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
                 .responseLevel(status -> status == 404 ? Level.INFO : null)
                 .build());
         PreMatchContainerRequestContext requestContext = getRequestContext();
@@ -1300,7 +1321,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given
-        LoggedFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
                 .sensitiveParameters((type, name) -> isCredential(type, name)
                         || (type == QUERY && "url-signature".equals(name)))
                 .build());
@@ -1421,7 +1442,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "bodyAsLog");
 
         // Given: what a createBodyCapture spilling to a temporary file does when it cannot create one
-        LoggedFilter failingCaptureFilter = failingCaptureFilter();
+        MethodFilter failingCaptureFilter = failingCaptureFilter();
         PreMatchContainerRequestContext requestContext = getRequestContext();
         AtomicReference<String> entityRead = new AtomicReference<>();
         ReaderInterceptorContext requestInterceptorContext = readerContext(
@@ -1438,50 +1459,12 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check a body configuration that cannot be resolved breaks neither reading nor writing the entity")
-    void checkUnresolvableBodyConfigurationDoesNotBreakExchange() throws Exception {
-        // Deciding whether to capture a body happens before proceed() too, where a failure prevents the
-        // entity from being read or written at all
-        setupTest(AnnotatedResource.class, "bodyAsLog");
-
-        // Given: a configuration failing to resolve, standing in for a container's ResourceInfo failing
-        // outside of the request scope it expects, or a subclass overriding the resolution
-        LoggedFilter failingFilter = new LoggedFilter() {
-
-            @Override
-            protected LoggedBodyConfiguration getBodyConfiguration(LoggedRequestState state, Direction target) {
-                throw new IllegalStateException("Not inside a request scope");
-            }
-
-        };
-        failingFilter.resourceInfo = resourceInfo;
-        PreMatchContainerRequestContext requestContext = getRequestContext();
-        AtomicReference<String> entityRead = new AtomicReference<>();
-        ReaderInterceptorContext requestInterceptorContext = readerContext(
-                requestContext, requestContext.getEntityStream(),
-                stream -> entityRead.set(new String(stream.readAllBytes(), UTF_8)));
-        ByteArrayOutputStream written = new ByteArrayOutputStream();
-        WriterInterceptorContext responseInterceptorContext = writerContext(
-                requestContext, output -> written.write(OUTPUT.getBytes(UTF_8)));
-
-        // When
-        failingFilter.filter(requestContext);
-        assertDoesNotThrow(() -> failingFilter.aroundReadFrom(requestInterceptorContext));
-        failingFilter.filter(requestContext, getResponseContext(requestContext));
-        assertDoesNotThrow(() -> failingFilter.aroundWriteTo(responseInterceptorContext));
-
-        // Then
-        assertEquals(INPUT, entityRead.get());
-        assertEquals(OUTPUT, written.toString(UTF_8));
-    }
-
-    @Test
     @DisplayName("Check a body capture that cannot be created neither breaks the response nor skips the entity")
     void checkFailingBodyCaptureDoesNotBreakResponse() throws Exception {
         setupTest(AnnotatedResource.class, "bodyAsLog");
 
         // Given
-        LoggedFilter failingCaptureFilter = failingCaptureFilter();
+        MethodFilter failingCaptureFilter = failingCaptureFilter();
         PreMatchContainerRequestContext requestContext = getRequestContext();
         ContainerResponseContextImpl responseContext = getResponseContext(requestContext);
         ByteArrayOutputStream written = new ByteArrayOutputStream();
@@ -1511,7 +1494,7 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         // Given
         AtomicBoolean closed = new AtomicBoolean();
-        LoggedFilter capturingFilter = capturingFilter(closed);
+        MethodFilter capturingFilter = capturingFilter(closed);
         PreMatchContainerRequestContext requestContext = getRequestContext();
         ReaderInterceptorContext requestInterceptorContext = readerContext(
                 requestContext, requestContext.getEntityStream(),
@@ -1534,7 +1517,7 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         // Given: a capture whose rendering needs more memory than the heap has left
         AtomicBoolean closed = new AtomicBoolean();
-        LoggedFilter capturingFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter capturingFilter = filterWith(LoggedFilterConfiguration.builder()
                 .bodyCapture(limit -> new BoundedLoggedBodyCapture(limit) {
 
                     @Override
@@ -1577,7 +1560,7 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         // Given
         AtomicBoolean closed = new AtomicBoolean();
-        LoggedFilter capturingFilter = capturingFilter(closed);
+        MethodFilter capturingFilter = capturingFilter(closed);
         PreMatchContainerRequestContext requestContext = getRequestContext();
         ReaderInterceptorContext requestInterceptorContext = readerContext(
                 requestContext, requestContext.getEntityStream(),
@@ -1602,7 +1585,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "bodyAsLog");
 
         // Given
-        LoggedFilter failingSinkFilter = failingSinkFilter();
+        MethodFilter failingSinkFilter = failingSinkFilter();
         PreMatchContainerRequestContext requestContext = getRequestContext();
         AtomicReference<String> entityRead = new AtomicReference<>();
         ReaderInterceptorContext requestInterceptorContext = readerContext(
@@ -1627,7 +1610,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "bodyAsLog");
 
         // Given
-        LoggedFilter failingSinkFilter = failingSinkFilter();
+        MethodFilter failingSinkFilter = failingSinkFilter();
         PreMatchContainerRequestContext requestContext = getRequestContext();
         ContainerResponseContextImpl responseContext = getResponseContext(requestContext);
         ByteArrayOutputStream written = new ByteArrayOutputStream();
@@ -1655,7 +1638,7 @@ class LoggedFilterTest extends AbstractFilterTest {
      *
      * @return The filter created
      */
-    LoggedFilter failingSinkFilter() {
+    MethodFilter failingSinkFilter() {
         return filterWith(LoggedFilterConfiguration.builder()
                 .bodyCapture(limit -> new BoundedLoggedBodyCapture(limit) {
 
@@ -1682,7 +1665,7 @@ class LoggedFilterTest extends AbstractFilterTest {
      * @param closed The flag the capture raises once released
      * @return The filter created
      */
-    LoggedFilter capturingFilter(AtomicBoolean closed) {
+    MethodFilter capturingFilter(AtomicBoolean closed) {
         return filterWith(LoggedFilterConfiguration.builder()
                 .bodyCapture(limit -> new BoundedLoggedBodyCapture(limit) {
 
@@ -1700,7 +1683,7 @@ class LoggedFilterTest extends AbstractFilterTest {
      *
      * @return The filter created
      */
-    LoggedFilter failingCaptureFilter() {
+    MethodFilter failingCaptureFilter() {
         return filterWith(LoggedFilterConfiguration.builder()
                 .bodyCapture(limit -> {
                     throw new IllegalStateException("No room left to capture anything");
@@ -1716,7 +1699,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given
-        LoggedFilter leavingOutFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter leavingOutFilter = filterWith(LoggedFilterConfiguration.builder()
                 .withoutField(REQUEST_PARAMETERS)
                 .build());
         PreMatchContainerRequestContext requestContext = getRequestContext();
@@ -1734,21 +1717,77 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check putMdc(String, String) tracks the key so cleanupMdc removes it")
-    void checkPutMdcTracksKeyForCleanup() throws Exception {
+    @DisplayName("Check the entries the application describes a request with are put sanitized, and removed once it is done")
+    void checkApplicationEntries() throws Exception {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given
-        PreMatchContainerRequestContext requestContext = getRequestContext();
-        loggingFilter.filter(requestContext);
+        MethodFilter describingFilter = filterWith(LoggedFilterConfiguration.builder()
+                .mdcEntries((request, resource) -> Map.of(
+                        "user-agent", request.getHeaderString("User-Agent"),
+                        "resource", resource.getResourceMethod().getName()))
+                .build());
+        MockHttpRequest request = MockHttpRequest.create("GET", "example.company.com/service");
+        request.header("User-Agent", "JUnit\r\nForged line");
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(request);
 
         // When
-        loggingFilter.putMdc("custom-key", "custom-value");
+        describingFilter.filter(requestContext);
+        String userAgent = MDC.get("user-agent");
+        describingFilter.filter(requestContext, getEmptyResponseContext(requestContext));
+
+        // Then: a client cannot forge a line with them
+        assertEquals("JUnit  Forged line", userAgent);
+        assertEquals("noBodyLogging", listAppender.findFirstMessage("Processed").getContextData().getValue("resource"));
+        assertNull(MDC.get("user-agent"));
+        assertNull(MDC.get("resource"));
+    }
+
+    @Test
+    @DisplayName("Check the entries of the application failing to be described cost the request these entries alone")
+    void checkApplicationEntriesFailing() throws Exception {
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given
+        MethodFilter failingFilter = filterWith(LoggedFilterConfiguration.builder()
+                .mdcEntries((request, resource) -> {
+                    throw new IllegalStateException("No user in this context");
+                })
+                .build());
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+
+        // When
+        assertDoesNotThrow(() -> failingFilter.filter(requestContext));
+        failingFilter.filter(requestContext, getEmptyResponseContext(requestContext));
 
         // Then
-        assertEquals("custom-value", MDC.get("custom-key"));
-        loggingFilter.cleanupMdc(LoggedRequestState.find(requestContext));
-        assertNull(MDC.get("custom-key"));
+        assertNotNull(listAppender.findFirstMessage("Unable to describe the request as the application asks"));
+        assertNotNull(getMdcLogged(REQUEST_ID));
+    }
+
+    @Test
+    @DisplayName("Check a request two filters apply to is logged once, by the first to see it")
+    void checkRequestLoggedOnceWhateverFiltersApply() throws Exception {
+        // A runtime keeping the filters two features register on a resource method, or a feature registered twice
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given
+        MethodFilter other = filterWith(LoggedFilterConfiguration.builder().fieldName(REQUEST_ID, "trace-id").build());
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext);
+
+        // When: the request filters in ascending priority, the response filters in descending priority
+        loggingFilter.filter(requestContext);
+        other.filter(requestContext);
+        other.filter(requestContext, responseContext);
+        loggingFilter.filter(requestContext, responseContext);
+
+        // Then
+        assertEquals(1, getProcessedMessages().size());
+        assertNotNull(getMdcLogged(REQUEST_ID));
+        assertNull(listAppender.findFirstMessage("Processed").getContextData().getValue("trace-id"));
+        Map<String, String> left = MDC.getCopyOfContextMap();
+        assertTrue(left == null || left.isEmpty(), () -> "Left in MDC: " + left);
     }
 
     @Test
@@ -1846,17 +1885,98 @@ class LoggedFilterTest extends AbstractFilterTest {
         assertTrue(left == null || left.isEmpty(), () -> "Left on the worker: " + left);
     }
 
+    /**
+     * Has the given feature configure the resource method of the test, recording what it registers.
+     *
+     * @param configured The feature configuring the resource method
+     * @return The components registered, with the priority each was registered at, in registration order
+     */
+    Map<Object, Integer> configure(LoggedFeature configured) {
+        Map<Object, Integer> registered = new LinkedHashMap<>();
+        FeatureContext context = mock(FeatureContext.class);
+        lenient().doAnswer(invocation -> {
+            registered.put(invocation.getArgument(0), invocation.getArgument(1, Integer.class));
+            return context;
+        }).when(context).register(any(Object.class), anyInt());
+        configured.configure(resourceInfo, context);
+        return registered;
+    }
+
     @Test
-    @DisplayName("Check a request no provider logs starts without what a request logged before left on the thread")
+    @DisplayName("Check a resource method logging a body gets the filter, and the interceptor capturing bodies after any entity coder")
+    void checkMethodLoggingBodiesConfigured() throws Exception {
+        // Given
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+
+        // When
+        Map<Object, Integer> registered = configure(feature);
+
+        // Then
+        List<Object> components = List.copyOf(registered.keySet());
+        assertEquals(2, components.size());
+        assertInstanceOf(MethodFilter.class, components.getFirst());
+        assertEquals(HEADER_DECORATOR, registered.get(components.getFirst()));
+        assertInstanceOf(BodyInterceptor.class, components.getLast());
+        assertEquals(ENTITY_CODER + 100, registered.get(components.getLast()));
+    }
+
+    @Test
+    @DisplayName("Check a resource method logging no body gets the filter alone")
+    void checkMethodLoggingNoBodyConfigured() throws Exception {
+        // Given
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // When
+        Map<Object, Integer> registered = configure(feature);
+
+        // Then
+        assertEquals(1, registered.size());
+        assertInstanceOf(MethodFilter.class, registered.keySet().iterator().next());
+    }
+
+    @Test
+    @DisplayName("Check a resource method carrying no annotation of this library gets the filter sweeping leftovers alone")
+    void checkMethodNotLoggedConfigured() throws Exception {
+        // Given
+        setupTest(PlainResource.class, "plain");
+
+        // When
+        Map<Object, Integer> registered = configure(feature);
+
+        // Then
+        assertEquals(1, registered.size());
+        Object sweeper = registered.keySet().iterator().next();
+        assertInstanceOf(ContainerRequestFilter.class, sweeper);
+        assertFalse(sweeper instanceof MethodFilter);
+    }
+
+    @Test
+    @DisplayName("Check a resource method whose logging cannot be decided is reported and served unlogged")
+    void checkMethodUndecidableConfiguredUnlogged() {
+        // Given: a resource method the runtime fails to describe, standing in for any failure to read it
+        doThrow(new IllegalStateException("Method not found")).when(resourceInfo).getResourceMethod();
+
+        // When
+        Map<Object, Integer> registered = assertDoesNotThrow(() -> configure(feature));
+
+        // Then: never failing the deployment
+        assertEquals(1, registered.size());
+        assertFalse(registered.keySet().iterator().next() instanceof MethodFilter);
+        assertNotNull(listAppender.findFirstMessage("Unable to configure the logging of a resource method"));
+    }
+
+    @Test
+    @DisplayName("Check a request no feature logs starts without what a request logged before left on the thread")
     void checkLeftoversSweptForRequestNotLogged() throws Exception {
         // Given: a request logged that never completes on this thread, as one failing with an exception no
         // mapper handles does when the runtime answers it outside of JAX-RS
         setupTest(AnnotatedResource.class, "noBodyLogging");
         loggingFilter.filter(getRequestContext());
         setupTest(PlainResource.class, "plain");
+        ContainerRequestFilter sweeper = (ContainerRequestFilter) configure(feature).keySet().iterator().next();
 
         // When
-        loggingFilter.filter(getRequestContext());
+        sweeper.filter(getRequestContext());
 
         // Then
         assertNull(getMdc(REQUEST_ID));
@@ -1864,22 +1984,82 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check the response of a request no provider logs leaves the entries of the request in progress")
-    void checkLeftoversNotSweptByResponse() throws Exception {
-        // Given: a request logged, in the middle of which the response of a request not logged is written, as
-        // when a request handler resumes the response of a request suspended earlier
+    @DisplayName("Check a request another feature logs keeps its entries whatever the filter sweeping leftovers")
+    void checkLeftoversNotSweptForRequestLoggedElsewhere() throws Exception {
+        // Given: a request a feature logs, whose resource method another feature does not
         setupTest(AnnotatedResource.class, "noBodyLogging");
-        loggingFilter.filter(getRequestContext());
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        loggingFilter.filter(requestContext);
         String requestId = getMdc(REQUEST_ID);
         setupTest(PlainResource.class, "plain");
-        PreMatchContainerRequestContext resumed = getRequestContext();
+        ContainerRequestFilter sweeper = (ContainerRequestFilter) configure(new LoggedFeature()).keySet().iterator().next();
 
-        // When
-        loggingFilter.filter(resumed, getEmptyResponseContext(resumed));
+        // When: the filter of the other feature runs once the request started
+        sweeper.filter(requestContext);
 
         // Then
         assertNotNull(requestId);
         assertEquals(requestId, getMdc(REQUEST_ID));
+    }
+
+    @Test
+    @DisplayName("Check a resource method whose annotations cannot be resolved is named by its class and method in the report")
+    void checkResourceMethodNamedInReport() throws Exception {
+        // Given
+        setupTest(AnnotatedResource.class, "invalidLimit");
+
+        // When
+        configure(feature);
+
+        // Then: the one annotation to fix is found from the report alone
+        assertNotNull(listAppender.findFirstMessage("Unable to resolve the body logging configuration of "
+                + AnnotatedResource.class.getName() + "#invalidLimit"));
+        assertEquals("?#?", new LoggedFeature().filterFor(mock(ResourceInfo.class)).method().resource().toString());
+    }
+
+    @Test
+    @DisplayName("Check the body interceptor of a filter leaves alone the entities of a request no filter logs")
+    void checkBodyInterceptorLeavesRequestNotLogged() throws Exception {
+        // Given: a request no filter started
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+        BodyInterceptor interceptor = new BodyInterceptor(loggingFilter);
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        AtomicReference<String> entityRead = new AtomicReference<>();
+        ByteArrayOutputStream written = new ByteArrayOutputStream();
+
+        // When
+        readerContext(requestContext, requestContext.getEntityStream(),
+                stream -> entityRead.set(new String(stream.readAllBytes(), UTF_8)), interceptor).proceed();
+        writerContext(requestContext, output -> {
+            output.write(OUTPUT.getBytes(UTF_8));
+            written.write(OUTPUT.getBytes(UTF_8));
+        }, interceptor).proceed();
+
+        // Then: read and written as they are, nothing captured nor logged
+        assertEquals(INPUT, entityRead.get());
+        assertEquals(OUTPUT, written.toString(UTF_8));
+        assertNull(LoggedRequestState.find(requestContext));
+        assertTrue(listAppender.getMessages().stream().noneMatch(event -> event.getMessage().getFormattedMessage().startsWith("Received")));
+    }
+
+    @Test
+    @DisplayName("Check the body interceptor of a filter leaves alone the entity of a request another filter logs")
+    void checkBodyInterceptorLeavesRequestLoggedElsewhere() throws Exception {
+        // Given: a request logged by a filter, and the body interceptor of the filter another feature registered
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+        loggingFilter.filter(requestContext);
+        BodyInterceptor otherInterceptor = new BodyInterceptor(new LoggedFeature(LoggedFilterConfiguration.defaults()).filterFor(resourceInfo));
+        AtomicReference<String> entityRead = new AtomicReference<>();
+        ReaderInterceptorContext requestInterceptorContext = readerContext(requestContext, requestContext.getEntityStream(),
+                stream -> entityRead.set(new String(stream.readAllBytes(), UTF_8)), otherInterceptor);
+
+        // When
+        requestInterceptorContext.proceed();
+
+        // Then: read as it is, nothing captured
+        assertEquals(INPUT, entityRead.get());
+        assertNull(LoggedRequestState.find(requestContext).getRequestBody());
     }
 
     @Test
@@ -1888,11 +2068,9 @@ class LoggedFilterTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "bodyAsLog");
 
         // Given: a request whose resource method never reads the entity, logged once it is answered, from a
-        // worker on which the injected ResourceInfo resolves nothing, as a proxy of the container would not
+        // worker, where a ResourceInfo the container injects would resolve nothing
         PreMatchContainerRequestContext requestContext = getRequestContext();
         loggingFilter.filter(requestContext);
-        lenient().doReturn(null).when(resourceInfo).getResourceClass();
-        lenient().doReturn(null).when(resourceInfo).getResourceMethod();
         ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext);
         ExecutorService worker = newSingleThreadExecutor();
 
@@ -2007,7 +2185,7 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     String getMdcField(LoggedField field) {
-        return loggingFilter.configuration().fieldName(field);
+        return feature.setup(null).configuration().fieldName(field);
     }
 
     String getMdcLogged(LoggedField key) {
@@ -2071,6 +2249,9 @@ class LoggedFilterTest extends AbstractFilterTest {
         @Logged
         @LoggedMapping(type = QUERY, mdcKey = "trace", paramNames = {"trace-id", "trace-id", "correlation-id"})
         void duplicatedParameterNames();
+
+        @LoggedBody(value = LogType.LOG, limit = -2)
+        void invalidLimit();
 
     }
 
@@ -2203,10 +2384,34 @@ class LoggedFilterTest extends AbstractFilterTest {
 
     }
 
-    // Carries no annotation of the library, so no provider logs its requests
+    // Carries no annotation of the library, so no feature logs its requests
     interface PlainResource {
 
         void plain();
+
+    }
+
+    /**
+     * Stands in for the body interceptor the feature registers along with the filter logging a request, whichever
+     * filter it is.
+     */
+    static final class AnyBodyInterceptor implements ReaderInterceptor, WriterInterceptor {
+
+        @Override
+        public @Nullable Object aroundReadFrom(ReaderInterceptorContext context) throws IOException {
+            LoggedRequestState state = LoggedRequestState.find(context);
+            return state == null ? context.proceed() : new BodyInterceptor(state.getFilter()).aroundReadFrom(context);
+        }
+
+        @Override
+        public void aroundWriteTo(WriterInterceptorContext context) throws IOException {
+            LoggedRequestState state = LoggedRequestState.find(context);
+            if (state == null) {
+                context.proceed();
+            } else {
+                new BodyInterceptor(state.getFilter()).aroundWriteTo(context);
+            }
+        }
 
     }
 

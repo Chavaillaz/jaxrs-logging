@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.chavaillaz.jakarta.rs.LoggedFilter;
+import com.chavaillaz.jakarta.rs.LoggedFeature;
 import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
@@ -23,7 +23,7 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
  * referenced by multiple resource methods (or by both the request and response configuration of one)
  * is only reflectively instantiated once.
  * <p>
- * Not tied to any particular provider: usable from both {@link LoggedFilter} (server side) and
+ * Not tied to any particular provider: usable from both {@link LoggedFeature} (server side) and
  * {@link LoggedClientFeature} (client side), since a {@link LoggedBodyFilter} is defined as stateless
  * and thread-safe regardless of which side captured the body it filters.
  */

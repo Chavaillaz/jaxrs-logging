@@ -1,8 +1,8 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.LoggedFeature.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_URI;
-import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedFilterConfiguration.isCredential;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.PATH;
@@ -185,7 +185,7 @@ class LoggedFilterConfigurationTest {
         assertThrows(NullPointerException.class, () -> builder.responseLevel(null));
         assertThrows(NullPointerException.class, () -> builder.bodyCapture(null));
         assertThrows(NullPointerException.class, () -> builder.withoutField(null));
-        assertThrows(NullPointerException.class, () -> new LoggedFilter(null));
+        assertThrows(NullPointerException.class, () -> new LoggedFeature(null));
     }
 
 }

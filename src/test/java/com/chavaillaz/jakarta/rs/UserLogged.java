@@ -4,23 +4,21 @@ import static java.lang.annotation.ElementType.METHOD;
 import static java.lang.annotation.ElementType.TYPE;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
 
-import jakarta.ws.rs.NameBinding;
 import java.lang.annotation.Documented;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
 /**
- * Annotation activating the filter {@link UserLoggedFilter}
- * in order to log incoming requests received by a JAX-RS resource with user specific data.
+ * Annotation of an application asking {@link UserLoggingConfiguration} to describe the requests of a resource
+ * with user specific data.
  */
 @Documented
-@NameBinding
 @Retention(RUNTIME)
 @Target({TYPE, METHOD})
 public @interface UserLogged {
 
     /**
-     * Indicates if the user agent must be as MDC field when processing and logging the request.
+     * Indicates whether the user agent is put in MDC while the request is processed and logged.
      *
      * @return {@code true} to log the user agent, {@code false} otherwise
      */

@@ -3,12 +3,12 @@ package com.chavaillaz.jakarta.rs;
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.REQUEST;
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.RESPONSE;
 import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.LOG;
+import static com.chavaillaz.jakarta.rs.LoggedFeature.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedField.DURATION;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_URI;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
-import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -67,16 +67,15 @@ import com.chavaillaz.jakarta.rs.mdc.MdcPropagation;
  * callbacks it invokes and in which order, which property map they share. A provider depending on
  * anything beyond the JAX-RS contract passes every test built on mocks, and fails here.
  */
-@DisplayName("Filter in a container")
-class LoggedFilterContainerTest extends AbstractFilterTest {
+@DisplayName("Feature in a container")
+class LoggedFeatureContainerTest extends AbstractFilterTest {
 
     Dispatcher dispatcher;
 
     @BeforeEach
     void setupDispatcher() {
         dispatcher = MockDispatcherFactory.createDispatcher();
-        dispatcher.getProviderFactory().registerProvider(LoggedFilter.class);
-        dispatcher.getProviderFactory().registerProvider(LoggedBodyInterceptor.class);
+        dispatcher.getProviderFactory().registerProvider(LoggedFeature.class);
         dispatcher.getProviderFactory().registerProvider(RejectingFilter.class);
         dispatcher.getRegistry().addPerRequestResource(ArticleResource.class);
         dispatcher.getRegistry().addPerRequestResource(NoteResource.class);
@@ -91,17 +90,16 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
     }
 
     /**
-     * Creates a dispatcher serving the given resources through a provider configured as given, rather than
+     * Creates a dispatcher serving the given resources through a feature configured as given, rather than
      * through the default one the other tests share.
      *
-     * @param configuration The configuration of the provider
+     * @param configuration The configuration of the feature
      * @param resources     The resources to serve
      * @return The dispatcher created
      */
     static Dispatcher dispatcherWith(LoggedFilterConfiguration configuration, Class<?>... resources) {
         Dispatcher configured = MockDispatcherFactory.createDispatcher();
-        configured.getProviderFactory().registerProviderInstance(new LoggedFilter(configuration));
-        configured.getProviderFactory().registerProvider(LoggedBodyInterceptor.class);
+        configured.getProviderFactory().registerProviderInstance(new LoggedFeature(configuration));
         for (Class<?> resource : resources) {
             configured.getRegistry().addPerRequestResource(resource);
         }
@@ -264,7 +262,7 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
     @Test
     @DisplayName("Check a resource carrying no annotation of this library is served without being logged")
     void checkUnannotatedResourceNotLogged() throws Exception {
-        // When: the providers apply to every resource
+        // When: the feature configures every resource method
         MockHttpResponse response = invoke(MockHttpRequest.post("/plain")
                 .contentType(TEXT_PLAIN)
                 .content("hello".getBytes(UTF_8)));
@@ -280,24 +278,48 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check a subclass bound to an annotation of its own logs its resources, bodies included")
-    void checkSubclassBoundByNameLogsItsResources() throws Exception {
-        // Given: a subclass bound to its own annotation, next to the interceptor capturing the bodies alone
-        Dispatcher bound = MockDispatcherFactory.createDispatcher();
-        bound.getProviderFactory().registerProvider(UserLoggedFilter.class);
-        bound.getProviderFactory().registerProvider(LoggedBodyInterceptor.class);
-        bound.getRegistry().addPerRequestResource(UserResource.class);
+    @DisplayName("Check a request of a resource no feature logs is served without what a request logged left on the thread")
+    void checkLeftoversSweptBeforeUnloggedRequest() throws Exception {
+        // Given: a request whose response MdcPropagation completes on the thread serving it, restoring after the
+        // context map it saved before - the entries of the request included
+        MockHttpRequest resumed = MockHttpRequest.get("/resumed").header(REQUEST_ID_HEADER, "abc-123");
+        MockHttpResponse resumedResponse = new MockHttpResponse();
+        resumed.setAsynchronousContext(new SynchronousExecutionContext((SynchronousDispatcher) dispatcher, resumed, resumedResponse));
+        dispatcher.invoke(resumed, resumedResponse);
+        assertEquals(200, resumedResponse.getStatus());
+        assertEquals("abc-123", MDC.get("request-id"));
+
+        // When: a request of a resource carrying no annotation of this library follows on the thread
+        MockHttpResponse response = invoke(MockHttpRequest.get("/plain/mdc"));
+
+        // Then: served without them
+        assertEquals(200, response.getStatus());
+        assertTrue(response.getContentAsString().matches("null|\\{}"), response.getContentAsString());
+    }
+
+    @Test
+    @DisplayName("Check a request is described with the entries of the application, which the annotations of its resource drive")
+    void checkApplicationEntriesLogged() throws Exception {
+        // Given: an application declaring its configuration, entries of its own included
+        Dispatcher describing = MockDispatcherFactory.createDispatcher();
+        describing.getProviderFactory().registerProvider(UserLoggingConfiguration.class);
+        describing.getProviderFactory().registerProvider(LoggedFeature.class);
+        describing.getRegistry().addPerRequestResource(UserResource.class);
 
         // When
-        MockHttpResponse response = invoke(bound, MockHttpRequest.post("/user")
+        MockHttpResponse response = invoke(describing, MockHttpRequest.post("/user")
+                .header("User-Agent", "JUnit")
                 .contentType(TEXT_PLAIN)
                 .content("hello".getBytes(UTF_8)));
 
-        // Then: described the way the subclass does, with the body the interceptor captured for it
+        // Then: described the way the application asks, with the body its resource logs
         assertEquals(200, response.getStatus());
         assertEquals("Received POST /user" + LF + "hello", received().getMessage().getFormattedMessage());
         assertEquals("Doe", processed().getContextData().getValue("user-id"));
+        assertEquals("JUnit", processed().getContextData().getValue("user-agent"));
         assertNotNull(processed().getContextData().getValue("request-identifier"));
+        Map<String, String> left = MDC.getCopyOfContextMap();
+        assertTrue(left == null || left.isEmpty(), () -> "Left in MDC: " + left);
     }
 
     @Test
@@ -386,13 +408,12 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check the provider a container instantiates is configured the way the application declares")
+    @DisplayName("Check the feature a container instantiates is configured the way the application declares")
     void checkConfigurationDeclaredByApplication() throws Exception {
-        // Given: an application declaring its configuration, next to a provider it does not instantiate itself
+        // Given: an application declaring its configuration, next to a feature it does not instantiate itself
         Dispatcher declaring = MockDispatcherFactory.createDispatcher();
         declaring.getProviderFactory().registerProvider(TraceConfiguration.class);
-        declaring.getProviderFactory().registerProvider(LoggedFilter.class);
-        declaring.getProviderFactory().registerProvider(LoggedBodyInterceptor.class);
+        declaring.getProviderFactory().registerProvider(LoggedFeature.class);
         declaring.getRegistry().addPerRequestResource(ArticleResource.class);
 
         // When
@@ -429,36 +450,6 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
         // Then
         assertEquals(200, response.getStatus());
         assertEquals("abc-123", response.getOutputHeaders().getFirst(REQUEST_ID_HEADER));
-    }
-
-    @Test
-    @DisplayName("Check a request two providers are bound to is logged once, by the first to see it")
-    void checkRequestLoggedOnceWhateverProvidersBound() throws Exception {
-        // Given: a subclass of the application next to the LoggedFilter a container discovers in this library
-        Dispatcher discovering = MockDispatcherFactory.createDispatcher();
-        discovering.getProviderFactory().registerProvider(LoggedFilter.class);
-        discovering.getProviderFactory().registerProvider(TraceLoggedFilter.class);
-        discovering.getProviderFactory().registerProvider(LoggedBodyInterceptor.class);
-        discovering.getRegistry().addPerRequestResource(ArticleResource.class);
-
-        // When
-        MockHttpResponse response = invoke(discovering, MockHttpRequest.post("/article")
-                .contentType(TEXT_PLAIN)
-                .content("hello".getBytes(UTF_8)));
-
-        // Then: each line once, under the identifier of the subclass alone, which returns it in its own header
-        assertEquals(200, response.getStatus());
-        assertEquals(1, lines("Received"));
-        assertEquals(1, lines("Processed"));
-        assertEquals("Received POST /article" + LF + "hello", received().getMessage().getFormattedMessage());
-        String traceId = received().getContextData().getValue("trace-id");
-        assertNotNull(traceId);
-        assertEquals(traceId, processed().getContextData().getValue("trace-id"));
-        assertNull(processed().getContextData().getValue("request-id"));
-        assertEquals(traceId, response.getOutputHeaders().getFirst("X-Trace-ID"));
-        assertNull(response.getOutputHeaders().getFirst(REQUEST_ID_HEADER));
-        Map<String, String> left = MDC.getCopyOfContextMap();
-        assertTrue(left == null || left.isEmpty(), () -> "Left in MDC: " + left);
     }
 
     @Test
@@ -713,14 +704,21 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
             return "plain " + body;
         }
 
+        @GET
+        @Path("/mdc")
+        @Produces(TEXT_PLAIN)
+        public String mdc() {
+            return String.valueOf(MDC.getCopyOfContextMap());
+        }
+
     }
 
     /**
-     * Bound to the subclass of an application by the annotation it binds itself to, the body logging being
-     * configured as usual.
+     * Asks the configuration of the application for the user agent with an annotation of its own, the body logging
+     * being configured as usual.
      */
     @Path("/user")
-    @UserLogged
+    @UserLogged(userAgent = true)
     @LoggedBody(LOG)
     public static class UserResource {
 
@@ -794,7 +792,7 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
     }
 
     /**
-     * Configuration an application declares, which the providers it does not instantiate itself look up.
+     * Configuration an application declares, which the features it does not instantiate itself look up.
      */
     @Provider
     public static class TraceConfiguration implements ContextResolver<LoggedFilterConfiguration> {
@@ -812,21 +810,7 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
     }
 
     /**
-     * Configured subclass of an application, running before the {@link LoggedFilter} a container discovers
-     * next to it, so it is the one logging the requests both are bound to.
-     */
-    @Logged
-    @Priority(Priorities.HEADER_DECORATOR - 1)
-    public static class TraceLoggedFilter extends LoggedFilter {
-
-        public TraceLoggedFilter() {
-            super(TraceConfiguration.CONFIGURATION);
-        }
-
-    }
-
-    /**
-     * Stands in for an authentication filter, which runs before this library's own request filter and
+     * Stands in for an authentication filter, which runs before the request filter of this library and
      * aborts the request of a caller it rejects.
      */
     @Priority(Priorities.AUTHENTICATION)

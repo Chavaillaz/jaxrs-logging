@@ -1,13 +1,13 @@
 package com.chavaillaz.jakarta.rs;
 
 /**
- * List of context fields to be written in MDC by {@link LoggedFilter}, under the default names given here
+ * List of context fields to be written in MDC by {@link LoggedFeature}, under the default names given here
  * unless its configuration renames them (see {@link LoggedFilterConfiguration.Builder#fieldName(LoggedField, String)}).
  */
 public enum LoggedField {
 
     /**
-     * Identifier of the request, from its {@value LoggedFilter#REQUEST_ID_HEADER} header by default (see
+     * Identifier of the request, from its {@value LoggedFeature#REQUEST_ID_HEADER} header by default (see
      * {@link LoggedFilterConfiguration.Builder#requestIdHeader(String)}), or generated.
      */
     REQUEST_ID("request-id"),

@@ -13,7 +13,7 @@ import org.slf4j.Logger;
 import org.slf4j.event.Level;
 
 /**
- * Writes the lines {@link LoggedFilter} logs an exchange with - {@code Received ...} once a request is read,
+ * Writes the lines {@link LoggedFeature} logs an exchange with - {@code Received ...} once a request is read,
  * {@code Processed ...} once it is answered - and returns the identifier they were logged under to the
  * caller, the way its configuration says to.
  * <p>

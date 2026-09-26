@@ -11,16 +11,12 @@ import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import jakarta.ws.rs.container.ResourceInfo;
 import java.lang.annotation.Annotation;
-import java.lang.reflect.Method;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
-import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,106 +26,27 @@ import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
 import com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory;
 
 /**
- * Resolves whether the requests of a given resource method are logged, and which {@link LoggedMapping} and
- * {@link LoggedBody} configuration applies to them, by walking the annotations present on the method, the
- * methods it overrides, its class and the interfaces and superclasses of the class.
+ * Resolves whether the requests of a resource method are logged, and which {@link LoggedMapping} and
+ * {@link LoggedBody} configuration applies to them, from the annotations of its declaration sites (see
+ * {@link LoggedUtils#declarationSites}).
  * <p>
- * Resolution only depends on those annotations, so it is cached - body configurations in their ready-to-use
- * form ({@link LoggedBodyConfiguration}, filters instantiated) - keyed on the resource class and method
- * together, as the same {@link Method} of a shared interface can be matched for several resource classes.
- * The caches are never evicted, which suits the fixed set of resources of an application but not one
- * generating resource classes at runtime.
- * <p>
- * A {@link ResourceInfo} is taken as a parameter rather than injected, so resolution depends on no request.
+ * {@link LoggedFeature} resolves each resource method once, as it is deployed. A failure to read the
+ * annotations is reported then and leaves the method logging less rather than failing its requests: the
+ * reflection it comes from would fail the same way on every request.
  */
 final class LoggedResolver {
 
-    /**
-     * Logger reporting a configuration that cannot be resolved.
-     */
     private static final Logger log = LoggerFactory.getLogger(LoggedResolver.class);
 
     /**
-     * Key identifying the resource a configuration was resolved for.
-     *
-     * @param resourceClass  The resource class matched by the request, possibly {@code null}
-     * @param resourceMethod The resource method matched by the request, possibly {@code null}
-     */
-    record ResourceKey(@Nullable Class<?> resourceClass, @Nullable Method resourceMethod) {
-
-        /**
-         * Creates the key for the given resource, or {@code null} when there is nothing to key on.
-         *
-         * @param resourceInfo The instance to access resource class and method
-         * @return The key, or {@code null} if the container resolved neither a class nor a method
-         */
-        static @Nullable ResourceKey of(ResourceInfo resourceInfo) {
-            Class<?> resourceClass = resourceInfo.getResourceClass();
-            Method resourceMethod = resourceInfo.getResourceMethod();
-            // Neither is guaranteed to be resolved at this stage by every container, and a
-            // ConcurrentHashMap forbids a null key, so an unusable key is reported as such
-            return resourceClass == null && resourceMethod == null
-                    ? null
-                    : new ResourceKey(resourceClass, resourceMethod);
-        }
-
-    }
-
-    /**
-     * Body logging configuration resolved for both directions of a given resource method.
-     * <p>
-     * Both directions travel together so a caller needing them repeatedly (as a filter does, several
-     * times per request) can hold on to a single, already resolved value rather than asking for one
-     * direction at a time.
-     *
-     * @param request  The body logging configuration applicable to the request
-     * @param response The body logging configuration applicable to the response
-     */
-    record BodyConfiguration(LoggedBodyConfiguration request, LoggedBodyConfiguration response) {
-
-        /**
-         * Configuration logging nothing in either direction, used whenever no {@link LoggedBody} applies.
-         */
-        static final BodyConfiguration NONE = new BodyConfiguration(LoggedBodyConfiguration.NONE, LoggedBodyConfiguration.NONE);
-
-        /**
-         * Gets the configuration applicable to the given direction.
-         *
-         * @param target The direction to get the configuration of
-         * @return The body logging configuration, never {@code null}
-         */
-        LoggedBodyConfiguration of(Direction target) {
-            return target == REQUEST ? request : response;
-        }
-
-    }
-
-    /**
-     * Annotations of this library whose presence on a declaration site of a resource method has its requests
-     * logged: each of them configures how the requests are logged, and declaring any asks for it. The
-     * repeatable ones come with the annotation containing them, which the compiler declares in their place
-     * once they are repeated - {@link Logged}, for {@link LoggedBody}.
+     * Annotations of this library whose presence on a declaration site has the requests of the resource
+     * method logged. The repeatable ones come with the annotation the compiler wraps them in once repeated.
      */
     private static final List<Class<? extends Annotation>> ACTIVATING =
             List.of(Logged.class, LoggedBody.class, LoggedMapping.class, LoggedMappings.class);
 
     /**
-     * Cache of whether the requests of each resource are logged.
-     */
-    final Map<ResourceKey, Boolean> loggedCache = new ConcurrentHashMap<>();
-
-    /**
-     * Cache of the {@link LoggedMapping} definitions resolved for each resource, in the order they apply in.
-     */
-    final Map<ResourceKey, List<LoggedMapping>> mappingsCache = new ConcurrentHashMap<>();
-
-    /**
-     * Cache of the body logging configuration resolved for each resource.
-     */
-    final Map<ResourceKey, BodyConfiguration> bodyConfigurationCache = new ConcurrentHashMap<>();
-
-    /**
-     * Instantiates and caches the {@link LoggedBodyFilter} classes referenced by resolved annotations.
+     * Instantiates the {@link LoggedBodyFilter} classes the annotations name, once per class.
      */
     private final LoggedBodyFilterFactory bodyFilterFactory;
 
@@ -150,134 +67,62 @@ final class LoggedResolver {
     }
 
     /**
-     * Indicates whether the requests of the resource method matched by the given resource are logged: whether
-     * one of its declaration sites (see {@link LoggedUtils#declarationSites}) carries an annotation of this
-     * library, which is found out once per resource.
+     * Indicates whether the requests of the given resource method are logged: whether one of its declaration
+     * sites carries an annotation of this library. A method whose declaration sites cannot be walked is
+     * reported, and not logged.
      *
-     * @param resourceInfo The instance to access resource class and method
+     * @param resource The resource method and its class
      * @return {@code true} if the requests of the resource method are logged, {@code false} otherwise
      */
-    boolean isLogged(ResourceInfo resourceInfo) {
-        ResourceKey key = ResourceKey.of(resourceInfo);
-        return key != null && loggedCache.computeIfAbsent(key, ignored -> resolveLogged(key, resourceInfo));
-    }
-
-    /**
-     * Finds out whether the requests of the given resource are logged, reporting a resource whose declaration
-     * sites cannot be walked - for the reasons its mappings cannot be resolved, see
-     * {@link #resolveMappings(ResourceKey, ResourceInfo)} - and leaving it unlogged, as it is when none of
-     * them carries an annotation of this library.
-     *
-     * @param key          The key identifying the resource, for the report of a failure
-     * @param resourceInfo The instance to access resource class and method
-     * @return {@code true} if the requests of the resource are logged, {@code false} otherwise
-     */
-    private boolean resolveLogged(ResourceKey key, ResourceInfo resourceInfo) {
+    boolean isLogged(ResourceInfo resource) {
         try {
-            return declarationSites(resourceInfo.getResourceClass(), resourceInfo.getResourceMethod()).stream()
+            return declarationSites(resource.getResourceClass(), resource.getResourceMethod()).stream()
                     .anyMatch(site -> ACTIVATING.stream().anyMatch(site::isAnnotationPresent));
         } catch (RuntimeException e) {
-            log.error("Unable to find out whether the requests of {} are logged, they are not", key, e);
+            log.error("Unable to find out whether the requests of {} are logged, they are not", resource, e);
             return false;
         }
     }
 
     /**
-     * Gets the {@link LoggedMapping} definitions applicable to the resource method matched by the given
-     * resource, resolving and caching them once per resource.
-     * <p>
-     * The mappings declared on the several declaration sites of the method are merged (see
-     * {@link LoggedUtils#getMergedMappings(ResourceInfo)}), then sorted in the order they apply in: the
-     * explicit ones before the automatic ones, and on their MDC key within each, which puts the exclusions
-     * - declaring none - first. Sorting is part of the resolution, done once per resource rather than on
-     * every request.
+     * Resolves the configuration of the given resource method, each part of it falling back to logging
+     * nothing when it cannot be resolved:
+     * <ul>
+     *     <li>its mappings, merged from every declaration site (see {@link LoggedUtils#getMergedMappings}),
+     *     in the order they apply in (see {@link MappingApplier#inApplicationOrder});</li>
+     *     <li>its body logging, no body at all when it cannot be resolved: a {@link LoggedBody#filters()}
+     *     naming a class missing at runtime throws a {@link TypeNotPresentException} once read, and a body
+     *     whose filters are unknown is one whose redaction cannot be guaranteed.</li>
+     * </ul>
      *
-     * @param resourceInfo The instance to access resource class and method
-     * @return The mappings applicable to the resource method, in the order they apply in
+     * @param resource The resource method and its class
+     * @return The configuration of the resource method
      */
-    List<LoggedMapping> getMappings(ResourceInfo resourceInfo) {
-        ResourceKey key = ResourceKey.of(resourceInfo);
-        if (key == null) {
-            return List.of();
-        }
-        return mappingsCache.computeIfAbsent(key, ignored -> resolveMappings(key, resourceInfo));
-    }
-
-    /**
-     * Resolves the mappings of the given resource in the order they apply in, or into none if they cannot be.
-     * <p>
-     * Walking the declaration sites of a resource method reflects on the types its class extends, which fails
-     * the same way every time it does - a generic signature naming a type missing at runtime throws a
-     * {@link TypeNotPresentException} once parsed. Such a failure is therefore reported once and remembered,
-     * like one resolving the body logging configuration (see {@link #resolve(ResourceKey, ResourceInfo)}),
-     * rather than failing the description of every request to the resource.
-     *
-     * @param key          The key identifying the resource, for the report of a failure
-     * @param resourceInfo The instance to access resource class and method
-     * @return The mappings applicable to the resource method, in the order they apply in, or none if they
-     * cannot be resolved
-     */
-    private List<LoggedMapping> resolveMappings(ResourceKey key, ResourceInfo resourceInfo) {
+    MethodConfiguration resolve(ResourceInfo resource) {
+        List<LoggedMapping> mappings;
         try {
-            return inApplicationOrder(getMergedMappings(resourceInfo));
+            mappings = inApplicationOrder(getMergedMappings(resource));
         } catch (RuntimeException e) {
-            log.error("Unable to resolve the MDC mappings of {}, none of them is applied", key, e);
-            return List.of();
+            log.error("Unable to resolve the MDC mappings of {}, none of them is applied", resource, e);
+            mappings = List.of();
         }
-    }
-
-    /**
-     * Gets the body logging configuration for both directions of the resource method matched by the
-     * given resource, resolving and caching them together the first time either is requested, as
-     * reflection-based annotation lookups are expensive to repeat on every request.
-     * <p>
-     * For each direction, a configuration specifically targeting it is used if there is one, and one
-     * targeting both request and response otherwise. Among several as specific as one another, the first
-     * one declared is used (see {@link #findAnnotation}).
-     *
-     * @param resourceInfo The instance to access resource class and method
-     * @return The body logging configuration of both directions, never {@code null}
-     */
-    BodyConfiguration getBodyConfiguration(ResourceInfo resourceInfo) {
-        ResourceKey key = ResourceKey.of(resourceInfo);
-        return key == null
-                ? BodyConfiguration.NONE
-                : bodyConfigurationCache.computeIfAbsent(key, ignored -> resolve(key, resourceInfo));
-    }
-
-    /**
-     * Resolves the body logging configuration of both directions of the given resource into its
-     * ready-to-use form, or into {@link BodyConfiguration#NONE} if it cannot be.
-     * <p>
-     * Resolving can fail on an annotation the application compiled against but cannot load at runtime - a
-     * {@link LoggedBody#filters()} naming a class missing from the deployment throws a
-     * {@link TypeNotPresentException} the moment it is read - which no later request will resolve any
-     * better. Such a failure is therefore reported once and remembered, the way a filter class that cannot
-     * be instantiated is (see {@link LoggedBodyFilterFactory}), and the resource logs no body at all: a body
-     * whose filters cannot even be determined is one whose redaction cannot be guaranteed.
-     *
-     * @param key          The key identifying the resource, for the report of a failure
-     * @param resourceInfo The instance to access resource class and method
-     * @return The body logging configuration, or {@link BodyConfiguration#NONE} if it cannot be resolved
-     */
-    private BodyConfiguration resolve(ResourceKey key, ResourceInfo resourceInfo) {
         try {
-            return new BodyConfiguration(resolve(resourceInfo, REQUEST), resolve(resourceInfo, RESPONSE));
+            return new MethodConfiguration(resource, mappings, resolve(resource, REQUEST), resolve(resource, RESPONSE));
         } catch (RuntimeException e) {
-            log.error("Unable to resolve the body logging configuration of {}, no body of it is logged", key, e);
-            return BodyConfiguration.NONE;
+            log.error("Unable to resolve the body logging configuration of {}, no body of it is logged", resource, e);
+            return new MethodConfiguration(resource, mappings, LoggedBodyConfiguration.NONE, LoggedBodyConfiguration.NONE);
         }
     }
 
     /**
-     * Resolves the body logging configuration applicable to the given target into its ready-to-use form.
+     * Resolves the body logging configuration applying to the given direction into its ready-to-use form.
      *
-     * @param resourceInfo The instance to access resource class and method
-     * @param target       The target for which to resolve the body logging configuration
-     * @return The body logging configuration, or {@link LoggedBodyConfiguration#NONE} if none applies
+     * @param resource The resource method and its class
+     * @param target   The direction to resolve the configuration of
+     * @return The body logging configuration, {@link LoggedBodyConfiguration#NONE} if none applies
      */
-    private LoggedBodyConfiguration resolve(ResourceInfo resourceInfo, Direction target) {
-        return findAnnotation(resourceInfo, target)
+    private LoggedBodyConfiguration resolve(ResourceInfo resource, Direction target) {
+        return findAnnotation(resource, target)
                 .map(annotation -> new LoggedBodyConfiguration(
                         stream(annotation.value()).collect(toUnmodifiableSet()),
                         annotation.limit(),
@@ -286,20 +131,16 @@ final class LoggedResolver {
     }
 
     /**
-     * Finds the most specific {@link LoggedBody} annotation for the given target (request or response)
-     * by walking the annotations present on the resource class/method matched by the given resource.
-     * <p>
-     * An annotation targeting the given direction alone wins over one targeting both, and among several
-     * as specific as one another, the first one declared wins. The directions an annotation targets are
-     * read as a set, so naming one twice changes nothing.
+     * Finds the {@link LoggedBody} annotation applying to the given direction: one targeting it alone wins
+     * over one targeting both, and among several as specific, the first one declared.
      *
-     * @param resourceInfo The instance to access resource class and method
-     * @param target       The target for which to find the body logging configuration
-     * @return The most specific body logging annotation if present
+     * @param resource The resource method and its class
+     * @param target   The direction to find the configuration of
+     * @return The body logging annotation applying, if any
      */
-    private Optional<LoggedBody> findAnnotation(ResourceInfo resourceInfo, Direction target) {
+    private Optional<LoggedBody> findAnnotation(ResourceInfo resource, Direction target) {
         LoggedBody both = null;
-        for (LoggedBody logging : getAnnotation(resourceInfo, LoggedBody.class, Logged.class, Logged::value)) {
+        for (LoggedBody logging : getAnnotation(resource, LoggedBody.class, Logged.class, Logged::value)) {
             Set<Direction> targets = EnumSet.noneOf(Direction.class);
             Collections.addAll(targets, logging.targets());
             if (targets.equals(EnumSet.of(target))) {
@@ -309,6 +150,38 @@ final class LoggedResolver {
             }
         }
         return Optional.ofNullable(both);
+    }
+
+    /**
+     * Configuration of the logging of a resource method, resolved as it is deployed.
+     *
+     * @param resource     The resource method and its class
+     * @param mappings     The mappings applying to its requests, in the order they apply in
+     * @param requestBody  The body logging configuration of its requests
+     * @param responseBody The body logging configuration of its responses
+     */
+    record MethodConfiguration(ResourceInfo resource, List<LoggedMapping> mappings,
+                               LoggedBodyConfiguration requestBody, LoggedBodyConfiguration responseBody) {
+
+        /**
+         * Gets the body logging configuration of the given direction.
+         *
+         * @param target The direction
+         * @return The body logging configuration, never {@code null}
+         */
+        LoggedBodyConfiguration body(Direction target) {
+            return target == REQUEST ? requestBody : responseBody;
+        }
+
+        /**
+         * Indicates whether a body is captured in either direction.
+         *
+         * @return {@code true} if a body is captured, {@code false} otherwise
+         */
+        boolean capturesBodies() {
+            return requestBody.isActive() || responseBody.isActive();
+        }
+
     }
 
 }

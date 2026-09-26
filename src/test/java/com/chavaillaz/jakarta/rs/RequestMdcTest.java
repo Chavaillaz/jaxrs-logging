@@ -10,7 +10,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 
+import jakarta.ws.rs.container.ResourceInfo;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -33,7 +35,7 @@ class RequestMdcTest {
     }
 
     static LoggedRequestState request() {
-        return new LoggedRequestState(new LoggedFilter());
+        return new LoggedRequestState(new LoggedFeature().filterFor(mock(ResourceInfo.class)));
     }
 
     @Test

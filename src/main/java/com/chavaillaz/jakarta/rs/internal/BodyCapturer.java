@@ -19,7 +19,7 @@ import org.apache.commons.io.output.TeeOutputStream;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 
-import com.chavaillaz.jakarta.rs.LoggedFilter;
+import com.chavaillaz.jakarta.rs.LoggedFeature;
 import com.chavaillaz.jakarta.rs.LoggedFilterConfiguration;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
@@ -27,7 +27,7 @@ import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
 /**
  * Captures the body of an entity as it is read or written, for a provider to log: copies the entity stream to
  * a {@link LoggedBodyCapture}, and hands over the body it renders once the entity is done, without any of it
- * being allowed to fail the exchange it observes. Shared by {@link LoggedFilter} and
+ * being allowed to fail the exchange it observes. Shared by {@link LoggedFeature} and
  * {@link LoggedClientFeature}, which differ only in what they do with a body once captured.
  * <p>
  * Each step is guarded, as a capture of the application's own (see

@@ -31,7 +31,7 @@ import com.chavaillaz.jakarta.rs.internal.Sanitizer;
 
 /**
  * Describes a request received and the resource matched for it, as the fields of {@link LoggedField}
- * {@link LoggedFilter} puts in MDC once a request starts.
+ * {@link LoggedFeature} puts in MDC once a request starts.
  * <p>
  * All of it but the resource comes from the client, and is treated as such: whatever reaches the logs is
  * sanitized first (see {@link Sanitizer#sanitize(String)}), the identifier a client supplies is bounded

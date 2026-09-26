@@ -85,7 +85,7 @@ public @interface LoggedBody {
         LOG,
 
         /**
-         * Writes the element as MDC field of the processed log line from {@link LoggedFilter}.
+         * Writes the element as an MDC entry of the {@code "Processed ..."} line.
          */
         MDC
 

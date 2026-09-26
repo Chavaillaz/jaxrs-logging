@@ -9,16 +9,17 @@ import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.DEFAULT_LIMIT;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.doThrow;
 
 import jakarta.ws.rs.container.ResourceInfo;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -28,28 +29,27 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.chavaillaz.jakarta.rs.LoggedResolver.BodyConfiguration;
+import com.chavaillaz.jakarta.rs.LoggedResolver.MethodConfiguration;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
 import com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory;
 
 /**
- * Exercises {@link LoggedResolver} directly, without going through {@link LoggedFilter}: since
- * resolution only depends on a {@link ResourceInfo}, none of the request/response context mocking
- * used by {@link LoggedFilterTest} is needed here.
+ * Exercises {@link LoggedResolver} directly: resolution depends on a {@link ResourceInfo} alone, so none of
+ * the request and response contexts {@link LoggedFeatureTest} mocks are needed here.
  */
 @DisplayName("Logged resolver")
 @ExtendWith(MockitoExtension.class)
-class LoggedResolverTest {
+class LoggedResolverTest extends AbstractFilterTest {
 
     @Mock
     ResourceInfo resourceInfo;
 
     private final LoggedResolver resolver = new LoggedResolver();
 
-    // Used directly as the resource class/method (like LoggedFilterTest's AnnotatedResource), so each
-    // method's own annotations are found straight away without walking the declaration sites above them
-    // (covered on its own, together with the priority between those sites, by LoggedUtilsTest)
+    // Used directly as the resource class and method, so each method's own annotations are found straight
+    // away without walking the declaration sites above them (covered on its own, together with the priority
+    // between those sites, by LoggedUtilsTest)
     interface Resource {
 
         @LoggedBody(MDC)
@@ -104,11 +104,11 @@ class LoggedResolverTest {
     void checkBothDirectionsConfiguration() throws Exception {
         setup("bothMethod");
 
-        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo).of(REQUEST);
-        LoggedBodyConfiguration response = resolver.getBodyConfiguration(resourceInfo).of(RESPONSE);
+        MethodConfiguration configuration = resolver.resolve(resourceInfo);
 
-        assertTrue(request.isActive());
-        assertEquals(request, response);
+        assertTrue(configuration.body(REQUEST).isActive());
+        assertEquals(configuration.body(REQUEST), configuration.body(RESPONSE));
+        assertTrue(configuration.capturesBodies());
     }
 
     @Test
@@ -116,11 +116,10 @@ class LoggedResolverTest {
     void checkRequestOnlyConfiguration() throws Exception {
         setup("requestOnlyMethod");
 
-        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo).of(REQUEST);
-        LoggedBodyConfiguration response = resolver.getBodyConfiguration(resourceInfo).of(RESPONSE);
+        MethodConfiguration configuration = resolver.resolve(resourceInfo);
 
-        assertEquals(Set.of(LOG), request.types());
-        assertFalse(response.isActive());
+        assertEquals(Set.of(LOG), configuration.body(REQUEST).types());
+        assertFalse(configuration.body(RESPONSE).isActive());
     }
 
     @Test
@@ -128,11 +127,10 @@ class LoggedResolverTest {
     void checkResponseOnlyConfiguration() throws Exception {
         setup("responseOnlyMethod");
 
-        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo).of(REQUEST);
-        LoggedBodyConfiguration response = resolver.getBodyConfiguration(resourceInfo).of(RESPONSE);
+        MethodConfiguration configuration = resolver.resolve(resourceInfo);
 
-        assertFalse(request.isActive());
-        assertEquals(Set.of(LOG), response.types());
+        assertFalse(configuration.body(REQUEST).isActive());
+        assertEquals(Set.of(LOG), configuration.body(RESPONSE).types());
     }
 
     @Test
@@ -141,11 +139,10 @@ class LoggedResolverTest {
         // Recognized by the number of directions it listed, it applied to neither, without a word
         setup("repeatedTargetMethod");
 
-        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo).of(REQUEST);
-        LoggedBodyConfiguration response = resolver.getBodyConfiguration(resourceInfo).of(RESPONSE);
+        MethodConfiguration configuration = resolver.resolve(resourceInfo);
 
-        assertEquals(Set.of(LOG), request.types());
-        assertFalse(response.isActive());
+        assertEquals(Set.of(LOG), configuration.body(REQUEST).types());
+        assertFalse(configuration.body(RESPONSE).isActive());
     }
 
     @ParameterizedTest(name = "{0}")
@@ -156,62 +153,48 @@ class LoggedResolverTest {
         // targeting both
         setup(methodName);
 
-        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo).of(REQUEST);
-
-        assertEquals(Set.of(LOG), request.types());
+        assertEquals(Set.of(LOG), resolver.resolve(resourceInfo).body(REQUEST).types());
     }
 
     @Test
-    @DisplayName("Check body configuration is resolved once per resource method and cached")
-    void checkBodyConfigurationCaching() throws Exception {
-        setup("bothMethod");
-
-        resolver.getBodyConfiguration(resourceInfo).of(REQUEST);
-        resolver.getBodyConfiguration(resourceInfo).of(RESPONSE);
-
-        assertEquals(1, resolver.bodyConfigurationCache.size());
-    }
-
-    @Test
-    @DisplayName("Check a body configuration that cannot be resolved logs no body, and is not resolved again")
+    @DisplayName("Check a body configuration that cannot be resolved is reported, the method logging no body")
     void checkUnresolvableBodyConfiguration() throws Exception {
         setup("bothMethod");
 
         // Given: filters that cannot even be determined, as a @LoggedBody naming a class missing at runtime
         // throws a TypeNotPresentException the moment it is read
-        AtomicInteger attempts = new AtomicInteger();
         LoggedResolver failingResolver = new LoggedResolver(new LoggedBodyFilterFactory() {
 
             @Override
             public Set<LoggedBodyFilter> getInstances(Class<? extends LoggedBodyFilter>[] filterTypes) {
-                attempts.incrementAndGet();
                 throw new TypeNotPresentException("com.company.MissingFilter", null);
             }
 
         });
 
         // When
-        BodyConfiguration first = assertDoesNotThrow(() -> failingResolver.getBodyConfiguration(resourceInfo));
-        BodyConfiguration second = failingResolver.getBodyConfiguration(resourceInfo);
+        MethodConfiguration configuration = assertDoesNotThrow(() -> failingResolver.resolve(resourceInfo));
 
-        // Then: no later request resolves it any better, so it is neither retried nor logged each time
-        assertSame(BodyConfiguration.NONE, first);
-        assertSame(first, second);
-        assertEquals(1, attempts.get());
+        // Then: its redaction cannot be guaranteed
+        assertSame(LoggedBodyConfiguration.NONE, configuration.requestBody());
+        assertSame(LoggedBodyConfiguration.NONE, configuration.responseBody());
+        assertFalse(configuration.capturesBodies());
+        assertNotNull(listAppender.findFirstMessage("Unable to resolve the body logging configuration of"));
     }
 
     @Test
-    @DisplayName("Check a body configuration with an invalid limit is rejected once, rather than on every request")
+    @DisplayName("Check a body configuration with an invalid limit is reported as the method is resolved")
     void checkInvalidLimitConfiguration() throws Exception {
         // Accepted as resolved, it failed the creation of every capture it was given to, reported on every
         // single request to the resource, without naming the resource whose annotation had to be fixed
         setup("invalidLimitMethod");
 
         // When
-        BodyConfiguration configuration = assertDoesNotThrow(() -> resolver.getBodyConfiguration(resourceInfo));
+        MethodConfiguration configuration = assertDoesNotThrow(() -> resolver.resolve(resourceInfo));
 
         // Then
-        assertSame(BodyConfiguration.NONE, configuration);
+        assertSame(LoggedBodyConfiguration.NONE, configuration.requestBody());
+        assertSame(LoggedBodyConfiguration.NONE, configuration.responseBody());
         assertThrows(IllegalArgumentException.class, () -> new LoggedBodyConfiguration(Set.of(LOG), -2, Set.of()));
     }
 
@@ -222,22 +205,22 @@ class LoggedResolverTest {
         setup("bothMethod");
 
         // When
-        BodyConfiguration configuration = resolver.getBodyConfiguration(resourceInfo);
+        MethodConfiguration configuration = resolver.resolve(resourceInfo);
 
         // Then
-        assertEquals(DEFAULT_LIMIT, configuration.of(REQUEST).limit());
-        assertEquals(DEFAULT_LIMIT, configuration.of(RESPONSE).limit());
+        assertEquals(DEFAULT_LIMIT, configuration.body(REQUEST).limit());
+        assertEquals(DEFAULT_LIMIT, configuration.body(RESPONSE).limit());
     }
 
     @Test
-    @DisplayName("Check merged mappings are resolved for the matched resource method")
+    @DisplayName("Check merged mappings are resolved for the resource method")
     void checkMergedMappings() throws Exception {
         setup("mappedMethod");
 
-        List<LoggedMapping> mappings = resolver.getMappings(resourceInfo);
+        List<LoggedMapping> mappings = resolver.resolve(resourceInfo).mappings();
 
         assertEquals(1, mappings.size());
-        assertEquals("topic", mappings.iterator().next().mdcKey());
+        assertEquals("topic", mappings.getFirst().mdcKey());
     }
 
     @ParameterizedTest(name = "{0}")
@@ -250,69 +233,45 @@ class LoggedResolverTest {
     }
 
     @Test
-    @DisplayName("Check a resource method declaring no annotation of this library is not logged, found out once")
+    @DisplayName("Check a resource method declaring no annotation of this library is not logged")
     void checkPlainMethodNotLogged() throws Exception {
         setup("plainMethod");
 
         assertFalse(resolver.isLogged(resourceInfo));
-        assertFalse(resolver.isLogged(resourceInfo));
-        assertEquals(1, resolver.loggedCache.size());
     }
 
     @Test
-    @DisplayName("Check a resource whose declaration sites cannot be walked is not logged, and not walked again")
-    void checkUnresolvableResourceNotLogged() throws Exception {
-        // Given: the resource method failing to be read once the cache keyed the resource on it
-        Method method = Resource.class.getMethod("mappedMethod");
+    @DisplayName("Check a resource whose declaration sites cannot be walked is reported, and not logged")
+    void checkUnresolvableResourceNotLogged() {
+        // Given: the resource method failing to be read, as reflection parsing a generic signature that names a
+        // type missing at runtime throws
         doReturn(Resource.class).when(resourceInfo).getResourceClass();
-        doReturn(method)
-                .doThrow(new TypeNotPresentException("com.company.MissingType", null))
-                .doReturn(method)
-                .when(resourceInfo).getResourceMethod();
+        doThrow(new TypeNotPresentException("com.company.MissingType", null)).when(resourceInfo).getResourceMethod();
 
         // Then
         assertFalse(assertDoesNotThrow(() -> resolver.isLogged(resourceInfo)));
-        assertFalse(resolver.isLogged(resourceInfo));
+        assertNotNull(listAppender.findFirstMessage("Unable to find out whether the requests of"));
     }
 
     @Test
-    @DisplayName("Check a request no resource was matched for is not logged")
+    @DisplayName("Check a resource without class nor method is not logged")
     void checkUnmatchedResourceNotLogged() {
         assertFalse(resolver.isLogged(resourceInfo));
     }
 
     @Test
-    @DisplayName("Check mappings that cannot be resolved map nothing, and are not resolved again")
-    void checkUnresolvableMappings() throws Exception {
-        // Given: a resource whose declaration sites cannot be walked, as reflection parsing a generic signature
-        // that names a type missing at runtime throws - here, when the resolution asks for the resource method,
-        // the cache asking for it first to key the resource on
-        Method method = Resource.class.getMethod("mappedMethod");
+    @DisplayName("Check mappings that cannot be resolved are reported, the method mapping nothing")
+    void checkUnresolvableMappings() {
+        // Given: a resource whose declaration sites cannot be walked
         doReturn(Resource.class).when(resourceInfo).getResourceClass();
-        doReturn(method)
-                .doThrow(new TypeNotPresentException("com.company.MissingType", null))
-                .doReturn(method)
-                .when(resourceInfo).getResourceMethod();
+        doThrow(new TypeNotPresentException("com.company.MissingType", null)).when(resourceInfo).getResourceMethod();
 
         // When
-        List<LoggedMapping> first = assertDoesNotThrow(() -> resolver.getMappings(resourceInfo));
-        List<LoggedMapping> second = resolver.getMappings(resourceInfo);
+        MethodConfiguration configuration = assertDoesNotThrow(() -> resolver.resolve(resourceInfo));
 
-        // Then: no later request resolves them any better, so they are neither retried nor reported each time
-        assertTrue(first.isEmpty());
-        assertSame(first, second);
-    }
-
-    @Test
-    @DisplayName("Check merged mappings are resolved once per resource method and cached")
-    void checkMergedMappingsCaching() throws Exception {
-        setup("mappedMethod");
-
-        List<LoggedMapping> first = resolver.getMappings(resourceInfo);
-        List<LoggedMapping> second = resolver.getMappings(resourceInfo);
-
-        assertEquals(first, second);
-        assertEquals(1, resolver.mappingsCache.size());
+        // Then
+        assertTrue(configuration.mappings().isEmpty());
+        assertNotNull(listAppender.findFirstMessage("Unable to resolve the MDC mappings of"));
     }
 
     @Test
@@ -320,7 +279,7 @@ class LoggedResolverTest {
     void checkMappingsInApplicationOrder() throws Exception {
         setup("unorderedMappingsMethod");
 
-        List<LoggedMapping> mappings = resolver.getMappings(resourceInfo);
+        List<LoggedMapping> mappings = resolver.resolve(resourceInfo).mappings();
 
         // The exclusion first, so no other mapping maps what it excludes, and the automatic mapping last,
         // so it only maps what no explicit one claimed
@@ -329,56 +288,49 @@ class LoggedResolverTest {
     }
 
     @Test
-    @DisplayName("Check a null resource method (some containers can still hand one out) does not throw")
+    @DisplayName("Check a resource without method logs no body")
     void checkNullResourceMethodBodyConfiguration() {
         doReturn(null).when(resourceInfo).getResourceMethod();
 
-        LoggedBodyConfiguration request = resolver.getBodyConfiguration(resourceInfo).of(REQUEST);
-        LoggedBodyConfiguration response = resolver.getBodyConfiguration(resourceInfo).of(RESPONSE);
+        MethodConfiguration configuration = resolver.resolve(resourceInfo);
 
-        assertFalse(request.isActive());
-        assertFalse(response.isActive());
-        assertEquals(0, resolver.bodyConfigurationCache.size());
+        assertFalse(configuration.body(REQUEST).isActive());
+        assertFalse(configuration.body(RESPONSE).isActive());
     }
 
     @Test
-    @DisplayName("Check a null resource method (some containers can still hand one out) still resolves from the class")
+    @DisplayName("Check a resource without method still resolves its mappings from the class")
     void checkNullResourceMethodMergedMappings() {
         doReturn(Resource.class).when(resourceInfo).getResourceClass();
         doReturn(null).when(resourceInfo).getResourceMethod();
 
-        List<LoggedMapping> mappings = resolver.getMappings(resourceInfo);
-
-        // The interface declares its mappings on methods only, so nothing applies without one, but the
-        // class is still a valid cache key: only a resource with neither a class nor a method is skipped
-        assertTrue(mappings.isEmpty());
-        assertEquals(1, resolver.mappingsCache.size());
+        // The interface declares its mappings on methods only, so nothing applies without one
+        assertTrue(resolver.resolve(resourceInfo).mappings().isEmpty());
     }
 
     @Test
-    @DisplayName("Check the cache distinguishes two resource classes sharing the same interface method")
-    void checkCacheKeyIncludesResourceClass() throws Exception {
-        // Given: two resource classes whose matched method is the very same java.lang.reflect.Method,
-        // as a container handing out the interface method for each implementation would produce
+    @DisplayName("Check two resource classes sharing the same interface method are resolved each its own way")
+    void checkResolutionIncludesResourceClass() throws Exception {
+        // Given: two resource classes whose method is the very same java.lang.reflect.Method, as a container
+        // handing out the interface method for each implementation would produce
         ResourceInfo first = resourceInfo(SharedInterfaceResource.class);
         ResourceInfo second = resourceInfo(OtherSharedInterfaceResource.class);
 
         // When
-        LoggedBodyConfiguration firstConfiguration = resolver.getBodyConfiguration(first).of(REQUEST);
-        LoggedBodyConfiguration secondConfiguration = resolver.getBodyConfiguration(second).of(REQUEST);
+        LoggedBodyConfiguration firstConfiguration = resolver.resolve(first).body(REQUEST);
+        LoggedBodyConfiguration secondConfiguration = resolver.resolve(second).body(REQUEST);
 
-        // Then: each class gets its own configuration instead of the first one resolved winning for both
+        // Then
         assertEquals(Set.of(MDC), firstConfiguration.types());
         assertEquals(Set.of(LOG), secondConfiguration.types());
-        assertEquals(2, resolver.bodyConfigurationCache.size());
     }
 
     private ResourceInfo resourceInfo(Class<?> resourceClass) throws Exception {
-        java.lang.reflect.Method method = SharedInterface.class.getMethod("shared");
+        Method method = SharedInterface.class.getMethod("shared");
         return new ResourceInfo() {
 
             @Override
-            public java.lang.reflect.Method getResourceMethod() {
+            public Method getResourceMethod() {
                 return method;
             }
 

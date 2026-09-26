@@ -1,6 +1,6 @@
 package com.chavaillaz.jakarta.rs.client;
 
-import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
+import static com.chavaillaz.jakarta.rs.LoggedFeature.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedFilterConfiguration.isCredential;
 import static com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture.TRUNCATION_MARKER;
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.DEFAULT_LIMIT;
@@ -136,7 +136,7 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check the correlation identifier is propagated the way a LoggedFilter logs one it receives")
+    @DisplayName("Check the correlation identifier is propagated the way a LoggedFeature logs one it receives")
     void checkCorrelationIdSanitized() {
         // Given: an identifier the application put in MDC as it got it, which no HTTP client of the JDK sends
         MDC.put("request-id", "abc\r\nX-Forged: yes");
@@ -164,7 +164,7 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
     @Test
     @DisplayName("Check the correlation identifier is read from the MDC key configured")
     void checkCorrelationIdReadFromConfiguredKey() {
-        // Given: the MDC key a LoggedFilter renaming its request identifier puts it under
+        // Given: the MDC key a LoggedFeature renaming its request identifier puts it under
         MDC.put("request-id", "not-this-one");
         MDC.put("trace-id", "abc-123");
         LoggedClientFeature renamed = LoggedClientFeature.builder().correlationIdKey("trace-id").build();
