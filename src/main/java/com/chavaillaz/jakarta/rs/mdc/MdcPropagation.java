@@ -3,20 +3,11 @@ package com.chavaillaz.jakarta.rs.mdc;
 import static java.util.Objects.requireNonNull;
 
 import jakarta.ws.rs.container.AsyncResponse;
-import jakarta.ws.rs.container.TimeoutHandler;
-import java.util.Collection;
-import java.util.Date;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
@@ -286,7 +277,7 @@ public final class MdcPropagation {
      * @param <T>     The type of the result returned by the action
      * @return The result of the action
      */
-    private static <T extends @Nullable Object> T inContext(@Nullable Map<String, String> context, Supplier<T> action) {
+    static <T extends @Nullable Object> T inContext(@Nullable Map<String, String> context, Supplier<T> action) {
         Map<String, String> previous = MDC.getCopyOfContextMap();
         setContext(context);
         try {
@@ -302,234 +293,6 @@ public final class MdcPropagation {
         } else {
             MDC.setContextMap(context);
         }
-    }
-
-    /**
-     * {@link ExecutorService} decorator delegating everything to an underlying executor, except that
-     * every task-accepting method wraps its task(s) with {@link MdcPropagation#wrap(Runnable)} or
-     * {@link MdcPropagation#wrap(Callable)} first.
-     * <p>
-     * Package-private (rather than {@code private}) so {@link MdcPropagatingScheduledExecutorService} can
-     * extend it and reuse this behavior for the {@link ExecutorService} methods it does not itself override.
-     */
-    static class MdcPropagatingExecutorService implements ExecutorService {
-
-        protected final ExecutorService delegate;
-
-        MdcPropagatingExecutorService(ExecutorService delegate) {
-            this.delegate = delegate;
-        }
-
-        @Override
-        public void execute(Runnable command) {
-            delegate.execute(wrap(command));
-        }
-
-        @Override
-        public Future<?> submit(Runnable task) {
-            return delegate.submit(wrap(task));
-        }
-
-        @Override
-        public <T extends @Nullable Object> Future<T> submit(Runnable task, T result) {
-            return delegate.submit(wrap(task), result);
-        }
-
-        @Override
-        public <T extends @Nullable Object> Future<T> submit(Callable<T> task) {
-            return delegate.submit(wrap(task));
-        }
-
-        @Override
-        public <T extends @Nullable Object> List<Future<T>> invokeAll(Collection<? extends Callable<T>> tasks) throws InterruptedException {
-            return delegate.invokeAll(wrapAll(tasks));
-        }
-
-        @Override
-        public <T extends @Nullable Object> List<Future<T>> invokeAll(Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit) throws InterruptedException {
-            return delegate.invokeAll(wrapAll(tasks), timeout, unit);
-        }
-
-        @Override
-        public <T extends @Nullable Object> T invokeAny(Collection<? extends Callable<T>> tasks) throws InterruptedException, ExecutionException {
-            return delegate.invokeAny(wrapAll(tasks));
-        }
-
-        @Override
-        public <T extends @Nullable Object> T invokeAny(Collection<? extends Callable<T>> tasks, long timeout, TimeUnit unit) throws InterruptedException, ExecutionException, TimeoutException {
-            return delegate.invokeAny(wrapAll(tasks), timeout, unit);
-        }
-
-        private <T extends @Nullable Object> List<Callable<T>> wrapAll(Collection<? extends Callable<T>> tasks) {
-            return tasks.stream()
-                    .map(MdcPropagation::wrap)
-                    .toList();
-        }
-
-        @Override
-        public void shutdown() {
-            delegate.shutdown();
-        }
-
-        @Override
-        public List<Runnable> shutdownNow() {
-            return delegate.shutdownNow();
-        }
-
-        @Override
-        public boolean isShutdown() {
-            return delegate.isShutdown();
-        }
-
-        @Override
-        public boolean isTerminated() {
-            return delegate.isTerminated();
-        }
-
-        @Override
-        public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
-            return delegate.awaitTermination(timeout, unit);
-        }
-
-        /**
-         * Delegated rather than left to the default {@link ExecutorService#close()}, which shuts the
-         * executor down and waits for it to terminate through the methods above: an executor overriding
-         * {@code close()} does so because that default does not suit it. The common
-         * {@link java.util.concurrent.ForkJoinPool} is the extreme case - it cannot be shut down, so its
-         * own {@code close()} does nothing, while the default waits forever for it to terminate, spinning
-         * a whole core on the thread closing it.
-         */
-        @Override
-        public void close() {
-            delegate.close();
-        }
-
-    }
-
-    /**
-     * {@link ScheduledExecutorService} decorator extending {@link MdcPropagatingExecutorService} with the
-     * scheduling methods {@link ExecutorService} does not have, wrapping their task(s) the same way.
-     */
-    private static final class MdcPropagatingScheduledExecutorService extends MdcPropagatingExecutorService implements ScheduledExecutorService {
-
-        private final ScheduledExecutorService scheduledDelegate;
-
-        private MdcPropagatingScheduledExecutorService(ScheduledExecutorService delegate) {
-            super(delegate);
-            this.scheduledDelegate = delegate;
-        }
-
-        @Override
-        public ScheduledFuture<?> schedule(Runnable command, long delay, TimeUnit unit) {
-            return scheduledDelegate.schedule(wrap(command), delay, unit);
-        }
-
-        @Override
-        public <V extends @Nullable Object> ScheduledFuture<V> schedule(Callable<V> callable, long delay, TimeUnit unit) {
-            return scheduledDelegate.schedule(wrap(callable), delay, unit);
-        }
-
-        @Override
-        public ScheduledFuture<?> scheduleAtFixedRate(Runnable command, long initialDelay, long period, TimeUnit unit) {
-            return scheduledDelegate.scheduleAtFixedRate(wrap(command), initialDelay, period, unit);
-        }
-
-        @Override
-        public ScheduledFuture<?> scheduleWithFixedDelay(Runnable command, long initialDelay, long delay, TimeUnit unit) {
-            return scheduledDelegate.scheduleWithFixedDelay(wrap(command), initialDelay, delay, unit);
-        }
-
-    }
-
-    /**
-     * {@link AsyncResponse} decorator delegating everything to an underlying response, except that the
-     * methods completing the request apply the MDC context map captured when it was wrapped, so the
-     * container runs its response filters - and this library its completion - with the context of the
-     * request being completed rather than with whatever the completing thread happened to carry.
-     */
-    private record MdcPropagatingAsyncResponse(AsyncResponse delegate, @Nullable Map<String, String> context) implements AsyncResponse {
-
-        @Override
-        public boolean resume(@Nullable Object response) {
-            return inContext(context, () -> delegate.resume(response));
-        }
-
-        @Override
-        public boolean resume(Throwable response) {
-            return inContext(context, () -> delegate.resume(response));
-        }
-
-        @Override
-        public boolean cancel() {
-            return inContext(context, delegate::cancel);
-        }
-
-        @Override
-        public boolean cancel(int retryAfter) {
-            return inContext(context, () -> delegate.cancel(retryAfter));
-        }
-
-        @Override
-        public boolean cancel(Date retryAfter) {
-            return inContext(context, () -> delegate.cancel(retryAfter));
-        }
-
-        @Override
-        public void setTimeoutHandler(@Nullable TimeoutHandler handler) {
-            if (handler == null) {
-                // Clearing the handler lets the container time the request out its own way again: wrapped,
-                // it became a handler failing on the very timeout it was meant to leave alone
-                delegate.setTimeoutHandler(null);
-                return;
-            }
-            // Handed this wrapper rather than the response the container passes, so a handler completing
-            // the request on the timer thread does so with the context too
-            delegate.setTimeoutHandler(ignored -> inContext(context, () -> {
-                handler.handleTimeout(this);
-                return null;
-            }));
-        }
-
-        @Override
-        public boolean isSuspended() {
-            return delegate.isSuspended();
-        }
-
-        @Override
-        public boolean isCancelled() {
-            return delegate.isCancelled();
-        }
-
-        @Override
-        public boolean isDone() {
-            return delegate.isDone();
-        }
-
-        @Override
-        public boolean setTimeout(long time, TimeUnit unit) {
-            return delegate.setTimeout(time, unit);
-        }
-
-        @Override
-        public Collection<Class<?>> register(Class<?> callback) {
-            return delegate.register(callback);
-        }
-
-        @Override
-        public Map<Class<?>, Collection<Class<?>>> register(Class<?> callback, Class<?>... callbacks) {
-            return delegate.register(callback, callbacks);
-        }
-
-        @Override
-        public Collection<Class<?>> register(Object callback) {
-            return delegate.register(callback);
-        }
-
-        @Override
-        public Map<Class<?>, Collection<Class<?>>> register(Object callback, Object... callbacks) {
-            return delegate.register(callback, callbacks);
-        }
-
     }
 
 }
