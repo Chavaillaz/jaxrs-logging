@@ -21,6 +21,7 @@ import static com.chavaillaz.jakarta.rs.internal.BodyCapturer.MEMORY_FAILURE;
 import static com.chavaillaz.jakarta.rs.internal.Sanitizer.REQUEST_ID_MAX_LENGTH;
 import static jakarta.ws.rs.core.HttpHeaders.CONTENT_TYPE;
 import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN_TYPE;
+import static jakarta.ws.rs.core.MediaType.WILDCARD_TYPE;
 import static java.lang.Integer.parseInt;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.concurrent.Executors.newSingleThreadExecutor;
@@ -31,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -41,11 +43,16 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ResourceInfo;
 import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.ext.ContextResolver;
 import jakarta.ws.rs.ext.InterceptorContext;
+import jakarta.ws.rs.ext.Providers;
 import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
 import jakarta.ws.rs.ext.WriterInterceptor;
@@ -79,6 +86,7 @@ import org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContex
 import org.jboss.resteasy.mock.MockHttpRequest;
 import org.jboss.resteasy.mock.MockHttpResponse;
 import org.jboss.resteasy.specimpl.BuiltResponse;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -1089,6 +1097,69 @@ class LoggedFilterTest extends AbstractFilterTest {
         assertNull(responseContext.getHeaders().getFirst(REQUEST_ID_HEADER));
     }
 
+    /**
+     * Builds a filter the way the container instantiates one, the application resolving its configuration
+     * through the given resolver.
+     *
+     * @param resolver The resolver the application declares, {@code null} for none
+     * @return The filter created
+     */
+    LoggedFilter filterDeclaring(@Nullable ContextResolver<LoggedFilterConfiguration> resolver) {
+        LoggedFilter filter = new LoggedFilter();
+        filter.resourceInfo = resourceInfo;
+        filter.providers = mock(Providers.class);
+        doReturn(resolver).when(filter.providers).getContextResolver(LoggedFilterConfiguration.class, WILDCARD_TYPE);
+        return filter;
+    }
+
+    @Test
+    @DisplayName("Check a provider the container instantiates is configured the way the application declares")
+    void checkConfigurationDeclaredByApplication() throws Exception {
+        setupTest(AnnotatedResource.class, "noBodyLogging");
+
+        // Given: a configuration the application declares for the class of the provider asking alone
+        LoggedFilter declaredFilter = filterDeclaring(type -> type == LoggedFilter.class
+                ? LoggedFilterConfiguration.builder().fieldName(REQUEST_ID, "trace-id").build()
+                : null);
+        PreMatchContainerRequestContext requestContext = getRequestContext();
+
+        // When
+        declaredFilter.filter(requestContext);
+        declaredFilter.filter(requestContext, getEmptyResponseContext(requestContext));
+
+        // Then: looked up once, when the first request is logged
+        assertNotNull(listAppender.findFirstMessage("Processed").getContextData().getValue("trace-id"));
+        assertEquals("trace-id", declaredFilter.configuration().fieldName(REQUEST_ID));
+        verify(declaredFilter.providers, times(1)).getContextResolver(LoggedFilterConfiguration.class, WILDCARD_TYPE);
+    }
+
+    @Test
+    @DisplayName("Check a provider uses the default configuration when the application declares none, or fails to")
+    void checkDefaultConfigurationWhenNoneDeclared() {
+        ContextResolver<LoggedFilterConfiguration> failing = type -> {
+            throw new IllegalStateException("Configuration not loaded yet");
+        };
+
+        assertSame(LoggedFilterConfiguration.defaults(), new LoggedFilter().configuration());
+        assertSame(LoggedFilterConfiguration.defaults(), filterDeclaring(null).configuration());
+        assertSame(LoggedFilterConfiguration.defaults(), filterDeclaring(type -> null).configuration());
+        assertSame(LoggedFilterConfiguration.defaults(), filterDeclaring(failing).configuration());
+        assertNotNull(listAppender.findFirstMessage("Unable to look up the configuration of the application"));
+    }
+
+    @Test
+    @DisplayName("Check a provider constructed with its configuration looks none up")
+    void checkGivenConfigurationNotLookedUp() {
+        // Given
+        LoggedFilterConfiguration given = LoggedFilterConfiguration.builder().build();
+        LoggedFilter givenFilter = new LoggedFilter(given);
+        givenFilter.providers = mock(Providers.class);
+
+        // Then
+        assertSame(given, givenFilter.configuration());
+        verifyNoInteractions(givenFilter.providers);
+    }
+
     @ParameterizedTest(name = "strategy obtaining \"{0}\"")
     @NullSource
     @ValueSource(strings = {"", " ", "\r\n"})
@@ -1852,7 +1923,7 @@ class LoggedFilterTest extends AbstractFilterTest {
     }
 
     String getMdcField(LoggedField field) {
-        return loggingFilter.configuration.fieldName(field);
+        return loggingFilter.configuration().fieldName(field);
     }
 
     String getMdcLogged(LoggedField key) {

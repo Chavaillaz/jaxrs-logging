@@ -11,6 +11,7 @@ import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
 import static com.chavaillaz.jakarta.rs.internal.BodyCapturer.CAPTURE_FAILURE;
 import static jakarta.ws.rs.Priorities.HEADER_DECORATOR;
 import static jakarta.ws.rs.RuntimeType.SERVER;
+import static jakarta.ws.rs.core.MediaType.WILDCARD_TYPE;
 import static java.lang.String.valueOf;
 import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElse;
@@ -27,8 +28,10 @@ import jakarta.ws.rs.container.ContainerResponseContext;
 import jakarta.ws.rs.container.ContainerResponseFilter;
 import jakarta.ws.rs.container.ResourceInfo;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.ext.ContextResolver;
 import jakarta.ws.rs.ext.InterceptorContext;
 import jakarta.ws.rs.ext.Provider;
+import jakarta.ws.rs.ext.Providers;
 import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
 import jakarta.ws.rs.ext.WriterInterceptor;
@@ -36,6 +39,7 @@ import jakarta.ws.rs.ext.WriterInterceptorContext;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -76,9 +80,12 @@ import com.chavaillaz.jakarta.rs.internal.Sanitizer;
  * any entity coder, so it captures the entity rather than its transfer encoding: an application registering
  * its providers explicitly registers both.
  * <p>
+ * It is configured the way the application declares, through a provider of
+ * {@code ContextResolver<LoggedFilterConfiguration>} (see {@link LoggedFilterConfiguration}), or constructed
+ * with its configuration by an application registering its providers explicitly.
+ * <p>
  * A request is logged once, by the first {@code LoggedFilter} to see it, however many of them are bound to
- * its resource: the others stand aside. A subclass - configuring this one, as
- * {@link LoggedFilterConfiguration} shows, or putting entries of its own - therefore declares both its
+ * its resource: the others stand aside. A subclass putting entries of its own therefore declares both its
  * binding and a priority running it before this class, which the container may discover in this library, as
  * neither {@link Logged} nor {@link Priority} is inherited: a subclass declaring neither logs the requests of
  * every resource, and runs at {@link Priorities#USER}.
@@ -105,12 +112,6 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     public static final String REQUEST_ID_HEADER = "X-Request-ID";
 
     /**
-     * Configuration of this provider: the names of its MDC entries, how it identifies a request, which
-     * parameters it keeps out of the logs, the level it logs a request at and how it captures bodies.
-     */
-    protected final LoggedFilterConfiguration configuration;
-
-    /**
      * Resolves which {@link LoggedMapping} and {@link LoggedBody} configuration applies to the resource
      * method matched by the current request, caching results per resource, along with the
      * {@link LoggedBodyFilter} instances it names.
@@ -124,54 +125,85 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     protected ResourceInfo resourceInfo;
 
     /**
-     * The MDC entries of the requests this provider logs, named as configured.
+     * Provides the context resolvers of the application, through which a provider the container instantiated
+     * looks up its configuration (see {@link #LoggedFilter()}), {@code null} outside a container.
      */
-    private final RequestMdc mdc;
+    @Context
+    @Nullable Providers providers;
 
     /**
-     * Describes the requests received, masking the query parameters the configuration reports as sensitive.
+     * What this provider works with, made from its configuration once it is known: when constructed for a
+     * configuration given, and when it logs its first request for one looked up in the application.
      */
-    private final RequestDescriber describer;
+    private final AtomicReference<@Nullable Setup> setup = new AtomicReference<>();
 
     /**
-     * Puts the MDC entries the {@link LoggedMapping} annotations ask for, keeping the parameters the
-     * configuration reports as sensitive out of automatic mappings, as well as the names of the fields.
-     */
-    private final MappingApplier mappingApplier;
-
-    /**
-     * Captures the bodies of the requests read and the responses written, as the configuration says to.
-     */
-    private final BodyCapturer bodyCapturer;
-
-    /**
-     * Writes the lines logging the requests and returns their identifier to the caller, as configured.
-     */
-    private final ExchangeLogger exchangeLogger;
-
-    /**
-     * Creates a provider with the default configuration (see {@link LoggedFilterConfiguration#defaults()}).
+     * Creates a provider configured the way the application declares, through a provider of
+     * {@code ContextResolver<LoggedFilterConfiguration>} (see {@link LoggedFilterConfiguration}), or with the
+     * default configuration when it declares none (see {@link LoggedFilterConfiguration#defaults()}).
+     * <p>
+     * The configuration is looked up when the first request is logged, the container injecting what gives
+     * access to it once the provider is constructed; it is asked for the class of the provider, so an
+     * application running several of them can configure each its own way.
      */
     public LoggedFilter() {
-        this(LoggedFilterConfiguration.defaults());
+        // Configured once the container injected the context resolvers, see setup()
     }
 
     /**
-     * Creates a provider with the given configuration.
-     * <p>
-     * A container instantiates a provider through its no-argument constructor, so a subclass passes its
-     * configuration from its own (see {@link LoggedFilterConfiguration}), while an application registering
-     * its providers explicitly passes it here directly.
+     * Creates a provider with the given configuration, for an application registering its providers
+     * explicitly, or a subclass fixing its own: the application declares no configuration for it then.
      *
      * @param configuration The configuration of the provider
      */
     public LoggedFilter(LoggedFilterConfiguration configuration) {
-        this.configuration = requireNonNull(configuration, "The configuration is required");
-        this.mdc = new RequestMdc(configuration.fieldNames());
-        this.describer = new RequestDescriber(configuration::isSensitive);
-        this.mappingApplier = new MappingApplier(configuration::isSensitive, mdc::isField);
-        this.bodyCapturer = new BodyCapturer(log, configuration::createBodyCapture);
-        this.exchangeLogger = new ExchangeLogger(log, configuration);
+        setup.set(Setup.of(requireNonNull(configuration, "The configuration is required")));
+    }
+
+    /**
+     * Gets the configuration of this provider: the one it was constructed with, or the one the application
+     * declares for it (see {@link #LoggedFilter()}).
+     *
+     * @return The configuration of this provider: the names of its MDC entries, how it identifies a request,
+     * which parameters it keeps out of the logs, the level it logs a request at and how it captures bodies
+     */
+    protected LoggedFilterConfiguration configuration() {
+        return setup().configuration();
+    }
+
+    /**
+     * Gets what this provider works with, making it from the configuration the application declares for it
+     * the first time it is asked for, when it was not constructed with one.
+     *
+     * @return What this provider works with
+     */
+    private Setup setup() {
+        Setup current = setup.get();
+        if (current != null) {
+            return current;
+        }
+        // Threads logging their first requests at once may each make one: they all go on with the first
+        Setup made = Setup.of(lookUpConfiguration());
+        return setup.compareAndSet(null, made) ? made : requireNonNull(setup.get());
+    }
+
+    /**
+     * Looks up the configuration the application declares for this provider, through a provider of
+     * {@code ContextResolver<LoggedFilterConfiguration>}, falling back to the default configuration when it
+     * declares none - or when looking it up fails, which is reported rather than allowed to fail a request.
+     *
+     * @return The configuration of this provider
+     */
+    private LoggedFilterConfiguration lookUpConfiguration() {
+        Providers available = providers;
+        if (available == null) {
+            return LoggedFilterConfiguration.defaults();
+        }
+        return LoggingGuard.safely(log, "Unable to look up the configuration of the application, the default one is used instead", () -> {
+            ContextResolver<LoggedFilterConfiguration> resolver = available.getContextResolver(LoggedFilterConfiguration.class, WILDCARD_TYPE);
+            LoggedFilterConfiguration configuration = resolver == null ? null : resolver.getContext(getClass());
+            return configuration == null ? LoggedFilterConfiguration.defaults() : configuration;
+        }, LoggedFilterConfiguration.defaults());
     }
 
     /**
@@ -187,7 +219,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param value The value to be associated with the given key, ignored if {@code null} or blank
      */
     protected void putMdc(String key, @Nullable String value) {
-        mdc.put(key, value);
+        setup().mdc().put(key, value);
     }
 
     /**
@@ -198,7 +230,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param value The value to be associated with the given field, ignored if {@code null} or blank
      */
     protected void putMdc(LoggedField field, @Nullable String value) {
-        mdc.put(field, value);
+        setup().mdc().put(field, value);
     }
 
     /**
@@ -209,7 +241,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * {@link LoggedFilterConfiguration.Builder#withoutField(LoggedField)})
      */
     protected @Nullable String getMdc(LoggedField field) {
-        return mdc.get(field);
+        return setup().mdc().get(field);
     }
 
     /**
@@ -274,7 +306,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             // LoggedBodyInterceptor to hand its captures back to
             LoggedRequestState state = LoggedRequestState.attach(requestContext, this);
             // From here on, the entries this thread carries are this request's
-            mdc.start(state);
+            setup().mdc().start(state);
 
             putMdcFromRequest(state, requestContext);
             putMdcFromMappings(requestContext);
@@ -332,8 +364,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         // A strategy of the application failing costs the request its identifier, which is then generated,
         // rather than every field describing it
         String requestId = LoggingGuard.safely(log, "Unable to get the identifier of the request, a random one is used instead",
-                () -> configuration.requestIdOf(requestContext), null);
-        describer.describe(requestContext, resourceInfo, requestId, (field, value) -> {
+                () -> configuration().requestIdOf(requestContext), null);
+        setup().describer().describe(requestContext, resourceInfo, requestId, (field, value) -> {
             state.describe(field, value);
             putMdc(field, value);
         });
@@ -346,7 +378,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param requestContext The context of the request received
      */
     private void putMdcFromMappings(ContainerRequestContext requestContext) {
-        mappingApplier.apply(resolver.getMappings(resourceInfo), type -> getParameters(requestContext, type), this::putMdc);
+        setup().mappingApplier().apply(resolver.getMappings(resourceInfo), type -> getParameters(requestContext, type), this::putMdc);
     }
 
     /**
@@ -418,7 +450,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     @Nullable Object captureRequestBody(ReaderInterceptorContext context) throws IOException, WebApplicationException {
         LoggedRequestState state = LoggedRequestState.find(context);
         // The state is only read once a body was captured, which the configuration rules out without one
-        return bodyCapturer.read(context, getCaptureConfiguration(state, REQUEST), body -> state.setRequestBody(body));
+        return setup().bodyCapturer().read(context, getCaptureConfiguration(state, REQUEST), body -> state.setRequestBody(body));
     }
 
     /**
@@ -431,7 +463,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      */
     private void logRequest(LoggedRequestState state, String requestBody) {
         if (state.markRequestLogged(isNotBlank(requestBody))) {
-            exchangeLogger.received(state.getMethod(), state.getUri(), requestBody);
+            setup().exchangeLogger().received(state.getMethod(), state.getUri(), requestBody);
         }
     }
 
@@ -447,7 +479,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         safely(() -> {
             LoggedRequestState state = startedState(requestContext);
             if (state != null) {
-                mdc.onBehalfOf(state, () -> describeResponse(state, responseContext));
+                setup().mdc().onBehalfOf(state, () -> describeResponse(state, responseContext));
             }
         });
     }
@@ -489,7 +521,8 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             }
 
             putMdc(RESPONSE_STATUS, valueOf(state.getStatus()));
-            exchangeLogger.returnRequestId(responseContext.getHeaders(), mdc.recorded(state, REQUEST_ID));
+            String requestId = setup().mdc().recorded(state, REQUEST_ID);
+            setup().exchangeLogger().returnRequestId(responseContext.getHeaders(), requestId);
         } finally {
             // Without an entity to write (204 No Content, HEAD), aroundWriteTo is never called: the request is
             // completed here whatever happened above, as completing it is what removes its MDC entries
@@ -513,7 +546,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             safely(() -> {
                 LoggedRequestState state = handledState(context);
                 if (state != null) {
-                    mdc.onBehalfOf(state, () -> logResponseWithBody(state));
+                    setup().mdc().onBehalfOf(state, () -> logResponseWithBody(state));
                 }
             });
         }
@@ -560,7 +593,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     void captureResponseBody(WriterInterceptorContext context) throws IOException, WebApplicationException {
         LoggedRequestState state = LoggedRequestState.find(context);
         // The state is only read once a body was captured, which the configuration rules out without one
-        bodyCapturer.write(context, getCaptureConfiguration(state, RESPONSE), body -> state.setResponseBody(body));
+        setup().bodyCapturer().write(context, getCaptureConfiguration(state, RESPONSE), body -> state.setResponseBody(body));
     }
 
     /**
@@ -588,7 +621,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 putMdc(REQUEST_BODY, state.getRequestBody());
             }
 
-            exchangeLogger.processed(state.getMethod(), state.getUri(), state.getStatus(), duration, responseBody);
+            setup().exchangeLogger().processed(state.getMethod(), state.getUri(), state.getStatus(), duration, responseBody);
         } finally {
             cleanupMdc(state);
             state.releaseBodies();
@@ -631,7 +664,41 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @param state The state of the request done with
      */
     void cleanupMdc(LoggedRequestState state) {
-        mdc.cleanup(state);
+        setup().mdc().cleanup(state);
+    }
+
+    /**
+     * What a provider works with, all of it made from its configuration.
+     *
+     * @param configuration  The configuration of the provider
+     * @param mdc            The MDC entries of the requests the provider logs, named as configured
+     * @param describer      Describes the requests received, masking the query parameters the configuration
+     *                       reports as sensitive
+     * @param mappingApplier Puts the MDC entries the {@link LoggedMapping} annotations ask for, keeping the
+     *                       parameters the configuration reports as sensitive out of automatic mappings, as
+     *                       well as the names of the fields
+     * @param bodyCapturer   Captures the bodies of the requests read and the responses written, as configured
+     * @param exchangeLogger Writes the lines logging the requests and returns their identifier to the caller,
+     *                       as configured
+     */
+    private record Setup(LoggedFilterConfiguration configuration, RequestMdc mdc, RequestDescriber describer,
+                         MappingApplier mappingApplier, BodyCapturer bodyCapturer, ExchangeLogger exchangeLogger) {
+
+        /**
+         * Makes what a provider configured as given works with.
+         *
+         * @param configuration The configuration of the provider
+         * @return What the provider works with
+         */
+        static Setup of(LoggedFilterConfiguration configuration) {
+            RequestMdc mdc = new RequestMdc(configuration.fieldNames());
+            return new Setup(configuration, mdc,
+                    new RequestDescriber(configuration::isSensitive),
+                    new MappingApplier(configuration::isSensitive, mdc::isField),
+                    new BodyCapturer(log, configuration::createBodyCapture),
+                    new ExchangeLogger(log, configuration));
+        }
+
     }
 
 }

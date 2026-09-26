@@ -31,25 +31,27 @@ import com.chavaillaz.jakarta.rs.internal.Sanitizer;
  * whether it returns that identifier to the caller, which parameters it keeps out of the logs, the level it
  * logs a request at, and how it captures bodies.
  * <p>
- * Immutable, and built through {@link #builder()}. A container instantiates a provider through its
- * no-argument constructor, so a subclass passes its configuration from there, declaring its binding and a
- * priority running it before a {@link LoggedFilter} the container may discover next to it (see there why):
+ * Immutable, and built through {@link #builder()}. A {@link LoggedFilter} the container instantiates looks
+ * its configuration up in the application, which declares it through a provider resolving it:
  * <pre>{@code
- * @Logged
  * @Provider
- * @Priority(Priorities.HEADER_DECORATOR - 1)
- * public class ApplicationLoggedFilter extends LoggedFilter {
+ * public class LoggingConfiguration implements ContextResolver<LoggedFilterConfiguration> {
  *
- *     public ApplicationLoggedFilter() {
- *         super(LoggedFilterConfiguration.builder()
- *                 .fieldName(LoggedField.REQUEST_ID, "trace-id")
- *                 .requestIdHeader("X-Trace-ID")
- *                 .build());
+ *     private static final LoggedFilterConfiguration CONFIGURATION = LoggedFilterConfiguration.builder()
+ *             .fieldName(LoggedField.REQUEST_ID, "trace-id")
+ *             .requestIdHeader("X-Trace-ID")
+ *             .build();
+ *
+ *     @Override
+ *     public LoggedFilterConfiguration getContext(Class<?> type) {
+ *         return CONFIGURATION;
  *     }
  *
  * }
  * }</pre>
- * An application registering its providers explicitly passes it to
+ * The resolver is asked for the class of the provider looking it up, and a provider it resolves nothing for,
+ * as one of an application declaring no resolver at all, uses the default configuration (see
+ * {@link #defaults()}). An application registering its providers explicitly passes the configuration to
  * {@link LoggedFilter#LoggedFilter(LoggedFilterConfiguration)} instead.
  * <p>
  * It applies to every resource the provider logs: what varies from a resource to another - which bodies are
@@ -80,7 +82,8 @@ public final class LoggedFilterConfiguration {
     }
 
     /**
-     * Gets the default configuration, used by {@link LoggedFilter#LoggedFilter()}.
+     * Gets the default configuration, used by a {@link LoggedFilter} the application declares none for (see
+     * {@link LoggedFilter#LoggedFilter()}).
      *
      * @return The configuration every setting of {@link Builder} documents the default of
      */

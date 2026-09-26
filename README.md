@@ -535,42 +535,46 @@ with `LoggedFilterConfiguration.builder()`:
 * **bodyCapture**: How bodies are captured (in memory by default), for example to spill very large ones to
   a temporary file.
 
-A container instantiates a provider through its no-argument constructor, so pass the configuration from the
-constructor of a subclass:
+The container instantiates the providers, so declare the configuration with a provider resolving it, which
+they look up when they log their first request:
 
 ```java
-@Logged
 @Provider
-@Priority(Priorities.HEADER_DECORATOR - 1)
-public class ApplicationLoggedFilter extends LoggedFilter {
+public class LoggingConfiguration implements ContextResolver<LoggedFilterConfiguration> {
 
-    public ApplicationLoggedFilter() {
-        super(LoggedFilterConfiguration.builder()
-                .fieldName(REQUEST_ID, "trace-id")
-                .requestIdHeader("X-Trace-ID")
-                .responseLevel(status -> status == 404 ? Level.INFO : LoggedSupport.levelOf(status))
-                .build());
+    private static final LoggedFilterConfiguration CONFIGURATION = LoggedFilterConfiguration.builder()
+            .fieldName(REQUEST_ID, "trace-id")
+            .requestIdHeader("X-Trace-ID")
+            .responseLevel(status -> status == 404 ? Level.INFO : LoggedSupport.levelOf(status))
+            .build();
+
+    @Override
+    public LoggedFilterConfiguration getContext(Class<?> type) {
+        return CONFIGURATION;
     }
 
 }
 ```
 
-Neither `@Logged` nor `@Priority` is inherited, so the subclass declares both: without `@Logged`, it would log
-the requests of every resource, annotated or not, and without `@Priority`, it would run among the filters of
-your application (at `Priorities.USER`) rather than before them. Its priority is one less than the one of
-`LoggedFilter`, as a container scanning the jars it deploys for providers registers `LoggedFilter` as well: a
-request is logged once, by the first of them to see it, which is then the subclass.
+`getContext` is given the class of the provider asking, and the default configuration applies to a provider it
+returns `null` for, as to all of them without such a resolver. An application registering its providers
+explicitly can pass the configuration to `new LoggedFilter(configuration)` instead.
 
-An application registering its providers explicitly can pass it to `new LoggedFilter(configuration)` instead.
-
-A subclass can also put entries of its own in MDC, through `putMdc` so they are removed once the request is
-done. An example is available with [UserLogged](src/test/java/com/chavaillaz/jakarta/rs/UserLogged.java)
+A subclass of `LoggedFilter` can put entries of its own in MDC, through `putMdc` so they are removed once the
+request is done. An example is available with [UserLogged](src/test/java/com/chavaillaz/jakarta/rs/UserLogged.java)
 and [UserLoggedFilter](src/test/java/com/chavaillaz/jakarta/rs/UserLoggedFilter.java), which:
 
 * Logs a new **user-id** field in MDC
 * Logs a new **user-agent** field in MDC if activated in its annotation
 * Reads the **request-id** from another header
 * Renames the MDC field of **request-id** to **request-identifier**
+
+Neither the binding nor the priority of `LoggedFilter` is inherited, so a subclass declares both: without a
+binding, it would log the requests of every resource, annotated or not, and without `@Priority`, it would run
+among the filters of your application (at `Priorities.USER`) rather than before them. A priority one less than
+the one of `LoggedFilter` makes it the one logging the requests both are bound to, as a container scanning the
+jars it deploys for providers registers `LoggedFilter` as well: a request is logged once, by the first of them
+to see it.
 
 A subclass bound to an annotation of its own, as `UserLoggedFilter` is to `@UserLogged`, logs bodies only if
 [LoggedBodyInterceptor](src/main/java/com/chavaillaz/jakarta/rs/LoggedBodyInterceptor.java) runs for the same

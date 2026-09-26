@@ -32,6 +32,8 @@ import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.container.Suspended;
 import jakarta.ws.rs.core.Response;
+import jakarta.ws.rs.ext.ContextResolver;
+import jakarta.ws.rs.ext.Provider;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -267,6 +269,26 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
         assertEquals(200, response.getStatus());
         String line = processed().getMessage().getFormattedMessage();
         assertTrue(line.matches("Processed GET /clearing with status 200 in \\d+ms"), line);
+    }
+
+    @Test
+    @DisplayName("Check the provider a container instantiates is configured the way the application declares")
+    void checkConfigurationDeclaredByApplication() throws Exception {
+        // Given: an application declaring its configuration, next to a provider it does not instantiate itself
+        Dispatcher declaring = MockDispatcherFactory.createDispatcher();
+        declaring.getProviderFactory().registerProvider(TraceConfiguration.class);
+        declaring.getProviderFactory().registerProvider(LoggedFilter.class);
+        declaring.getProviderFactory().registerProvider(LoggedBodyInterceptor.class);
+        declaring.getRegistry().addPerRequestResource(ArticleResource.class);
+
+        // When
+        MockHttpResponse response = invoke(declaring, MockHttpRequest.get("/article").header("X-Trace-ID", "abc-123"));
+
+        // Then
+        assertEquals(200, response.getStatus());
+        assertEquals("abc-123", processed().getContextData().getValue("trace-id"));
+        assertEquals("abc-123", response.getOutputHeaders().getFirst("X-Trace-ID"));
+        assertNull(response.getOutputHeaders().getFirst(REQUEST_ID_HEADER));
     }
 
     @Test
@@ -546,6 +568,24 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
     }
 
     /**
+     * Configuration an application declares, which the providers it does not instantiate itself look up.
+     */
+    @Provider
+    public static class TraceConfiguration implements ContextResolver<LoggedFilterConfiguration> {
+
+        static final LoggedFilterConfiguration CONFIGURATION = LoggedFilterConfiguration.builder()
+                .fieldName(REQUEST_ID, "trace-id")
+                .requestIdHeader("X-Trace-ID")
+                .build();
+
+        @Override
+        public LoggedFilterConfiguration getContext(Class<?> type) {
+            return CONFIGURATION;
+        }
+
+    }
+
+    /**
      * Configured subclass of an application, running before the {@link LoggedFilter} a container discovers
      * next to it, so it is the one logging the requests both are bound to.
      */
@@ -554,10 +594,7 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
     public static class TraceLoggedFilter extends LoggedFilter {
 
         public TraceLoggedFilter() {
-            super(LoggedFilterConfiguration.builder()
-                    .fieldName(REQUEST_ID, "trace-id")
-                    .requestIdHeader("X-Trace-ID")
-                    .build());
+            super(TraceConfiguration.CONFIGURATION);
         }
 
     }
