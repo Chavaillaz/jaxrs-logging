@@ -32,6 +32,7 @@ import jakarta.ws.rs.core.FeatureContext;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
+import jakarta.ws.rs.ext.Provider;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
 import jakarta.ws.rs.ext.WriterInterceptorContext;
 import java.io.ByteArrayOutputStream;
@@ -606,6 +607,14 @@ class LoggedClientFilterTest extends AbstractFilterTest {
         assertTrue(enabled);
         assertNotNull(listAppender.findFirstMessage("Request body"));
         assertNotNull(listAppender.findFirstMessage("Response body"));
+    }
+
+    @Test
+    @DisplayName("Check the filter is left for the application to register rather than discovered")
+    void checkNotDiscoverable() {
+        // A container discovering it in a deployment hands RESTEasy clients one configured by default, which
+        // logs every call twice next to the one the application registers, and sends the identifier first
+        assertFalse(LoggedClientFilter.class.isAnnotationPresent(Provider.class));
     }
 
     @Test

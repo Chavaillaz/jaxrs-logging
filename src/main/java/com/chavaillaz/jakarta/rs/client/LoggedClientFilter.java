@@ -33,7 +33,6 @@ import jakarta.ws.rs.client.ClientResponseContext;
 import jakarta.ws.rs.client.ClientResponseFilter;
 import jakarta.ws.rs.core.Feature;
 import jakarta.ws.rs.core.FeatureContext;
-import jakarta.ws.rs.ext.Provider;
 import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
 import jakarta.ws.rs.ext.WriterInterceptor;
@@ -73,8 +72,10 @@ import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
  * {@link Builder#correlationIdHeader(String)}), so both sides of a call are logged under one identifier.
  * <p>
  * Having no resource method to read annotations from, it is configured through {@link #builder()}, and
- * applies to every call made through the {@code Client} or {@code WebTarget} it is registered on. It logs,
- * with the credentials the URI of a call may carry masked (see {@link #getLoggedUri(URI)}):
+ * applies to every call made through the {@code Client} or {@code WebTarget} it is registered on. It is not a
+ * {@code @Provider} a container discovers: RESTEasy hands the providers it discovers in a deployment to every
+ * client created there, which would get one configured by default, next to the one the application registers.
+ * It logs, with the credentials the URI of a call may carry masked (see {@link #getLoggedUri(URI)}):
  * <ul>
  *     <li>{@code Calling [method] [uri]}, once the request is about to be sent</li>
  *     <li>{@code Called [method] [uri] with status [status] in [duration]ms}, once the response is received</li>
@@ -84,7 +85,6 @@ import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
  * {@code "Called ..."} line, and possibly never. For the same reason, only {@link LoggedBody.LogType#LOG} is
  * supported, as nothing marks the end of a call that an MDC entry holding the body could be scoped to.
  */
-@Provider
 @ConstrainedTo(CLIENT)
 @Priority(HEADER_DECORATOR)
 public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFilter, Feature {
