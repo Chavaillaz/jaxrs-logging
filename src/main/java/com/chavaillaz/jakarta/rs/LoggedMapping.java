@@ -37,12 +37,12 @@ public @interface LoggedMapping {
      * Flag indicating if the mapping must be done automatically
      * (one to one, without changing the names of parameters) for the given type.
      * <p>
-     * The resulting MDC key is derived from the parameter or header name, which is controlled by the
-     * client sending the request, so an automatic mapping only ever adds entries: a parameter whose key is
-     * taken already - by a {@link LoggedField} (e.g. {@code request-id}, {@code duration}), by an
-     * explicit mapping, or by an entry already in MDC - is left out, whatever the prefix. Always set a
-     * non-empty {@link #mdcPrefix()} all the same when enabling this for an untrusted source: without it, a
-     * client could choose the key of an entry the application only puts later on.
+     * The resulting MDC key is derived from the parameter or header name, which is controlled by the client
+     * sending the request, so an automatic mapping only ever adds entries: a parameter whose key is taken
+     * already - by a {@link LoggedField} (e.g. {@code request-id}, {@code duration}), by an explicit mapping,
+     * or by an entry already in MDC - is left out, whatever the prefix, as is a parameter without a name.
+     * Always set a non-empty {@link #mdcPrefix()} all the same when enabling this for an untrusted source:
+     * without it, a client could choose the key of an entry the application only puts later on.
      *
      * @return {@code true} to automatically map the parameters, {@code false} otherwise
      */

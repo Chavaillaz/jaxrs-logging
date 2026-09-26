@@ -4,6 +4,7 @@ import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static com.chavaillaz.jakarta.rs.internal.Sanitizer.sanitize;
 import static java.lang.String.CASE_INSENSITIVE_ORDER;
 import static java.util.Comparator.comparing;
+import static org.apache.commons.lang3.StringUtils.isBlank;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
 
 import java.util.Collection;
@@ -190,7 +191,13 @@ final class MappingApplier {
             if (claimedNames.contains(name) || sensitive.test(mapping.type(), name) || values == null || values.isEmpty()) {
                 continue;
             }
-            String key = mapping.mdcPrefix() + sanitize(name);
+            String sanitizedName = sanitize(name);
+            if (isBlank(sanitizedName)) {
+                // No key to map it under: "?=value" has no name, and a log shipper rejects a line carrying an
+                // entry without one, as Elasticsearch does a field without a name
+                continue;
+            }
+            String key = mapping.mdcPrefix() + sanitizedName;
             if (!explicitKeys.contains(key) && !taken.test(key)) {
                 output.accept(key, sanitize(values.getFirst()));
             }

@@ -20,7 +20,7 @@ import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
 
 /**
  * Exercises {@link MappingApplier} on plain maps, without any request context: the mapping behaviour seen
- * through a request is covered by {@link LoggedFilterTest}.
+ * through a request is covered by {@link LoggedFeatureTest}.
  */
 @DisplayName("Mapping applier")
 class MappingApplierTest {
@@ -127,6 +127,17 @@ class MappingApplierTest {
 
         assertEquals(Map.of(), apply("explicit", QUERY, parameters));
         assertEquals(Map.of(), apply("automatic", QUERY, parameters));
+    }
+
+    @Test
+    @DisplayName("Check a parameter without a name is not mapped automatically")
+    void checkParameterWithoutNameSkipped() throws Exception {
+        // Mapped under an empty key, it had a log shipper reject every line of the request, as Elasticsearch
+        // does a field without a name
+        Map<String, List<String>> parameters = Map.of("", List.of("x"), "\r\n", List.of("y"), "topic", List.of("news"));
+
+        assertEquals(Map.of("topic", "news"), apply("overlapping", QUERY, parameters));
+        assertEquals(Map.of("query-topic", "news"), apply("automatic", QUERY, parameters));
     }
 
     @Test
