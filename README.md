@@ -443,7 +443,9 @@ another header (`requestIdHeader` of its configuration) is given it there with `
 Unlike `@Logged`, which is resolved per resource method from annotations, `LoggedClientFilter` has no resource
 method to attach annotations to: an instance is configured once through its builder and applies to every call
 made through the `Client`/`WebTarget` it is registered on. It is never discovered by the container, so a client
-the application registers nothing on logs nothing.
+the application registers nothing on logs nothing. It is a JAX-RS `Feature` registering the filter and the
+interceptor doing the work, each at the priority it needs: register it whole, as below, since
+`register(filter, ClientRequestFilter.class)` registers nothing.
 
 ```java
 client.register(LoggedClientFilter.builder()

@@ -72,9 +72,11 @@ import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
  * {@link Builder#correlationIdHeader(String)}), so both sides of a call are logged under one identifier.
  * <p>
  * Having no resource method to read annotations from, it is configured through {@link #builder()}, and
- * applies to every call made through the {@code Client} or {@code WebTarget} it is registered on. It is not a
- * {@code @Provider} a container discovers: RESTEasy hands the providers it discovers in a deployment to every
- * client created there, which would get one configured by default, next to the one the application registers.
+ * applies to every call made through the {@code Client} or {@code WebTarget} it is registered on, as a
+ * {@link Feature} registering the filter and the interceptor doing the work (see
+ * {@link #configure(FeatureContext)}). It is not a {@code @Provider} a container discovers: RESTEasy hands the
+ * providers it discovers in a deployment to every client created there, which would get one configured by
+ * default, next to the one the application registers.
  * It logs, with the credentials the URI of a call may carry masked (see {@link #getLoggedUri(URI)}):
  * <ul>
  *     <li>{@code Calling [method] [uri]}, once the request is about to be sent</li>
@@ -86,8 +88,7 @@ import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
  * supported, as nothing marks the end of a call that an MDC entry holding the body could be scoped to.
  */
 @ConstrainedTo(CLIENT)
-@Priority(HEADER_DECORATOR)
-public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFilter, Feature {
+public class LoggedClientFilter implements Feature {
 
     /**
      * Logger the calls, their bodies and the failures to log them are written to.
@@ -116,18 +117,6 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      * {@link #captureResponseBody(ReaderInterceptorContext)}.
      */
     protected static final String RESPONSE_BODY_LOGGED_PROPERTY = LoggedClientFilter.class.getName() + ".responseBodyLogged";
-
-    /**
-     * Name of the request property holding the filter that handled the request of the call, which a runtime
-     * registering it twice (see {@link CallFilter}) calls twice for the same request.
-     */
-    private static final String REQUEST_HANDLED_PROPERTY = LoggedClientFilter.class.getName() + ".requestHandled";
-
-    /**
-     * Name of the request property holding the filter that handled the response of the call, for the same
-     * reason as {@link #REQUEST_HANDLED_PROPERTY}.
-     */
-    private static final String RESPONSE_HANDLED_PROPERTY = LoggedClientFilter.class.getName() + ".responseHandled";
 
     /**
      * Instantiates and caches the body filters given as classes.
@@ -423,17 +412,13 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     }
 
     /**
-     * {@inheritDoc}
-     * <p>
-     * Propagates the correlation identifier and logs the {@code "Calling ..."} line, once per call however
-     * many times the runtime calls this filter for it (see {@link CallFilter}). Nothing done here can fail the
-     * call, which is made all the same when it cannot be described.
+     * Propagates the correlation identifier and logs the {@code "Calling ..."} line, as the filter this provider
+     * registers (see {@link #configure(FeatureContext)}) sees the request of a call about to be sent. Nothing
+     * done here can fail the call, which is made all the same when it cannot be described.
+     *
+     * @param requestContext The context of the request about to be sent
      */
-    @Override
-    public void filter(ClientRequestContext requestContext) {
-        if (!isFirstToHandle(requestContext, REQUEST_HANDLED_PROPERTY)) {
-            return;
-        }
+    protected void filter(ClientRequestContext requestContext) {
         // Guarded apart from the description of the call, so a call that cannot be described still carries
         // the identifier correlating it with the service it reaches
         safely(() -> propagateCorrelationId(requestContext));
@@ -444,24 +429,6 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
             requestContext.setProperty(REQUEST_URI_PROPERTY, uri);
             log.info("Calling {} {}", requestContext.getMethod(), uri);
         });
-    }
-
-    /**
-     * Records that this filter handles the given step of the call made with the given request, unless it did
-     * already: a runtime registering both this filter and its {@link CallFilter} calls it twice per step.
-     *
-     * @param requestContext The context of the request of the call
-     * @param step           The request property recording which filter handled the step
-     * @return {@code true} if this filter handles the step, {@code false} if it already did
-     */
-    private boolean isFirstToHandle(ClientRequestContext requestContext, String step) {
-        return LoggingGuard.safely(log, "Unable to tell whether the client call was logged already, it may be logged twice", () -> {
-            if (requestContext.getProperty(step) == this) {
-                return false;
-            }
-            requestContext.setProperty(step, this);
-            return true;
-        }, true);
     }
 
     /**
@@ -567,20 +534,17 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     }
 
     /**
-     * {@inheritDoc}
-     * <p>
-     * Logs the {@code "Called ..."} line, at the level {@link #getResponseLevel(int)} gives the status, once per
-     * call however many times the runtime calls this filter for it (see {@link CallFilter}). Nothing done here
-     * can fail the call, whose response has been received.
+     * Logs the {@code "Called ..."} line, at the level {@link #getResponseLevel(int)} gives the status, as the
+     * filter this provider registers (see {@link #configure(FeatureContext)}) sees the response of a call.
+     * Nothing done here can fail the call, whose response has been received.
      * <p>
      * A call aborted by a request filter running earlier ({@link ClientRequestContext#abortWith}) never
      * reaches {@link #filter(ClientRequestContext)}, where it starts, and is logged with a zero duration.
+     *
+     * @param requestContext  The context of the request sent
+     * @param responseContext The context of the response received
      */
-    @Override
-    public void filter(ClientRequestContext requestContext, ClientResponseContext responseContext) {
-        if (!isFirstToHandle(requestContext, RESPONSE_HANDLED_PROPERTY)) {
-            return;
-        }
+    protected void filter(ClientRequestContext requestContext, ClientResponseContext responseContext) {
         safely(() -> {
             long now = nanoTime();
             long start = requestContext.getProperty(REQUEST_TIME_PROPERTY) instanceof Long started ? started : now;
@@ -656,13 +620,11 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     /**
      * {@inheritDoc}
      * <p>
-     * Registers the {@link BodyInterceptor} capturing the bodies of the calls along with this provider, so
-     * registering this provider is enough. The two need priorities of their own, which one class cannot
-     * declare: the filters run at {@link Priorities#HEADER_DECORATOR}, before the filters of the application
-     * on the request and after them on the response, while a body is captured after any entity coder.
-     * <p>
-     * Registers the {@link CallFilter} of this provider as well, for a runtime registering it as a feature
-     * alone.
+     * Registers the {@link CallFilter} logging the calls and the {@link BodyInterceptor} capturing their
+     * bodies, which both call this provider back, so registering this provider is enough. The two need
+     * priorities of their own, which one class cannot declare: the filter runs at
+     * {@link Priorities#HEADER_DECORATOR}, before the filters of the application on the request and after
+     * them on the response, while a body is captured after any entity coder.
      */
     @Override
     public boolean configure(FeatureContext context) {
@@ -672,13 +634,10 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
     }
 
     /**
-     * Logs the calls on behalf of the {@link LoggedClientFilter} that registered it, for a runtime registering
-     * an instance implementing {@link Feature} as a feature alone - Apache CXF does - leaving the filters it
-     * implements out, and with them every line logging a call. Registering the filter itself from
-     * {@link #configure(FeatureContext)} instead would configure it again there, endlessly.
-     * <p>
-     * Jersey and RESTEasy register both, and call both for every call: the filter only handles the first
-     * (see {@link LoggedClientFilter#filter(ClientRequestContext)}).
+     * Logs the calls on behalf of the {@link LoggedClientFilter} that registered it, which implements no filter
+     * contract itself, so that every runtime calls this filter alone, once per call: Jersey and RESTEasy
+     * register a component for every contract it implements, feature or not, and would call such a feature
+     * next to this filter, whereas Apache CXF registers a feature as a feature alone.
      */
     @ConstrainedTo(CLIENT)
     @Priority(HEADER_DECORATOR)

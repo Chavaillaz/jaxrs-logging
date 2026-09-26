@@ -8,6 +8,7 @@ import static com.chavaillaz.jakarta.rs.internal.Sanitizer.REQUEST_ID_MAX_LENGTH
 import static jakarta.ws.rs.HttpMethod.POST;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.apache.commons.lang3.StringUtils.LF;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -30,6 +31,7 @@ import jakarta.ws.rs.client.ClientRequestContext;
 import jakarta.ws.rs.client.ClientRequestFilter;
 import jakarta.ws.rs.client.ClientResponseContext;
 import jakarta.ws.rs.client.ClientResponseFilter;
+import jakarta.ws.rs.core.Feature;
 import jakarta.ws.rs.core.FeatureContext;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.MultivaluedHashMap;
@@ -633,9 +635,9 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check a runtime registering the filter as a feature alone has its calls logged all the same")
-    void checkCallsLoggedWhenRegisteredAsFeatureAlone() {
-        // Given: what Apache CXF registers of the filter, a feature and nothing more
+    @DisplayName("Check registering the feature registers the filter logging the calls on its behalf")
+    void checkRegistrationRegistersCallFilter() {
+        // Given: what every runtime registers of the feature, the filter it registers itself
         FeatureContext featureContext = mock(FeatureContext.class);
         filter.configure(featureContext);
         ClientRequestFilter requestFilter = registered(featureContext, ClientRequestFilter.class);
@@ -655,25 +657,11 @@ class LoggedClientFilterTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check a runtime registering the filter both as a filter and as a feature has each call logged once")
-    void checkCallsLoggedOnceWhenRegisteredTwice() throws IOException {
-        // Given: what Jersey and RESTEasy register of the filter, itself and what it registers as a feature
-        FeatureContext featureContext = mock(FeatureContext.class);
-        filter.configure(featureContext);
-        ClientRequestFilter requestFilter = registered(featureContext, ClientRequestFilter.class);
-        ClientResponseFilter responseFilter = registered(featureContext, ClientResponseFilter.class);
-        ClientResponseContext responseContext = mock(ClientResponseContext.class);
-        doReturn(200).when(responseContext).getStatus();
-
-        // When
-        filter.filter(requestContext);
-        requestFilter.filter(requestContext);
-        responseFilter.filter(requestContext, responseContext);
-        filter.filter(requestContext, responseContext);
-
-        // Then
-        assertEquals(1, lines("Calling"));
-        assertEquals(1, lines("Called"));
+    @DisplayName("Check the filter is a feature alone, which no runtime calls next to the filter it registers")
+    void checkFeatureAlone() {
+        // Jersey and RESTEasy register a component for every contract it implements: one implementing a filter
+        // contract as well would be called next to the filter it registers, logging every call twice
+        assertArrayEquals(new Class<?>[]{Feature.class}, LoggedClientFilter.class.getInterfaces());
     }
 
     @Test
