@@ -13,7 +13,7 @@
  * into {@code LoggedFilter} by reflection. The body filter classes a resource names are instantiated by
  * reflection too, so the package declaring them must be exported to this module.
  */
-module com.chavaillaz.jaxrs.logging {
+module com.chavaillaz.jakarta.rs {
 
     requires transitive jakarta.annotation;
     requires transitive jakarta.ws.rs;

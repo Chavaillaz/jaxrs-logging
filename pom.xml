@@ -45,7 +45,7 @@
              management API of the JDK, which measures what a capture allocates, and - once run - Log4j, which
              captures the lines logged, and which the module path then holds as the provider of SLF4J -->
         <module.test.modules>java.management,jdk.management</module.test.modules>
-        <module.test.reads>com.chavaillaz.jaxrs.logging=${module.test.modules}</module.test.reads>
+        <module.test.reads>com.chavaillaz.jakarta.rs=${module.test.modules}</module.test.reads>
         <module.test.run.reads>${module.test.reads},org.apache.logging.log4j,org.apache.logging.log4j.core</module.test.run.reads>
     </properties>
 

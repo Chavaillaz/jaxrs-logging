@@ -20,7 +20,7 @@ The dependency is available in maven central (see badge for version):
 It requires Java 21 or later, and is built against the Jakarta RESTful Web Services 3.1 API, which the
 application server or JAX-RS implementation of the application provides.
 
-The jar is a named module, `com.chavaillaz.jaxrs.logging`, exporting the following packages:
+The jar is a named module, `com.chavaillaz.jakarta.rs`, exporting the following packages:
 
 | Package                             | Content                                                                    |
 |-------------------------------------|----------------------------------------------------------------------------|
