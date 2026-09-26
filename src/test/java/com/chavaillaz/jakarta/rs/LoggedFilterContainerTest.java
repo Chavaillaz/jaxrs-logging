@@ -4,6 +4,7 @@ import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.REQUEST;
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.RESPONSE;
 import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.LOG;
 import static com.chavaillaz.jakarta.rs.LoggedField.DURATION;
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_URI;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
@@ -269,6 +270,36 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check a request two providers are bound to is logged once, by the first to see it")
+    void checkRequestLoggedOnceWhateverProvidersBound() throws Exception {
+        // Given: a subclass of the application next to the LoggedFilter a container discovers in this library
+        Dispatcher discovering = MockDispatcherFactory.createDispatcher();
+        discovering.getProviderFactory().registerProvider(LoggedFilter.class);
+        discovering.getProviderFactory().registerProvider(TraceLoggedFilter.class);
+        discovering.getProviderFactory().registerProvider(LoggedBodyInterceptor.class);
+        discovering.getRegistry().addPerRequestResource(ArticleResource.class);
+
+        // When
+        MockHttpResponse response = invoke(discovering, MockHttpRequest.post("/article")
+                .contentType(TEXT_PLAIN)
+                .content("hello".getBytes(UTF_8)));
+
+        // Then: each line once, under the identifier of the subclass alone, which returns it in its own header
+        assertEquals(200, response.getStatus());
+        assertEquals(1, lines("Received"));
+        assertEquals(1, lines("Processed"));
+        assertEquals("Received POST /article" + LF + "hello", received().getMessage().getFormattedMessage());
+        String traceId = received().getContextData().getValue("trace-id");
+        assertNotNull(traceId);
+        assertEquals(traceId, processed().getContextData().getValue("trace-id"));
+        assertNull(processed().getContextData().getValue("request-id"));
+        assertEquals(traceId, response.getOutputHeaders().getFirst("X-Trace-ID"));
+        assertNull(response.getOutputHeaders().getFirst(REQUEST_ID_HEADER));
+        Map<String, String> left = MDC.getCopyOfContextMap();
+        assertTrue(left == null || left.isEmpty(), () -> "Left in MDC: " + left);
+    }
+
+    @Test
     @DisplayName("Check nothing is left in MDC once a request has been served")
     void checkNothingLeftInMdc() throws Exception {
         // When
@@ -313,6 +344,12 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
         LogEvent event = listAppender.findFirstMessage("Received");
         assertNotNull(event, "No Received line was logged");
         return event;
+    }
+
+    long lines(String start) {
+        return listAppender.getMessages().stream()
+                .filter(event -> event.getMessage().getFormattedMessage().startsWith(start))
+                .count();
     }
 
     @Path("/article")
@@ -478,6 +515,23 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
         @Override
         public void close() {
             released = true;
+        }
+
+    }
+
+    /**
+     * Configured subclass of an application, running before the {@link LoggedFilter} a container discovers
+     * next to it, so it is the one logging the requests both are bound to.
+     */
+    @Logged
+    @Priority(Priorities.HEADER_DECORATOR - 1)
+    public static class TraceLoggedFilter extends LoggedFilter {
+
+        public TraceLoggedFilter() {
+            super(LoggedFilterConfiguration.builder()
+                    .fieldName(REQUEST_ID, "trace-id")
+                    .requestIdHeader("X-Trace-ID")
+                    .build());
         }
 
     }

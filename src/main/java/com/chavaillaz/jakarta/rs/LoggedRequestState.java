@@ -17,16 +17,18 @@ import com.chavaillaz.jakarta.rs.LoggedResolver.BodyConfiguration;
 /**
  * Everything {@link LoggedFilter} remembers about one request while it is being processed.
  * <p>
- * A JAX-RS provider is shared by every concurrent request, so what it carries from one callback to the next
- * lives on the request, in its property map, under a single property. Every callback reaches it through the
- * context it is handed - a filter's request context or an interceptor's context, which share that map -
- * rather than through an injected {@code @Context ContainerRequestContext}, which the JAX-RS contract does
- * not provide for, and RESTEasy refuses.
+ * A JAX-RS provider is shared by every concurrent request, and can even be instantiated once per contract it
+ * implements - RESTEasy does for one registered as a class, its request filter then being another instance
+ * than its response filter - so what it carries from one callback to the next lives on the request, in its
+ * property map, under a single property. Every callback reaches it through the context it is handed - a
+ * filter's request context or an interceptor's context, which share that map - rather than through an
+ * injected {@code @Context ContainerRequestContext}, which the JAX-RS contract does not provide for, and
+ * RESTEasy refuses.
  * <p>
  * A request can start on one thread and complete on another (a {@code @Suspended} response resumed from a
  * worker, a reactive resource method), so the flags are atomic and the mutable fields volatile.
  *
- * @see #of(ContainerRequestContext, LoggedFilter)
+ * @see #attach(ContainerRequestContext, LoggedFilter)
  */
 final class LoggedRequestState {
 
@@ -41,7 +43,7 @@ final class LoggedRequestState {
     /**
      * Provider handling this request, which {@link LoggedBodyInterceptor} hands the bodies it captures back
      * to: read from the request rather than injected there, as several providers, each configured its own
-     * way, can be registered.
+     * way, can be registered. The providers of its class are the only ones logging the request.
      */
     private final LoggedFilter provider;
 
@@ -137,18 +139,15 @@ final class LoggedRequestState {
     }
 
     /**
-     * Gets the state of the request carried by the given context, creating and attaching it on first use.
+     * Creates the state of a request starting, and attaches it to the request.
      *
-     * @param context  The context of the request being processed
-     * @param provider The provider handling the request, recorded when the state is created
-     * @return The state of the request, never {@code null}
+     * @param context  The context of the request starting
+     * @param provider The provider handling the request
+     * @return The state of the request
      */
-    static LoggedRequestState of(ContainerRequestContext context, LoggedFilter provider) {
-        LoggedRequestState state = find(context);
-        if (state == null) {
-            state = new LoggedRequestState(provider);
-            context.setProperty(PROPERTY, state);
-        }
+    static LoggedRequestState attach(ContainerRequestContext context, LoggedFilter provider) {
+        LoggedRequestState state = new LoggedRequestState(provider);
+        context.setProperty(PROPERTY, state);
         return state;
     }
 

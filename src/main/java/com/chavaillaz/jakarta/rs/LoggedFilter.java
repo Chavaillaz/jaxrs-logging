@@ -27,6 +27,7 @@ import jakarta.ws.rs.container.ContainerResponseContext;
 import jakarta.ws.rs.container.ContainerResponseFilter;
 import jakarta.ws.rs.container.ResourceInfo;
 import jakarta.ws.rs.core.Context;
+import jakarta.ws.rs.ext.InterceptorContext;
 import jakarta.ws.rs.ext.Provider;
 import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
@@ -72,6 +73,10 @@ import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
  * {@link Priority} of its own. Bodies are captured by {@link LoggedBodyInterceptor} instead, whose priority
  * places it after any entity coder, so it captures the entity rather than its transfer encoding: an
  * application registering its providers explicitly registers both.
+ * <p>
+ * A request is logged once, by the first {@code LoggedFilter} to see it, however many of them are bound to
+ * its resource - this class, which the container discovers in this library, and a subclass of the
+ * application, typically: the others stand aside.
  * <p>
  * The configuration resolved from the annotations of a resource method, and the body filters it names, are
  * cached for the lifetime of the provider, which suits the fixed set of resources of an application but not
@@ -249,15 +254,20 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * {@inheritDoc}
      * <p>
      * Starts the request: attaches its state, puts the MDC entries describing it, and logs its
-     * {@code "Received ..."} line right away when it has no entity to read. Nothing done here can fail the
-     * request, which the resource method has yet to serve.
+     * {@code "Received ..."} line right away when it has no entity to read - unless another provider bound
+     * to the resource started it already, and logs it (see {@link #handles(LoggedRequestState)}). Nothing
+     * done here can fail the request, which the resource method has yet to serve.
      */
     @Override
     public void filter(ContainerRequestContext requestContext) {
         safely(() -> {
+            if (LoggedRequestState.find(requestContext) != null) {
+                // Started by another provider bound to the resource, which logs it
+                return;
+            }
             // Starts measuring the duration, and records this instance as the one handling the request, for
             // LoggedBodyInterceptor to hand its captures back to
-            LoggedRequestState state = LoggedRequestState.of(requestContext, this);
+            LoggedRequestState state = LoggedRequestState.attach(requestContext, this);
             // From here on, the entries this thread carries are this request's
             mdc.start(state);
 
@@ -269,6 +279,35 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
                 logRequest(state, EMPTY);
             }
         });
+    }
+
+    /**
+     * Indicates whether this provider is the one logging the request of the given state.
+     * <p>
+     * A request is logged by a single provider, however many are bound to its resource - a
+     * {@link LoggedFilter} the container discovers in this library next to a subclass of the application,
+     * for instance - as two of them would log it twice, under two identifiers, each sweeping the MDC entries
+     * of the other. That provider is the one starting the request, along with the other instances of its
+     * class, as a container can instantiate a provider once per contract it implements (see
+     * {@link LoggedRequestState}): the providers of other classes stand aside.
+     *
+     * @param state The state of the request
+     * @return {@code true} if this provider logs the request, {@code false} if another one does
+     */
+    private boolean handles(LoggedRequestState state) {
+        return state.getProvider().getClass() == getClass();
+    }
+
+    /**
+     * Gets the state of the request carried by the given context, if this provider is the one logging it
+     * (see {@link #handles(LoggedRequestState)}).
+     *
+     * @param context The context of the entity being read or written
+     * @return The state of the request, or {@code null} if no provider or another one logs it
+     */
+    private @Nullable LoggedRequestState handledState(InterceptorContext context) {
+        LoggedRequestState state = LoggedRequestState.find(context);
+        return state != null && handles(state) ? state : null;
     }
 
     /**
@@ -349,7 +388,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             return context.proceed();
         } finally {
             safely(() -> {
-                LoggedRequestState state = LoggedRequestState.find(context);
+                LoggedRequestState state = handledState(context);
                 String body = state == null ? null : state.getRequestBody();
                 if (isNotBlank(body) && getBodyConfiguration(state, REQUEST).logs(LOG)) {
                     logRequest(state, body);
@@ -409,13 +448,15 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
     }
 
     /**
-     * Gets the state of the given request, first establishing it for a request whose start this provider
-     * never saw: one aborted by a filter running earlier, as an authentication filter at
-     * {@link Priorities#AUTHENTICATION} does, skips the remaining request filters but not the response filters.
-     * Its duration then counts from this point.
+     * Gets the state of the given request if this provider is the one logging it (see
+     * {@link #handles(LoggedRequestState)}), first establishing it for a request whose start no provider saw:
+     * one aborted by a filter running earlier, as an authentication filter at {@link Priorities#AUTHENTICATION}
+     * does, skips the remaining request filters but not the response filters. Its duration then counts from
+     * this point.
      *
      * @param requestContext The context of the request received
-     * @return The state of the request, or {@code null} if even establishing it failed
+     * @return The state of the request, or {@code null} if another provider logs it, or if even establishing
+     * it failed
      */
     private @Nullable LoggedRequestState startedState(ContainerRequestContext requestContext) {
         LoggedRequestState state = LoggedRequestState.find(requestContext);
@@ -423,7 +464,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             filter(requestContext);
             state = LoggedRequestState.find(requestContext);
         }
-        return state;
+        return state != null && handles(state) ? state : null;
     }
 
     /**
@@ -465,7 +506,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             context.proceed();
         } finally {
             safely(() -> {
-                LoggedRequestState state = LoggedRequestState.find(context);
+                LoggedRequestState state = handledState(context);
                 if (state != null) {
                     mdc.onBehalfOf(state, () -> logResponseWithBody(state));
                 }
