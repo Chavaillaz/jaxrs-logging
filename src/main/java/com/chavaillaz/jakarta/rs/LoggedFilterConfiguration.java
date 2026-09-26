@@ -24,6 +24,7 @@ import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import com.chavaillaz.jakarta.rs.internal.CredentialNames;
+import com.chavaillaz.jakarta.rs.internal.Sanitizer;
 
 /**
  * Configuration of a {@link LoggedFilter}: the names of its MDC entries, how it identifies a request and
@@ -142,7 +143,7 @@ public final class LoggedFilterConfiguration {
      *
      * @param request The context of the request received
      * @return The identifier of the request, not sanitized yet, and {@code null} or blank if there is none
-     *         (see {@link RequestDescriber#requestIdOf(String)})
+     *         (see {@link Sanitizer#requestIdOf(String)})
      */
     @Nullable String requestIdOf(ContainerRequestContext request) {
         return requestId.apply(request);

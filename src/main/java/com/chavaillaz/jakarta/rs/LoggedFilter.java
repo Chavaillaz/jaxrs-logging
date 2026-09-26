@@ -51,6 +51,7 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import com.chavaillaz.jakarta.rs.internal.BodyCapturer;
 import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
 import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
+import com.chavaillaz.jakarta.rs.internal.Sanitizer;
 
 /**
  * Provider logging the requests received by the resources annotated with {@link Logged}, and describing each
@@ -221,7 +222,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
      * @return The sanitized value, or {@code null} if the given value was {@code null}
      */
     protected static @Nullable String sanitize(@Nullable String value) {
-        return RequestDescriber.sanitize(value);
+        return Sanitizer.sanitize(value);
     }
 
     /**

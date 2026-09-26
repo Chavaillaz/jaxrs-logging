@@ -1,7 +1,7 @@
 package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
-import static com.chavaillaz.jakarta.rs.RequestDescriber.sanitize;
+import static com.chavaillaz.jakarta.rs.internal.Sanitizer.sanitize;
 import static java.lang.String.CASE_INSENSITIVE_ORDER;
 import static java.util.Comparator.comparing;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
