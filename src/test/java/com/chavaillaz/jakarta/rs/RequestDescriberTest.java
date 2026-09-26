@@ -32,7 +32,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 
 /**
  * Exercises {@link RequestDescriber} directly: the request identifier edge cases are covered through a
- * request by {@link LoggedFilterTest}.
+ * request by {@link LoggedFeatureTest}.
  */
 @DisplayName("Request describer")
 class RequestDescriberTest {
@@ -117,6 +117,15 @@ class RequestDescriberTest {
 
         assertEquals("/articles/  42", fields.get(REQUEST_URI));
         assertEquals("topic=a b", fields.get(REQUEST_PARAMETERS));
+    }
+
+    @Test
+    @DisplayName("Check a query parameter cannot read as several, the characters separating them escaped")
+    void checkQuerySeparatorsEscaped() throws Exception {
+        // A decoded value holding "&access_token=forged" was rendered as a parameter of its own, unmasked
+        Map<LoggedField, String> fields = describe("GET", "/articles?q=a%26access_token%3Dforged&odd%3Dname=100%25", resource(null, null));
+
+        assertEquals("odd%3Dname=100%25&q=a%26access_token=forged", fields.get(REQUEST_PARAMETERS));
     }
 
     @Test

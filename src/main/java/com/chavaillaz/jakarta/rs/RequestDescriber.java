@@ -10,15 +10,16 @@ import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
 import static com.chavaillaz.jakarta.rs.filter.MaskingBodyFilter.DEFAULT_MASK;
 import static com.chavaillaz.jakarta.rs.internal.Sanitizer.requestIdOf;
 import static com.chavaillaz.jakarta.rs.internal.Sanitizer.sanitize;
-import static java.lang.String.join;
 import static java.util.Map.Entry.comparingByKey;
 import static java.util.stream.Collectors.joining;
 import static org.apache.commons.lang3.StringUtils.EMPTY;
+import static org.apache.commons.lang3.StringUtils.containsNone;
 
 import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ResourceInfo;
 import jakarta.ws.rs.core.UriInfo;
 import java.lang.reflect.Method;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.function.BiConsumer;
@@ -39,6 +40,18 @@ import com.chavaillaz.jakarta.rs.internal.Sanitizer;
  * masked.
  */
 final class RequestDescriber {
+
+    /**
+     * Characters escaped in the name of a query parameter: those separating parameters, a name from its value,
+     * and the escape character.
+     */
+    private static final String NAME_SEPARATORS = "%&=";
+
+    /**
+     * Characters escaped in the value of a query parameter: those separating parameters, and the escape
+     * character. A value may hold {@code =}, a parameter being split at the first one.
+     */
+    private static final String VALUE_SEPARATORS = "%&";
 
     private final BiPredicate<MappingType, String> sensitive;
 
@@ -96,6 +109,9 @@ final class RequestDescriber {
      * <p>
      * The parameter name is kept even when its value is masked, as the name is what is useful for
      * troubleshooting (knowing an {@code access_token} was supplied at all) and is not itself the secret.
+     * <p>
+     * Names and values are decoded, so the characters separating them are escaped (see {@link #escape}): a
+     * value holding {@code &access_token=forged} would otherwise read as a parameter of its own.
      *
      * @param parameters The query parameters of the request, by name
      * @return The rendered query parameters, empty if the request has none
@@ -109,10 +125,33 @@ final class RequestDescriber {
         return parameters.entrySet()
                 .stream()
                 .sorted(comparingByKey())
-                .map(entry -> entry.getKey() + "=" + (sensitive.test(QUERY, entry.getKey())
+                .map(entry -> escape(entry.getKey(), NAME_SEPARATORS) + "=" + (sensitive.test(QUERY, entry.getKey())
                         ? DEFAULT_MASK
-                        : join(",", entry.getValue())))
+                        : entry.getValue().stream().map(value -> escape(value, VALUE_SEPARATORS)).collect(joining(","))))
                 .collect(joining("&"));
+    }
+
+    /**
+     * Percent-encodes the given characters of a decoded name or value, so the rendered query reads back as it
+     * was sent. Left as it is in the common case, where there are none of them.
+     *
+     * @param decoded    The decoded name or value
+     * @param separators The characters to encode
+     * @return The name or value, its separators encoded
+     */
+    private static String escape(String decoded, String separators) {
+        if (containsNone(decoded, separators)) {
+            return decoded;
+        }
+        StringBuilder escaped = new StringBuilder(decoded.length() + 8);
+        for (char character : decoded.toCharArray()) {
+            if (separators.indexOf(character) >= 0) {
+                escaped.append('%').append(HexFormat.of().withUpperCase().toHexDigits((byte) character));
+            } else {
+                escaped.append(character);
+            }
+        }
+        return escaped.toString();
     }
 
 }

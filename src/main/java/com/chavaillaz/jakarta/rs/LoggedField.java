@@ -23,7 +23,9 @@ public enum LoggedField {
     REQUEST_URI("request-uri"),
 
     /**
-     * Query parameters of the request, with the value of those carrying a credential masked.
+     * Query parameters of the request, as a query string sorted by name, the values of a parameter separated by
+     * commas, with the value of those carrying a credential masked, and the characters separating parameters
+     * escaped in their names and values.
      */
     REQUEST_PARAMETERS("request-parameters"),
 

@@ -299,6 +299,9 @@ the useful part for troubleshooting, and the name is not the secret:
 request-parameters: access_token=***&topic=news
 ```
 
+The parameters are logged decoded, with `%`, `&` and, in a name, `=` percent-encoded, so no value can pass for
+a parameter of its own: `?q=a%26access_token%3Dforged` is logged as `q=a%26access_token=forged`.
+
 Automatic `QUERY` mapping skips those parameters entirely, the way it does for headers. Names too commonly
 used for ordinary things to mask for everyone (`code`, for instance) are not in the list; add whatever
 your callers actually send with `sensitiveParameters` in the [configuration](#configuration), composing
