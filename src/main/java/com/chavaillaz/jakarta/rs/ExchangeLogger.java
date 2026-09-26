@@ -1,5 +1,7 @@
 package com.chavaillaz.jakarta.rs;
 
+import static com.chavaillaz.jakarta.rs.LoggedSupport.levelOf;
+import static com.chavaillaz.jakarta.rs.internal.LoggingGuard.safely;
 import static org.apache.commons.lang3.StringUtils.EMPTY;
 import static org.apache.commons.lang3.StringUtils.LF;
 import static org.apache.commons.lang3.StringUtils.isNotBlank;
@@ -9,8 +11,6 @@ import jakarta.ws.rs.core.MultivaluedMap;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.event.Level;
-
-import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
 
 /**
  * Writes the lines {@link LoggedFilter} logs an exchange with - {@code Received ...} once a request is read,
@@ -61,8 +61,8 @@ final class ExchangeLogger {
      * @param body     The body of the response, blank if it is not logged
      */
     void processed(@Nullable String method, @Nullable String uri, int status, long duration, String body) {
-        Level level = LoggingGuard.safely(log, "Unable to get the level of the request, its default one is used instead",
-                () -> configuration.responseLevel(status), LoggedSupport.levelOf(status));
+        Level level = safely(log, "Unable to get the level of the request, its default one is used instead",
+                () -> configuration.responseLevel(status), levelOf(status));
         log.atLevel(level)
                 .log("Processed {} {} with status {} in {}ms{}{}", method, uri, status, duration, isNotBlank(body) ? LF : EMPTY, body);
     }

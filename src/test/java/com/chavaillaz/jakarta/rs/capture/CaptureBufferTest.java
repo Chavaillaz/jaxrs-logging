@@ -1,5 +1,7 @@
 package com.chavaillaz.jakarta.rs.capture;
 
+import static com.chavaillaz.jakarta.rs.capture.CaptureBuffer.INITIAL_CAPACITY;
+import static com.chavaillaz.jakarta.rs.capture.CaptureBuffer.MAX_CAPACITY;
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -101,7 +103,7 @@ class CaptureBufferTest {
     @Test
     @DisplayName("Check a body larger than the initial capacity is kept whole, the array growing to fit it")
     void checkLargeBodyKeptWhole() {
-        byte[] large = new byte[10 * CaptureBuffer.INITIAL_CAPACITY + 7];
+        byte[] large = new byte[10 * INITIAL_CAPACITY + 7];
         new Random(42).nextBytes(large);
         CaptureBuffer buffer = new CaptureBuffer(NO_LIMIT);
 
@@ -139,7 +141,7 @@ class CaptureBufferTest {
     void checkBodyBeyondHeapCut() {
         // Given: arrays of more than 4 KiB failing the way they do once the heap is short of memory
         AtomicInteger resizes = new AtomicInteger();
-        CaptureBuffer buffer = new CaptureBuffer(NO_LIMIT, CaptureBuffer.MAX_CAPACITY, (bytes, length) -> {
+        CaptureBuffer buffer = new CaptureBuffer(NO_LIMIT, MAX_CAPACITY, (bytes, length) -> {
             resizes.incrementAndGet();
             if (length > 4096) {
                 throw new OutOfMemoryError("Java heap space");

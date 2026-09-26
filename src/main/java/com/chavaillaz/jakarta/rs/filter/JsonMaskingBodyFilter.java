@@ -1,6 +1,7 @@
 package com.chavaillaz.jakarta.rs.filter;
 
 import static java.util.Arrays.asList;
+import static java.util.regex.Pattern.DOTALL;
 import static java.util.stream.Collectors.joining;
 
 import java.util.Collection;
@@ -80,7 +81,7 @@ public class JsonMaskingBodyFilter extends MaskingBodyFilter {
         String names = properties.stream()
                 .map(Pattern::quote)
                 .collect(joining("|"));
-        return Pattern.compile("\"(?:" + names + ")\"\\s*:\\s*(" + SCALAR + ")", Pattern.DOTALL);
+        return Pattern.compile("\"(?:" + names + ")\"\\s*:\\s*(" + SCALAR + ")", DOTALL);
     }
 
 }

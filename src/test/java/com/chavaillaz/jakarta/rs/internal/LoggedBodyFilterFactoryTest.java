@@ -1,5 +1,7 @@
 package com.chavaillaz.jakarta.rs.internal;
 
+import static com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER;
+import static com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory.FAILED_BODY_FILTER;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -109,7 +111,7 @@ class LoggedBodyFilterFactoryTest {
         String result = capture.content(factory.getInstances(List.of(UninstantiableBodyFilter.class)));
 
         // Then
-        assertEquals(BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER, result);
+        assertEquals(FILTERING_FAILURE_MARKER, result);
     }
 
     @Test
@@ -125,7 +127,7 @@ class LoggedBodyFilterFactoryTest {
         LoggedBodyFilter second = assertDoesNotThrow(() -> factory.getInstance(type));
 
         // Then
-        assertSame(LoggedBodyFilterFactory.FAILED_BODY_FILTER, first);
+        assertSame(FAILED_BODY_FILTER, first);
         assertSame(first, second);
     }
 

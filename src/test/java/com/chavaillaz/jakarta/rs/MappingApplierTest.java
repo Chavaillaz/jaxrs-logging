@@ -2,10 +2,11 @@ package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
+import static com.chavaillaz.jakarta.rs.MappingApplier.inApplicationOrder;
+import static java.util.Arrays.asList;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -58,7 +59,7 @@ class MappingApplierTest {
     }
 
     static List<LoggedMapping> mappingsOf(String method) throws Exception {
-        return Arrays.asList(Resource.class.getMethod(method).getAnnotationsByType(LoggedMapping.class));
+        return asList(Resource.class.getMethod(method).getAnnotationsByType(LoggedMapping.class));
     }
 
     /**
@@ -69,7 +70,7 @@ class MappingApplierTest {
     Map<String, String> apply(String method, MappingType type, Map<String, List<String>> parameters) throws Exception {
         Map<String, String> entries = new LinkedHashMap<>();
         applier.apply(
-                MappingApplier.inApplicationOrder(mappingsOf(method)),
+                inApplicationOrder(mappingsOf(method)),
                 requested -> requested == type ? parameters : Map.of(),
                 entries::put);
         return entries;
@@ -162,7 +163,7 @@ class MappingApplierTest {
     @Test
     @DisplayName("Check mappings are sorted with exclusions first and automatic mappings last")
     void checkApplicationOrder() throws Exception {
-        List<LoggedMapping> mappings = MappingApplier.inApplicationOrder(mappingsOf("unordered"));
+        List<LoggedMapping> mappings = inApplicationOrder(mappingsOf("unordered"));
 
         assertEquals(List.of("", "a", "b", ""), mappings.stream().map(LoggedMapping::mdcKey).toList());
         assertEquals(List.of(false, false, false, true), mappings.stream().map(LoggedMapping::auto).toList());

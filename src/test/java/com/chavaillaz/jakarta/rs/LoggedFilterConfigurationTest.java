@@ -7,6 +7,7 @@ import static com.chavaillaz.jakarta.rs.LoggedFilterConfiguration.isCredential;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.PATH;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
+import static java.util.Arrays.stream;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -17,7 +18,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import jakarta.ws.rs.container.ContainerRequestContext;
-import java.util.Arrays;
 
 import org.jboss.resteasy.core.interception.jaxrs.PreMatchContainerRequestContext;
 import org.jboss.resteasy.mock.MockHttpRequest;
@@ -41,7 +41,7 @@ class LoggedFilterConfigurationTest {
     void checkDefaultFieldNames() {
         LoggedFilterConfiguration configuration = LoggedFilterConfiguration.defaults();
 
-        Arrays.stream(LoggedField.values())
+        stream(LoggedField.values())
                 .forEach(field -> assertEquals(field.getDefaultField(), configuration.fieldName(field)));
         assertSame(configuration, LoggedFilterConfiguration.defaults());
     }

@@ -1,5 +1,7 @@
 package com.chavaillaz.jakarta.rs.internal;
 
+import static com.chavaillaz.jakarta.rs.internal.CredentialNames.isHeader;
+import static com.chavaillaz.jakarta.rs.internal.CredentialNames.isQueryParameter;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -16,7 +18,7 @@ class CredentialNamesTest {
             "Ocp-Apim-Subscription-Key", "x-functions-key", "Private-Token", "X-Vault-Token"})
     @DisplayName("Check a header conventionally carrying a credential is recognized whatever its casing")
     void checkCredentialHeaderRecognized(String name) {
-        assertTrue(CredentialNames.isHeader(name));
+        assertTrue(isHeader(name));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -25,17 +27,17 @@ class CredentialNamesTest {
     @DisplayName("Check a query parameter conventionally carrying a credential is recognized whatever its casing")
     void checkCredentialQueryParameterRecognized(String name) {
         // The signature and session token of a presigned URL are what grants access to what it points at
-        assertTrue(CredentialNames.isQueryParameter(name));
+        assertTrue(isQueryParameter(name));
     }
 
     @Test
     @DisplayName("Check ordinary names are left alone, and a missing one is not mistaken for a credential")
     void checkOrdinaryNamesNotRecognized() {
-        assertFalse(CredentialNames.isHeader("User-Agent"));
-        assertFalse(CredentialNames.isHeader(null));
-        assertFalse(CredentialNames.isQueryParameter("topic"));
-        assertFalse(CredentialNames.isQueryParameter("code"));
-        assertFalse(CredentialNames.isQueryParameter(null));
+        assertFalse(isHeader("User-Agent"));
+        assertFalse(isHeader(null));
+        assertFalse(isQueryParameter("topic"));
+        assertFalse(isQueryParameter("code"));
+        assertFalse(isQueryParameter(null));
     }
 
 }

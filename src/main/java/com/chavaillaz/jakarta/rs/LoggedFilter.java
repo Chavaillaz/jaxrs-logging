@@ -8,6 +8,8 @@ import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
+import static com.chavaillaz.jakarta.rs.internal.BodyCapturer.CAPTURE_FAILURE;
+import static jakarta.ws.rs.Priorities.HEADER_DECORATOR;
 import static jakarta.ws.rs.RuntimeType.SERVER;
 import static java.lang.String.valueOf;
 import static java.util.Objects.requireNonNull;
@@ -78,7 +80,7 @@ import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
 @Logged
 @Provider
 @ConstrainedTo(SERVER)
-@Priority(Priorities.HEADER_DECORATOR)
+@Priority(HEADER_DECORATOR)
 public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFilter, ReaderInterceptor, WriterInterceptor {
 
     /**
@@ -240,7 +242,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
         if (!isLoggingEnabled() || (state != null && state.isCompleted())) {
             return LoggedBodyConfiguration.NONE;
         }
-        return LoggingGuard.safely(log, BodyCapturer.CAPTURE_FAILURE, () -> getBodyConfiguration(state, target), LoggedBodyConfiguration.NONE);
+        return LoggingGuard.safely(log, CAPTURE_FAILURE, () -> getBodyConfiguration(state, target), LoggedBodyConfiguration.NONE);
     }
 
     /**

@@ -1,10 +1,13 @@
 package com.chavaillaz.jakarta.rs.client;
 
 import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.LOG;
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedSupport.levelOf;
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
 import static com.chavaillaz.jakarta.rs.filter.MaskingBodyFilter.DEFAULT_MASK;
+import static jakarta.ws.rs.Priorities.ENTITY_CODER;
+import static jakarta.ws.rs.Priorities.HEADER_DECORATOR;
 import static jakarta.ws.rs.RuntimeType.CLIENT;
 import static java.lang.System.nanoTime;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -80,7 +83,7 @@ import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
  */
 @Provider
 @ConstrainedTo(CLIENT)
-@Priority(Priorities.HEADER_DECORATOR)
+@Priority(HEADER_DECORATOR)
 public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFilter, Feature {
 
     /**
@@ -190,7 +193,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      */
     public static final class Builder {
 
-        private String correlationIdMdcKey = LoggedField.REQUEST_ID.getDefaultField();
+        private String correlationIdMdcKey = REQUEST_ID.getDefaultField();
         private boolean logRequestBody = false;
         private boolean logResponseBody = false;
         private int requestBodyLimit = NO_LIMIT;
@@ -591,7 +594,7 @@ public class LoggedClientFilter implements ClientRequestFilter, ClientResponseFi
      * overriding {@link #createBodyCapture(int)} or either capture method stays in control.
      */
     @ConstrainedTo(CLIENT)
-    @Priority(Priorities.ENTITY_CODER + 100)
+    @Priority(ENTITY_CODER + 100)
     public static class BodyInterceptor implements ReaderInterceptor, WriterInterceptor {
 
         /**

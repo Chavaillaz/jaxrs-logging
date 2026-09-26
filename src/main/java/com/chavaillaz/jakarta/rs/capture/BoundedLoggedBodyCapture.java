@@ -1,8 +1,11 @@
 package com.chavaillaz.jakarta.rs.capture;
 
+import static com.chavaillaz.jakarta.rs.capture.CaptureBuffer.MAX_CAPACITY;
+import static jakarta.ws.rs.core.MediaType.CHARSET_PARAMETER;
 import static java.lang.Math.ceil;
 import static java.lang.Math.max;
 import static java.lang.Math.min;
+import static java.nio.charset.CodingErrorAction.REPLACE;
 import static java.nio.charset.StandardCharsets.ISO_8859_1;
 import static java.nio.charset.StandardCharsets.US_ASCII;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -13,7 +16,6 @@ import java.nio.ByteBuffer;
 import java.nio.CharBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetDecoder;
-import java.nio.charset.CodingErrorAction;
 import java.util.HexFormat;
 import java.util.Locale;
 import java.util.Set;
@@ -165,7 +167,7 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
      * @return The charset to decode the body with
      */
     protected static Charset charsetOf(@Nullable MediaType mediaType) {
-        String name = mediaType == null ? null : mediaType.getParameters().get(MediaType.CHARSET_PARAMETER);
+        String name = mediaType == null ? null : mediaType.getParameters().get(CHARSET_PARAMETER);
         return name == null ? UTF_8 : Charset.forName(name, UTF_8);
     }
 
@@ -198,10 +200,10 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
         }
 
         CharsetDecoder decoder = charset.newDecoder()
-                .onMalformedInput(CodingErrorAction.REPLACE)
-                .onUnmappableCharacter(CodingErrorAction.REPLACE);
+                .onMalformedInput(REPLACE)
+                .onUnmappableCharacter(REPLACE);
         // Sized for the most characters the bytes can decode to, so decoding never has to stop and grow it
-        CharBuffer decoded = CharBuffer.allocate((int) min(CaptureBuffer.MAX_CAPACITY,
+        CharBuffer decoded = CharBuffer.allocate((int) min(MAX_CAPACITY,
                 (long) ceil(size * (double) decoder.maxCharsPerByte())));
         decoder.decode(ByteBuffer.wrap(bytes, 0, size), decoded, false);
         return decoded.flip();

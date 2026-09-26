@@ -3,6 +3,8 @@ package com.chavaillaz.jakarta.rs;
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.REQUEST;
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.RESPONSE;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.getAnnotation;
+import static com.chavaillaz.jakarta.rs.LoggedUtils.getMergedMappings;
+import static com.chavaillaz.jakarta.rs.MappingApplier.inApplicationOrder;
 import static java.util.Arrays.stream;
 import static java.util.stream.Collectors.toUnmodifiableSet;
 
@@ -167,7 +169,7 @@ final class LoggedResolver {
      */
     private List<LoggedMapping> resolveMappings(ResourceKey key, ResourceInfo resourceInfo) {
         try {
-            return MappingApplier.inApplicationOrder(LoggedUtils.getMergedMappings(resourceInfo));
+            return inApplicationOrder(getMergedMappings(resourceInfo));
         } catch (RuntimeException e) {
             log.error("Unable to resolve the MDC mappings of {}, none of them is applied", key, e);
             return List.of();

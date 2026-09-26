@@ -2,6 +2,7 @@ package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.REQUEST;
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.RESPONSE;
+import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
 import static java.lang.annotation.ElementType.METHOD;
 import static java.lang.annotation.ElementType.TYPE;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
@@ -12,7 +13,6 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
 import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
-import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
 /**
@@ -54,7 +54,7 @@ public @interface LoggedBody {
      *
      * @return The maximum size of the body to be logged in bytes, or {@code -1} for no limit
      */
-    int limit() default LoggedBodyCapture.NO_LIMIT;
+    int limit() default NO_LIMIT;
 
     /**
      * Indicates which filters must be applied before logging the request or response body.

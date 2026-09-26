@@ -1,5 +1,6 @@
 package com.chavaillaz.jakarta.rs;
 
+import static jakarta.ws.rs.Priorities.ENTITY_CODER;
 import static jakarta.ws.rs.RuntimeType.SERVER;
 
 import jakarta.annotation.Priority;
@@ -32,7 +33,7 @@ import org.jspecify.annotations.Nullable;
 @Logged
 @Provider
 @ConstrainedTo(SERVER)
-@Priority(Priorities.ENTITY_CODER + 100)
+@Priority(ENTITY_CODER + 100)
 public class LoggedBodyInterceptor implements ReaderInterceptor, WriterInterceptor {
 
     /**

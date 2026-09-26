@@ -22,7 +22,6 @@ import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
 
 import org.jspecify.annotations.Nullable;
 import org.slf4j.MDC;
@@ -364,7 +363,7 @@ public final class MdcPropagation {
         private <T extends @Nullable Object> List<Callable<T>> wrapAll(Collection<? extends Callable<T>> tasks) {
             return tasks.stream()
                     .map(MdcPropagation::wrap)
-                    .collect(Collectors.toList());
+                    .toList();
         }
 
         @Override

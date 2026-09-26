@@ -3,6 +3,10 @@ package com.chavaillaz.jakarta.rs;
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.REQUEST;
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.RESPONSE;
 import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.LOG;
+import static com.chavaillaz.jakarta.rs.LoggedField.DURATION;
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_METHOD;
+import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_URI;
+import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static jakarta.ws.rs.core.MediaType.APPLICATION_OCTET_STREAM;
@@ -234,10 +238,10 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
     void checkLinesIndependentOfMdcFields() throws Exception {
         // Given
         Dispatcher bare = dispatcherWith(LoggedFilterConfiguration.builder()
-                .withoutField(LoggedField.REQUEST_METHOD)
-                .withoutField(LoggedField.REQUEST_URI)
-                .withoutField(LoggedField.RESPONSE_STATUS)
-                .withoutField(LoggedField.DURATION)
+                .withoutField(REQUEST_METHOD)
+                .withoutField(REQUEST_URI)
+                .withoutField(RESPONSE_STATUS)
+                .withoutField(DURATION)
                 .build(), FailingResource.class);
 
         // When

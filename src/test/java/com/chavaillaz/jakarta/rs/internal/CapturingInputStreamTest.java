@@ -1,5 +1,6 @@
 package com.chavaillaz.jakarta.rs.internal;
 
+import static java.io.OutputStream.nullOutputStream;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -9,7 +10,6 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.io.PushbackInputStream;
 
 import org.junit.jupiter.api.DisplayName;
@@ -126,7 +126,7 @@ class CapturingInputStreamTest {
         // When
         assertEquals(9, stream.skip(9));
         stream.skipNBytes(3);
-        stream.transferTo(OutputStream.nullOutputStream());
+        stream.transferTo(nullOutputStream());
 
         // Then: a body logged with a hole in it would read as the one the application received
         assertEquals(BODY, captured());
@@ -142,7 +142,7 @@ class CapturingInputStreamTest {
 
         // When
         assertThrows(IOException.class, stream::reset);
-        stream.transferTo(OutputStream.nullOutputStream());
+        stream.transferTo(nullOutputStream());
 
         // Then
         assertEquals(BODY, captured());

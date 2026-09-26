@@ -2,6 +2,7 @@ package com.chavaillaz.jakarta.rs.client;
 
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
+import static com.chavaillaz.jakarta.rs.internal.BodyCapturer.MEMORY_FAILURE;
 import static jakarta.ws.rs.HttpMethod.POST;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -59,7 +60,6 @@ import com.chavaillaz.jakarta.rs.SensitiveBodyFilter;
 import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
-import com.chavaillaz.jakarta.rs.internal.BodyCapturer;
 
 @DisplayName("Logged client filter")
 @ExtendWith(MockitoExtension.class)
@@ -572,7 +572,7 @@ class LoggedClientFilterTest extends AbstractFilterTest {
 
         // Then
         assertNull(listAppender.findFirstMessage("Request body"));
-        assertNotNull(listAppender.findFirstMessage(BodyCapturer.MEMORY_FAILURE));
+        assertNotNull(listAppender.findFirstMessage(MEMORY_FAILURE));
         assertTrue(capture.closed);
     }
 

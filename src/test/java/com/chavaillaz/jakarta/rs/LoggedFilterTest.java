@@ -13,8 +13,12 @@ import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
 import static com.chavaillaz.jakarta.rs.LoggedFilter.REQUEST_ID_HEADER;
+import static com.chavaillaz.jakarta.rs.LoggedFilterConfiguration.isCredential;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
+import static com.chavaillaz.jakarta.rs.LoggedSupport.levelOf;
+import static com.chavaillaz.jakarta.rs.RequestDescriber.REQUEST_ID_MAX_LENGTH;
+import static com.chavaillaz.jakarta.rs.internal.BodyCapturer.MEMORY_FAILURE;
 import static jakarta.ws.rs.core.HttpHeaders.CONTENT_TYPE;
 import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN_TYPE;
 import static java.lang.Integer.parseInt;
@@ -95,7 +99,6 @@ import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
 import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
-import com.chavaillaz.jakarta.rs.internal.BodyCapturer;
 import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
 
 @DisplayName("Original filter")
@@ -790,7 +793,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given
-        String oversized = "a".repeat(RequestDescriber.REQUEST_ID_MAX_LENGTH + 50);
+        String oversized = "a".repeat(REQUEST_ID_MAX_LENGTH + 50);
         PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
                 MockHttpRequest.create("GET", "example.company.com/service")
                         .header("X-Request-ID", oversized));
@@ -801,8 +804,8 @@ class LoggedFilterTest extends AbstractFilterTest {
         // Then
         String requestId = getMdc(REQUEST_ID);
         assertNotNull(requestId);
-        assertEquals(RequestDescriber.REQUEST_ID_MAX_LENGTH, requestId.length());
-        assertEquals(oversized.substring(0, RequestDescriber.REQUEST_ID_MAX_LENGTH), requestId);
+        assertEquals(REQUEST_ID_MAX_LENGTH, requestId.length());
+        assertEquals(oversized.substring(0, REQUEST_ID_MAX_LENGTH), requestId);
     }
 
     @Test
@@ -832,7 +835,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given: a character outside the Basic Multilingual Plane, two chars long, straddling the limit
-        String prefix = "a".repeat(RequestDescriber.REQUEST_ID_MAX_LENGTH - 1);
+        String prefix = "a".repeat(REQUEST_ID_MAX_LENGTH - 1);
         PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
                 MockHttpRequest.create("GET", "example.company.com/service")
                         .header("X-Request-ID", prefix + "😀"));
@@ -1139,7 +1142,7 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         // Given: an application expecting its 404, which is no reason to warn anybody
         LoggedFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
-                .responseLevel(status -> status == 404 ? Level.INFO : LoggedSupport.levelOf(status))
+                .responseLevel(status -> status == 404 ? Level.INFO : levelOf(status))
                 .build());
         PreMatchContainerRequestContext requestContext = getRequestContext();
 
@@ -1179,7 +1182,7 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         // Given
         LoggedFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
-                .sensitiveParameters((type, name) -> LoggedFilterConfiguration.isCredential(type, name)
+                .sensitiveParameters((type, name) -> isCredential(type, name)
                         || (type == QUERY && "url-signature".equals(name)))
                 .build());
         PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
@@ -1442,7 +1445,7 @@ class LoggedFilterTest extends AbstractFilterTest {
 
         // Then: the body is left out, and the capture released all the same
         assertEquals(List.of(), getReceivedMessages());
-        assertNotNull(listAppender.findFirstMessage(BodyCapturer.MEMORY_FAILURE));
+        assertNotNull(listAppender.findFirstMessage(MEMORY_FAILURE));
         assertTrue(closed.get());
     }
 

@@ -6,6 +6,8 @@ import static java.util.Arrays.stream;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.emptySet;
 import static org.apache.commons.lang3.ClassUtils.getAllInterfaces;
+import static org.apache.commons.lang3.reflect.TypeUtils.getTypeArguments;
+import static org.apache.commons.lang3.reflect.TypeUtils.unrollVariables;
 
 import jakarta.ws.rs.container.ResourceInfo;
 import java.lang.annotation.Annotation;
@@ -260,12 +262,12 @@ public final class LoggedUtils {
             return false;
         }
 
-        Map<TypeVariable<?>, Type> typeArguments = TypeUtils.getTypeArguments(resourceClass, interfaceMethod.getDeclaringClass());
+        Map<TypeVariable<?>, Type> typeArguments = getTypeArguments(resourceClass, interfaceMethod.getDeclaringClass());
         Type[] interfaceParameters = interfaceMethod.getGenericParameterTypes();
         Type[] resourceParameters = resourceMethod.getGenericParameterTypes();
         for (int i = 0; i < interfaceParameters.length; i++) {
-            if (!TypeUtils.equals(TypeUtils.unrollVariables(typeArguments, interfaceParameters[i]),
-                    TypeUtils.unrollVariables(typeArguments, resourceParameters[i]))) {
+            if (!TypeUtils.equals(unrollVariables(typeArguments, interfaceParameters[i]),
+                    unrollVariables(typeArguments, resourceParameters[i]))) {
                 return false;
             }
         }

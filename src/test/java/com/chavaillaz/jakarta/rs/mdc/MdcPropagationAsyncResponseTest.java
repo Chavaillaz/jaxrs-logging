@@ -1,5 +1,6 @@
 package com.chavaillaz.jakarta.rs.mdc;
 
+import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -128,7 +129,7 @@ class MdcPropagationAsyncResponseTest {
 
             // Then
             pool.shutdown();
-            assertTrue(pool.awaitTermination(5, TimeUnit.SECONDS));
+            assertTrue(pool.awaitTermination(5, SECONDS));
             assertEquals("abc-123", response.contextOnCompletion.get());
         } finally {
             pool.shutdownNow();
@@ -146,7 +147,7 @@ class MdcPropagationAsyncResponseTest {
             pool.execute(() -> response.resume("done"));
 
             pool.shutdown();
-            assertTrue(pool.awaitTermination(5, TimeUnit.SECONDS));
+            assertTrue(pool.awaitTermination(5, SECONDS));
             assertNull(response.contextOnCompletion.get());
         } finally {
             pool.shutdownNow();
@@ -237,7 +238,7 @@ class MdcPropagationAsyncResponseTest {
         AsyncResponse propagating = MdcPropagation.wrap(response);
 
         assertTrue(propagating.isSuspended());
-        assertTrue(propagating.setTimeout(1, TimeUnit.SECONDS));
+        assertTrue(propagating.setTimeout(1, SECONDS));
         assertTrue(propagating.register(Object.class).isEmpty());
         assertNull(response.contextOnCompletion.get());
     }
