@@ -164,16 +164,13 @@ final class RequestMdc {
      * entity whose {@code MessageBodyWriter} failed to be selected, for instance) - would otherwise stay
      * attached to this thread and silently mislabel every log line of the unrelated request now running on
      * it. That covers both the fixed fields, whose names are known up front, and every other entry the
-     * request this thread carried put on it (see {@link #threadEntries}).
+     * request this thread carried put on it (see {@link #removeLeftovers()}).
      *
      * @param state The state of the request starting
      */
     void start(LoggedRequestState state) {
         removeFields();
-        Map<String, String> entries = threadEntries.get();
-        if (entries != null) {
-            entries.keySet().forEach(MDC::remove);
-        }
+        removeLeftovers();
         threadEntries.set(state.getMdcEntries());
     }
 
@@ -185,13 +182,23 @@ final class RequestMdc {
      * completed on another thread, or the runtime answered an exception no {@code ExceptionMapper} handles
      * outside of JAX-RS, which Apache CXF does. The next request logged on the thread sweeps them (see
      * {@link #start(LoggedRequestState)}), but a request logged by none would have every line it logs
-     * mislabelled with them.
-     * <p>
-     * Only an entry still holding the value the request put is removed, as the thread may have put its own
-     * under the same key since, and the thread is then released from that request, so the requests following
-     * on it pay for nothing more than this check.
+     * mislabelled with them. The thread is then released from that request, so the requests following on it pay
+     * for nothing more than this check.
      */
     static void sweep() {
+        if (removeLeftovers() != null) {
+            threadEntries.remove();
+        }
+    }
+
+    /**
+     * Removes from the current thread's context map the entries the request it carried last put there, those
+     * still holding the value that request put: the thread may have put its own under the same key since, as a
+     * servlet filter describing the next request does.
+     *
+     * @return The entries of that request, {@code null} if the thread carried none
+     */
+    private static @Nullable Map<String, String> removeLeftovers() {
         Map<String, String> entries = threadEntries.get();
         if (entries != null) {
             entries.forEach((key, value) -> {
@@ -199,8 +206,8 @@ final class RequestMdc {
                     MDC.remove(key);
                 }
             });
-            threadEntries.remove();
         }
+        return entries;
     }
 
     /**

@@ -127,6 +127,25 @@ class RequestMdcTest {
     }
 
     @Test
+    @DisplayName("Check starting a request keeps what the thread put since the previous one under one of its keys")
+    void checkStartKeepsEntriesPutSince() {
+        // Given: a request done on this thread, which mapped a header to a key the application uses too
+        LoggedRequestState previous = request();
+        mdc.start(previous);
+        mdc.put("tenant", "acme");
+        mdc.cleanup(previous);
+
+        // And: the application putting its own under that key for the next request, as a servlet filter does
+        MDC.put("tenant", "globex");
+
+        // When
+        mdc.start(request());
+
+        // Then
+        assertEquals("globex", MDC.get("tenant"));
+    }
+
+    @Test
     @DisplayName("Check starting a request sweeps what one done on this thread left, even once put back")
     void checkStartSweepsRestoredEntries() {
         // Given: a request completed within a wrapper that saved the context map before, and restores it after
