@@ -75,6 +75,21 @@ class RequestMdcTest {
     }
 
     @Test
+    @DisplayName("Check the value put for a field of a request is read back even once MDC was cleared")
+    void checkRecordedValueIndependentOfMdc() {
+        LoggedRequestState request = request();
+        mdc.start(request);
+        mdc.put(REQUEST_ID, "abc-123");
+
+        MDC.clear();
+
+        assertEquals("abc-123", mdc.recorded(request, REQUEST_ID));
+        assertNull(mdc.recorded(request, RESPONSE_STATUS));
+        fieldNames.remove(REQUEST_ID);
+        assertNull(mdc.recorded(request, REQUEST_ID));
+    }
+
+    @Test
     @DisplayName("Check starting a request sweeps what a previous one left on the thread")
     void checkStartSweepsPreviousRequest() {
         // Given: a request that completed elsewhere, leaving its entries on this thread

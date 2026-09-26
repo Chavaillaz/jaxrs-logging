@@ -129,6 +129,20 @@ final class RequestMdc {
     }
 
     /**
+     * Gets the value put for the given field of the given request, as recorded against the request (see
+     * {@link LoggedRequestState#getMdcEntries()}) rather than read back from the current thread's context
+     * map, which the application may have cleared since.
+     *
+     * @param state The state of the request
+     * @param field The field to get the value of
+     * @return The value put for the field, {@code null} if none was or if the field has no name
+     */
+    @Nullable String recorded(LoggedRequestState state, LoggedField field) {
+        String key = fieldNames.get(field);
+        return key == null ? null : state.getMdcEntries().get(key);
+    }
+
+    /**
      * Indicates whether the given key is the name of one of the fields, which an entry the client chose the
      * name of must never overwrite.
      *

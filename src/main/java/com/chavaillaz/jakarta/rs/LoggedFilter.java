@@ -488,7 +488,7 @@ public class LoggedFilter implements ContainerRequestFilter, ContainerResponseFi
             }
 
             putMdc(RESPONSE_STATUS, valueOf(state.getStatus()));
-            exchangeLogger.returnRequestId(responseContext.getHeaders(), getMdc(REQUEST_ID));
+            exchangeLogger.returnRequestId(responseContext.getHeaders(), mdc.recorded(state, REQUEST_ID));
         } finally {
             // Without an entity to write (204 No Content, HEAD), aroundWriteTo is never called: the request is
             // completed here whatever happened above, as completing it is what removes its MDC entries

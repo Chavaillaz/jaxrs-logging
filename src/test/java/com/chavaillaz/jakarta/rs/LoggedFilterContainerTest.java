@@ -270,6 +270,17 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check the identifier of a request is returned even once the application cleared MDC")
+    void checkRequestIdReturnedIndependentOfMdcCleared() throws Exception {
+        // When
+        MockHttpResponse response = invoke(MockHttpRequest.get("/clearing").header(REQUEST_ID_HEADER, "abc-123"));
+
+        // Then
+        assertEquals(200, response.getStatus());
+        assertEquals("abc-123", response.getOutputHeaders().getFirst(REQUEST_ID_HEADER));
+    }
+
+    @Test
     @DisplayName("Check a request two providers are bound to is logged once, by the first to see it")
     void checkRequestLoggedOnceWhateverProvidersBound() throws Exception {
         // Given: a subclass of the application next to the LoggedFilter a container discovers in this library
