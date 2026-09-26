@@ -5,6 +5,10 @@ on:
       - master
   pull_request:
     types: [ opened, synchronize, reopened ]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # A superseded run is dropped everywhere but on master, whose every push keeps its own status and badge
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 jobs:
   build:
     runs-on: ubuntu-latest
