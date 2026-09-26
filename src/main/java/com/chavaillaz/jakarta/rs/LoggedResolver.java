@@ -31,8 +31,8 @@ import com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory;
 
 /**
  * Resolves whether the requests of a given resource method are logged, and which {@link LoggedMapping} and
- * {@link LoggedBody} configuration applies to them, by walking the annotations present on its class, its
- * interfaces and the method itself.
+ * {@link LoggedBody} configuration applies to them, by walking the annotations present on the method, the
+ * methods it overrides, its class and the interfaces and superclasses of the class.
  * <p>
  * Resolution only depends on those annotations, so it is cached - body configurations in their ready-to-use
  * form ({@link LoggedBodyConfiguration}, filters instantiated) - keyed on the resource class and method
@@ -206,7 +206,7 @@ final class LoggedResolver {
     /**
      * Resolves the mappings of the given resource in the order they apply in, or into none if they cannot be.
      * <p>
-     * Walking the declaration sites of a resource method reflects on the interfaces of its class, which fails
+     * Walking the declaration sites of a resource method reflects on the types its class extends, which fails
      * the same way every time it does - a generic signature naming a type missing at runtime throws a
      * {@link TypeNotPresentException} once parsed. Such a failure is therefore reported once and remembered,
      * like one resolving the body logging configuration (see {@link #resolve(ResourceKey, ResourceInfo)}),

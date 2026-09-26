@@ -1,11 +1,14 @@
 package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
+import static java.lang.reflect.Modifier.isPrivate;
+import static java.lang.reflect.Modifier.isStatic;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
 import static java.util.Collections.emptyList;
 import static java.util.Collections.emptySet;
 import static org.apache.commons.lang3.ClassUtils.getAllInterfaces;
+import static org.apache.commons.lang3.ClassUtils.getAllSuperclasses;
 import static org.apache.commons.lang3.reflect.TypeUtils.getTypeArguments;
 import static org.apache.commons.lang3.reflect.TypeUtils.unrollVariables;
 
@@ -28,8 +31,9 @@ import org.apache.commons.lang3.reflect.TypeUtils;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Reads the annotations configuring this library from the resource method matched by a request, the
- * interfaces of its class and the class itself, most specific first (see {@link #declarationSites}).
+ * Reads the annotations configuring this library from the resource method matched by a request, the methods
+ * it overrides, the interfaces and superclasses of its class and the class itself, most specific first (see
+ * {@link #declarationSites}).
  * <p>
  * Stateless and uncached: the providers cache what they read through it, once per resource method.
  */
@@ -105,7 +109,7 @@ public final class LoggedUtils {
     }
 
     /**
-     * Gets the given annotation from the resource method, its interfaces or its class matched by the current request.
+     * Gets the given annotation from the declaration sites of the resource method matched by the current request.
      *
      * @param resourceInfo   The instance to access resource class and method
      * @param annotationType The annotation type to get
@@ -117,7 +121,7 @@ public final class LoggedUtils {
     }
 
     /**
-     * Gets the given annotation from the resource method, its interfaces or its class matched by the current request.
+     * Gets the given annotation from the declaration sites of the resource method matched by the current request.
      * <p>
      * The first declaration site (see {@link #declarationSites(Class, Method)}) that declares the annotation
      * type, or its repeatable wrapper, wins entirely: a more specific declaration <em>replaces</em> a less
@@ -187,15 +191,21 @@ public final class LoggedUtils {
      * to the least specific:
      * <ol>
      *     <li>the resource method itself</li>
-     *     <li>the methods it overrides on the interfaces implemented by the resource class, generic ones
-     *     included, their type variables being resolved against the resource class - a method annotation is
-     *     never inherited by an override (regardless of {@link java.lang.annotation.Inherited}), so this is
-     *     what lets an implementation pick up an annotation declared on the interface it implements</li>
+     *     <li>the methods it overrides on the superclasses of the resource class, the nearest first</li>
+     *     <li>the methods it implements on the interfaces of the resource class</li>
      *     <li>the interfaces implemented by the resource class</li>
      *     <li>the resource class itself</li>
+     *     <li>its superclasses, the nearest first</li>
      * </ol>
+     * A method annotation is never inherited by an override (regardless of
+     * {@link java.lang.annotation.Inherited}), so listing the methods overridden, generic ones included -
+     * their type variables resolved against the resource class - is what lets a resource method pick up an
+     * annotation declared on the abstract base resource or the interface it implements. Superclasses rank
+     * above interfaces there, as JAX-RS has it for the annotations it inherits.
+     * <p>
      * Interfaces deliberately rank above the resource class, so an API contract declared on an interface is
-     * not silently overridden by a broad annotation on the class implementing it.
+     * not silently overridden by a broad annotation on the class implementing it, which the base classes it
+     * extends refine rather than override.
      * <p>
      * The order within a level follows {@link org.apache.commons.lang3.ClassUtils#getAllInterfaces(Class)},
      * which is deterministic (declaration order, depth first), so a resource class implementing several
@@ -210,21 +220,59 @@ public final class LoggedUtils {
         if (resourceMethod != null) {
             sites.add(resourceMethod);
         }
+        if (resourceClass == null) {
+            return sites;
+        }
 
-        List<Class<?>> interfaces = resourceClass == null ? List.of() : getAllInterfaces(resourceClass);
-        for (Class<?> interfaceClass : interfaces) {
-            for (Method interfaceMethod : interfaceClass.getMethods()) {
-                if (isImplementedBy(interfaceMethod, resourceClass, resourceMethod)) {
-                    sites.add(interfaceMethod);
-                }
-            }
+        List<Class<?>> superclasses = getAllSuperclasses(resourceClass).stream()
+                .filter(superclass -> superclass != Object.class)
+                .toList();
+        List<Class<?>> interfaces = getAllInterfaces(resourceClass);
+        if (resourceMethod != null) {
+            sites.addAll(overriddenMethods(superclasses, Class::getDeclaredMethods, resourceClass, resourceMethod));
+            sites.addAll(overriddenMethods(interfaces, Class::getMethods, resourceClass, resourceMethod));
         }
 
         sites.addAll(interfaces);
-        if (resourceClass != null) {
-            sites.add(resourceClass);
-        }
+        sites.add(resourceClass);
+        sites.addAll(superclasses);
         return sites;
+    }
+
+    /**
+     * Lists the methods of the given types that the given resource method overrides or implements, in the
+     * order of the types.
+     *
+     * @param types          The superclasses or interfaces of the resource class
+     * @param methods        The methods of a type the resource method may override: those it declares for a
+     *                       superclass, its members for an interface, inherited ones included
+     * @param resourceClass  The resource class matched by the current request
+     * @param resourceMethod The resource method matched by the current request
+     * @return The methods the resource method overrides or implements
+     */
+    private static List<Method> overriddenMethods(List<Class<?>> types, Function<Class<?>, Method[]> methods, Class<?> resourceClass, Method resourceMethod) {
+        List<Method> overridden = new ArrayList<>();
+        for (Class<?> type : types) {
+            for (Method method : methods.apply(type)) {
+                // The resource method itself when a superclass declares it, which is already a site of its own
+                if (!method.equals(resourceMethod) && isOverridable(method) && isImplementedBy(method, resourceClass, resourceMethod)) {
+                    overridden.add(method);
+                }
+            }
+        }
+        return overridden;
+    }
+
+    /**
+     * Indicates whether the given method can be overridden by a resource method: an instance method, which
+     * is not private, nor the bridge the compiler generates for a generic signature.
+     *
+     * @param method The method of a superclass or an interface of the resource class
+     * @return {@code true} if a resource method can override the method, {@code false} otherwise
+     */
+    private static boolean isOverridable(Method method) {
+        int modifiers = method.getModifiers();
+        return !isStatic(modifiers) && !isPrivate(modifiers) && !method.isBridge() && !method.isSynthetic();
     }
 
     /**
@@ -241,32 +289,32 @@ public final class LoggedUtils {
     }
 
     /**
-     * Indicates whether the given interface method is one the given resource method implements.
+     * Indicates whether the given method of a superclass or an interface is one the given resource method
+     * overrides or implements.
      * <p>
      * It is when both have the same signature, or when they have the same once the type variables of the
-     * interface are resolved against the resource class: a resource class implementing {@code CrudApi<String>}
-     * implements {@code create(T)} with a {@code create(String)}, whose parameter type differs from the
-     * {@code Object} the interface method is erased to.
+     * type declaring the method are resolved against the resource class: a resource class implementing
+     * {@code CrudApi<String>}, or extending {@code CrudResource<String>}, implements {@code create(T)} with a
+     * {@code create(String)}, whose parameter type differs from the {@code Object} the method is erased to.
      *
-     * @param interfaceMethod The method of an interface of the resource class
-     * @param resourceClass   The resource class matched by the current request
-     * @param resourceMethod  The resource method matched by the current request, possibly {@code null}
-     * @return {@code true} if the resource method implements the interface method, {@code false} otherwise
+     * @param method         The method of a superclass or an interface of the resource class
+     * @param resourceClass  The resource class matched by the current request
+     * @param resourceMethod The resource method matched by the current request
+     * @return {@code true} if the resource method overrides or implements the method, {@code false} otherwise
      */
-    private static boolean isImplementedBy(Method interfaceMethod, Class<?> resourceClass, @Nullable Method resourceMethod) {
-        if (areMethodsEqual(interfaceMethod, resourceMethod)) {
+    private static boolean isImplementedBy(Method method, Class<?> resourceClass, Method resourceMethod) {
+        if (areMethodsEqual(method, resourceMethod)) {
             return true;
-        } else if (resourceMethod == null
-                || !interfaceMethod.getName().equals(resourceMethod.getName())
-                || interfaceMethod.getParameterCount() != resourceMethod.getParameterCount()) {
+        } else if (!method.getName().equals(resourceMethod.getName())
+                || method.getParameterCount() != resourceMethod.getParameterCount()) {
             return false;
         }
 
-        Map<TypeVariable<?>, Type> typeArguments = getTypeArguments(resourceClass, interfaceMethod.getDeclaringClass());
-        Type[] interfaceParameters = interfaceMethod.getGenericParameterTypes();
+        Map<TypeVariable<?>, Type> typeArguments = getTypeArguments(resourceClass, method.getDeclaringClass());
+        Type[] declaredParameters = method.getGenericParameterTypes();
         Type[] resourceParameters = resourceMethod.getGenericParameterTypes();
-        for (int i = 0; i < interfaceParameters.length; i++) {
-            if (!TypeUtils.equals(unrollVariables(typeArguments, interfaceParameters[i]),
+        for (int i = 0; i < declaredParameters.length; i++) {
+            if (!TypeUtils.equals(unrollVariables(typeArguments, declaredParameters[i]),
                     unrollVariables(typeArguments, resourceParameters[i]))) {
                 return false;
             }

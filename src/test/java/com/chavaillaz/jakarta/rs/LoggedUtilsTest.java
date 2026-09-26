@@ -5,6 +5,7 @@ import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.LOG;
 import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.MDC;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
+import static com.chavaillaz.jakarta.rs.LoggedUtils.declarationSites;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.getAnnotation;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.getMergedMappings;
 import static java.util.stream.Collectors.toSet;
@@ -16,6 +17,8 @@ import static org.mockito.Mockito.doReturn;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.container.ResourceInfo;
+import java.lang.reflect.AnnotatedElement;
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Set;
 
@@ -263,6 +266,81 @@ class LoggedUtilsTest {
 
         // Then
         assertTrue(result.isEmpty());
+    }
+
+    interface Api {
+
+        void read(String id);
+
+    }
+
+    abstract static class BaseResource {
+
+        public abstract void read(String id);
+
+        public void list() {
+            // Inherited by the resource classes as it is
+        }
+
+    }
+
+    abstract static class GenericBaseResource<E> extends BaseResource {
+
+        public abstract void save(E entity);
+
+    }
+
+    static class ConcreteResource extends GenericBaseResource<String> implements Api {
+
+        @Override
+        public void read(String id) {
+            // No-op
+        }
+
+        @Override
+        public void save(String entity) {
+            // No-op
+        }
+
+    }
+
+    @Test
+    @DisplayName("Check the declaration sites of a method put the ones of the superclasses above those of the interfaces")
+    void checkDeclarationSitesWithSuperclasses() throws Exception {
+        // When
+        List<AnnotatedElement> sites = declarationSites(ConcreteResource.class, ConcreteResource.class.getMethod("read", String.class));
+
+        // Then: the methods overridden first, the superclasses' before the interfaces', then the types
+        assertEquals(List.of(
+                ConcreteResource.class.getMethod("read", String.class),
+                BaseResource.class.getMethod("read", String.class),
+                Api.class.getMethod("read", String.class),
+                Api.class,
+                ConcreteResource.class,
+                GenericBaseResource.class,
+                BaseResource.class), sites);
+    }
+
+    @Test
+    @DisplayName("Check a method overriding a generic method of a superclass has it as a declaration site")
+    void checkDeclarationSitesWithGenericSuperclass() throws Exception {
+        // When: save(String) overrides save(E), which erases to save(Object)
+        List<AnnotatedElement> sites = declarationSites(ConcreteResource.class, ConcreteResource.class.getMethod("save", String.class));
+
+        // Then
+        assertTrue(sites.contains(GenericBaseResource.class.getMethod("save", Object.class)), sites::toString);
+    }
+
+    @Test
+    @DisplayName("Check a method inherited from a superclass as it is is its own declaration site, once")
+    void checkDeclarationSitesOfInheritedMethod() throws Exception {
+        // When: the container matches the method the superclass declares
+        Method inherited = BaseResource.class.getMethod("list");
+        List<AnnotatedElement> sites = declarationSites(ConcreteResource.class, inherited);
+
+        // Then
+        assertEquals(inherited, sites.getFirst());
+        assertEquals(1, sites.stream().filter(inherited::equals).count());
     }
 
     @Test

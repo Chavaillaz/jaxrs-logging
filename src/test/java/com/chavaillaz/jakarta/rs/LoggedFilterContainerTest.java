@@ -84,6 +84,7 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
         dispatcher.getRegistry().addPerRequestResource(SingleBodyResource.class);
         dispatcher.getRegistry().addPerRequestResource(MappedResource.class);
         dispatcher.getRegistry().addPerRequestResource(PlainResource.class);
+        dispatcher.getRegistry().addPerRequestResource(ConcreteResource.class);
     }
 
     /**
@@ -230,6 +231,20 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
         assertEquals(200, response.getStatus());
         assertEquals("Received POST /single" + LF + "hello", received().getMessage().getFormattedMessage());
         assertTrue(processed().getMessage().getFormattedMessage().endsWith(LF + "single hello"));
+    }
+
+    @Test
+    @DisplayName("Check the body logging an abstract base resource declares applies to the resource extending it")
+    void checkBaseResourceConfigurationApplied() throws Exception {
+        // When: the container matches the method overriding the one the base resource declares
+        MockHttpResponse response = invoke(MockHttpRequest.post("/concrete")
+                .contentType(TEXT_PLAIN)
+                .content("hello".getBytes(UTF_8)));
+
+        // Then
+        assertEquals(200, response.getStatus());
+        assertEquals("Received POST /concrete" + LF + "hello", received().getMessage().getFormattedMessage());
+        assertTrue(processed().getMessage().getFormattedMessage().endsWith(LF + "concrete hello"));
     }
 
     @Test
@@ -604,6 +619,33 @@ class LoggedFilterContainerTest extends AbstractFilterTest {
         @Produces(TEXT_PLAIN)
         public String get() {
             return "mapped";
+        }
+
+    }
+
+    /**
+     * A base resource declaring the body logging of the methods its resources implement, which JAX-RS
+     * inherits the annotations of.
+     */
+    public abstract static class BaseResource {
+
+        @POST
+        @Consumes(TEXT_PLAIN)
+        @Produces(TEXT_PLAIN)
+        @LoggedBody(LOG)
+        public abstract String create(String body);
+
+    }
+
+    /**
+     * Extends a base resource, and declares nothing of this library of its own.
+     */
+    @Path("/concrete")
+    public static class ConcreteResource extends BaseResource {
+
+        @Override
+        public String create(String body) {
+            return "concrete " + body;
         }
 
     }

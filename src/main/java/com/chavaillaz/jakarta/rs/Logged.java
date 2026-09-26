@@ -13,8 +13,8 @@ import java.lang.annotation.Target;
  * {@link LoggedBodyInterceptor} for their bodies).
  * <p>
  * Put on a resource class, it applies to every resource method of it; put on a resource method, to that
- * method alone - and the same goes for the interfaces of the class, and the methods of theirs a resource
- * method implements (see {@link LoggedUtils#declarationSites}). Its content, the {@link LoggedBody}
+ * method alone - and the same goes for the interfaces and superclasses of the class, and the methods of
+ * theirs a resource method implements or overrides (see {@link LoggedUtils#declarationSites}). Its content, the {@link LoggedBody}
  * configurations, is taken from the most specific declaration found, entirely: a method redeclaring a bare
  * {@code @Logged} opts out of the body logging its class configures.
  * <p>

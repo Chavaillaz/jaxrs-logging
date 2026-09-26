@@ -15,7 +15,7 @@ import java.lang.annotation.Target;
  * <p>
  * Declaring one activates the logging of the requests of the resource, as {@link Logged} does.
  * <p>
- * The mappings declared on the resource method, its interfaces and its class all apply, but a parameter is
+ * The mappings declared on every declaration site of the resource method all apply, but a parameter is
  * mapped once at most: of the mappings naming it, mapping or excluding it, the one declared on the most
  * specific site wins (see {@link LoggedUtils#declarationSites}), and among those declared on the same site,
  * the first one. An automatic mapping leaves out the parameters named by the mappings that apply.

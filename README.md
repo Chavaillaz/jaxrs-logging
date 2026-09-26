@@ -242,8 +242,9 @@ Specific mappings can also be excluded (without giving `mdcKey` value):
 @LoggedMapping(type = HEADER, paramNames = "Accept")
 ```
 
-The mappings declared on the resource method, its interfaces and its class all apply, but a parameter is
-mapped once at most: of the mappings naming it, the one declared closest to the resource method wins (see
+The mappings declared on every declaration site of the resource method - itself, the methods it overrides,
+the interfaces and superclasses of its class, the class itself - all apply, but a parameter is mapped once at
+most: of the mappings naming it, the one declared closest to the resource method wins (see
 [Annotation resolution](#annotation-resolution)), and among those declared at the same place, the first one,
 whether they map the parameter or exclude it. An automatic mapping leaves out the parameters named by the
 mappings that apply.
@@ -369,13 +370,15 @@ the exchange actually failed with (or turn a good response into a 500).
 ## Annotation resolution
 
 `@Logged`, `@LoggedBody` and `@LoggedMapping` are looked up, for the resource method matched by the request,
-at four declaration sites, from the most to the least specific, any of them declared at any of these sites
+at six declaration sites, from the most to the least specific, any of them declared at any of these sites
 having its requests logged:
 
 1. the resource method itself
-2. the methods it overrides on the interfaces implemented by the resource class
-3. those interfaces themselves
-4. the resource class itself
+2. the methods it overrides on the superclasses of the resource class, an abstract base resource for instance
+3. the methods it implements on the interfaces of the resource class
+4. those interfaces themselves
+5. the resource class itself
+6. its superclasses
 
 The first site declaring `@Logged` or `@LoggedBody` wins **entirely** - a more specific declaration replaces
 a less specific one rather than being merged with it. This is what lets a method opt out of a class-level
