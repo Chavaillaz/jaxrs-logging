@@ -23,6 +23,7 @@ import static jakarta.ws.rs.core.HttpHeaders.CONTENT_TYPE;
 import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN_TYPE;
 import static java.lang.Integer.parseInt;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.concurrent.Executors.newSingleThreadExecutor;
 import static org.apache.commons.lang3.StringUtils.LF;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -63,7 +64,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -1732,7 +1732,7 @@ class LoggedFilterTest extends AbstractFilterTest {
         loggingFilter.filter(requestContext);
         String requestId = getMdc(REQUEST_ID);
         ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext);
-        ExecutorService worker = Executors.newSingleThreadExecutor();
+        ExecutorService worker = newSingleThreadExecutor();
 
         // When
         Map<String, String> left;

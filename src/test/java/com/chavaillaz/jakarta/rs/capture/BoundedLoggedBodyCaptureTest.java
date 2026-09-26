@@ -2,6 +2,7 @@ package com.chavaillaz.jakarta.rs.capture;
 
 import static com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER;
 import static com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture.TRUNCATION_MARKER;
+import static com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture.isBinary;
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON_TYPE;
 import static jakarta.ws.rs.core.MediaType.APPLICATION_OCTET_STREAM_TYPE;
@@ -311,12 +312,12 @@ class BoundedLoggedBodyCaptureTest {
     @Test
     @DisplayName("Check text-based media types (text/*, JSON, XML) are not treated as binary")
     void checkTextMediaTypesAreNotBinary() {
-        assertFalse(BoundedLoggedBodyCapture.isBinary(TEXT_PLAIN_TYPE));
-        assertFalse(BoundedLoggedBodyCapture.isBinary(APPLICATION_JSON_TYPE));
-        assertFalse(BoundedLoggedBodyCapture.isBinary(APPLICATION_XML_TYPE));
-        assertFalse(BoundedLoggedBodyCapture.isBinary(new MediaType("application", "hal+json")));
-        assertFalse(BoundedLoggedBodyCapture.isBinary(new MediaType("application", "x-www-form-urlencoded")));
-        assertFalse(BoundedLoggedBodyCapture.isBinary(null));
+        assertFalse(isBinary(TEXT_PLAIN_TYPE));
+        assertFalse(isBinary(APPLICATION_JSON_TYPE));
+        assertFalse(isBinary(APPLICATION_XML_TYPE));
+        assertFalse(isBinary(new MediaType("application", "hal+json")));
+        assertFalse(isBinary(new MediaType("application", "x-www-form-urlencoded")));
+        assertFalse(isBinary(null));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -325,16 +326,16 @@ class BoundedLoggedBodyCaptureTest {
     @DisplayName("Check the text formats of streaming and configuration APIs are not treated as binary")
     void checkStructuredTextMediaTypesAreNotBinary(String mediaType) {
         // Logged as hexadecimal, a bulk request of newline-delimited JSON is as good as unlogged
-        assertFalse(BoundedLoggedBodyCapture.isBinary(MediaType.valueOf(mediaType)));
+        assertFalse(isBinary(MediaType.valueOf(mediaType)));
     }
 
     @Test
     @DisplayName("Check non-text media types (octet-stream, images, multipart) are treated as binary")
     void checkNonTextMediaTypesAreBinary() {
-        assertTrue(BoundedLoggedBodyCapture.isBinary(APPLICATION_OCTET_STREAM_TYPE));
-        assertTrue(BoundedLoggedBodyCapture.isBinary(new MediaType("application", "pdf")));
-        assertTrue(BoundedLoggedBodyCapture.isBinary(new MediaType("image", "png")));
-        assertTrue(BoundedLoggedBodyCapture.isBinary(new MediaType("multipart", "form-data")));
+        assertTrue(isBinary(APPLICATION_OCTET_STREAM_TYPE));
+        assertTrue(isBinary(new MediaType("application", "pdf")));
+        assertTrue(isBinary(new MediaType("image", "png")));
+        assertTrue(isBinary(new MediaType("multipart", "form-data")));
     }
 
     @Test

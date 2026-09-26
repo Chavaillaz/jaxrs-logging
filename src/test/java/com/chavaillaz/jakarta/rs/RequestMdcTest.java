@@ -5,6 +5,7 @@ import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_PARAMETERS;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
+import static java.util.concurrent.Executors.newSingleThreadExecutor;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -13,7 +14,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.EnumMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.junit.jupiter.api.AfterEach;
@@ -213,7 +213,7 @@ class RequestMdcTest {
         LoggedRequestState request = request();
         mdc.start(request);
         mdc.put(REQUEST_ID, "abc-123");
-        ExecutorService worker = Executors.newSingleThreadExecutor();
+        ExecutorService worker = newSingleThreadExecutor();
 
         // When: a response filter runs on a worker, without completing the request
         record Observed(String requestId, Map<String, String> left) {

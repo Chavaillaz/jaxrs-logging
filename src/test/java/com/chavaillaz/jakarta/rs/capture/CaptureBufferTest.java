@@ -3,7 +3,9 @@ package com.chavaillaz.jakarta.rs.capture;
 import static com.chavaillaz.jakarta.rs.capture.CaptureBuffer.INITIAL_CAPACITY;
 import static com.chavaillaz.jakarta.rs.capture.CaptureBuffer.MAX_CAPACITY;
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
+import static java.lang.Math.min;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.Arrays.copyOf;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -94,8 +96,8 @@ class CaptureBufferTest {
             writtenByteByByte.write(b);
         }
 
-        assertArrayEquals(DATA, Arrays.copyOf(written.array(), written.size()));
-        assertArrayEquals(DATA, Arrays.copyOf(writtenByteByByte.array(), writtenByteByByte.size()));
+        assertArrayEquals(DATA, copyOf(written.array(), written.size()));
+        assertArrayEquals(DATA, copyOf(writtenByteByByte.array(), writtenByteByByte.size()));
         assertFalse(written.isTruncated());
         assertFalse(writtenByteByByte.isTruncated());
     }
@@ -108,10 +110,10 @@ class CaptureBufferTest {
         CaptureBuffer buffer = new CaptureBuffer(NO_LIMIT);
 
         for (int off = 0; off < large.length; off += 100) {
-            buffer.write(large, off, Math.min(100, large.length - off));
+            buffer.write(large, off, min(100, large.length - off));
         }
 
-        assertArrayEquals(large, Arrays.copyOf(buffer.array(), buffer.size()));
+        assertArrayEquals(large, copyOf(buffer.array(), buffer.size()));
         assertFalse(buffer.isTruncated());
     }
 
@@ -146,7 +148,7 @@ class CaptureBufferTest {
             if (length > 4096) {
                 throw new OutOfMemoryError("Java heap space");
             }
-            return Arrays.copyOf(bytes, length);
+            return copyOf(bytes, length);
         });
         byte[] large = new byte[10_000];
         new Random(42).nextBytes(large);
@@ -162,7 +164,7 @@ class CaptureBufferTest {
         }
 
         // Then: the body is kept as far as the array holds, which is not asked to grow again after failing to
-        assertArrayEquals(Arrays.copyOf(large, 4096), Arrays.copyOf(buffer.array(), buffer.size()));
+        assertArrayEquals(copyOf(large, 4096), copyOf(buffer.array(), buffer.size()));
         assertTrue(buffer.isTruncated());
         assertEquals(3, resizes.get());
     }

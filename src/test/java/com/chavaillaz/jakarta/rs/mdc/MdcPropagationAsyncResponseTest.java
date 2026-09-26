@@ -1,5 +1,6 @@
 package com.chavaillaz.jakarta.rs.mdc;
 
+import static java.util.concurrent.Executors.newSingleThreadExecutor;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -9,7 +10,6 @@ import jakarta.ws.rs.container.AsyncResponse;
 import jakarta.ws.rs.container.TimeoutHandler;
 import java.util.Date;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -116,7 +116,7 @@ class MdcPropagationAsyncResponseTest {
     @Test
     @DisplayName("Check resuming from another thread completes the request with the request's context")
     void checkResumeCarriesRequestContext() throws Exception {
-        ExecutorService pool = Executors.newSingleThreadExecutor();
+        ExecutorService pool = newSingleThreadExecutor();
         try {
             // Given: the resource method's thread, holding the MDC this library set for the request
             MDC.put("request-id", "abc-123");
@@ -139,7 +139,7 @@ class MdcPropagationAsyncResponseTest {
     @Test
     @DisplayName("Check an unwrapped response completes with no context, as the wrapper is what fixes")
     void checkUnwrappedResponseHasNoContext() throws Exception {
-        ExecutorService pool = Executors.newSingleThreadExecutor();
+        ExecutorService pool = newSingleThreadExecutor();
         try {
             MDC.put("request-id", "abc-123");
             RecordingAsyncResponse response = new RecordingAsyncResponse();

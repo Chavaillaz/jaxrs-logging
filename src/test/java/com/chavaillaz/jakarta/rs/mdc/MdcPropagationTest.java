@@ -1,5 +1,8 @@
 package com.chavaillaz.jakarta.rs.mdc;
 
+import static java.util.concurrent.Executors.newFixedThreadPool;
+import static java.util.concurrent.Executors.newSingleThreadExecutor;
+import static java.util.concurrent.Executors.newSingleThreadScheduledExecutor;
 import static java.util.concurrent.TimeUnit.MILLISECONDS;
 import static java.util.concurrent.TimeUnit.SECONDS;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,7 +20,6 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinPool;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
@@ -140,7 +142,7 @@ class MdcPropagationTest {
     @Test
     @DisplayName("Check a wrapped ExecutorService propagates context through execute, submit and invokeAll")
     void checkWrappedExecutorServicePropagatesContext() throws Exception {
-        ExecutorService rawExecutor = Executors.newSingleThreadExecutor();
+        ExecutorService rawExecutor = newSingleThreadExecutor();
         ExecutorService executor = MdcPropagation.wrap(rawExecutor);
         try {
             // execute
@@ -180,7 +182,7 @@ class MdcPropagationTest {
     void checkNullTaskRejectedOnSubmission() throws Exception {
         // Wrapped into a task that is not null itself, it used to be accepted, and to fail only once run,
         // on a pool thread, far from the code that submitted it - killing that thread in the process
-        ExecutorService executor = MdcPropagation.wrap(Executors.newSingleThreadExecutor());
+        ExecutorService executor = MdcPropagation.wrap(newSingleThreadExecutor());
         try {
             assertThrows(NullPointerException.class, () -> executor.execute(null));
             assertThrows(NullPointerException.class, () -> executor.submit((Runnable) null));
@@ -197,7 +199,7 @@ class MdcPropagationTest {
     @Test
     @DisplayName("Check lifecycle methods of a wrapped ExecutorService delegate to the underlying executor")
     void checkWrappedExecutorServiceDelegatesLifecycle() throws Exception {
-        ExecutorService rawExecutor = Executors.newSingleThreadExecutor();
+        ExecutorService rawExecutor = newSingleThreadExecutor();
         ExecutorService executor = MdcPropagation.wrap(rawExecutor);
 
         assertFalse(executor.isShutdown());
@@ -223,7 +225,7 @@ class MdcPropagationTest {
     @Test
     @DisplayName("Check a wrapped ScheduledExecutorService propagates context through schedule")
     void checkWrappedScheduledExecutorServicePropagatesContextThroughSchedule() throws Exception {
-        ScheduledExecutorService rawExecutor = Executors.newSingleThreadScheduledExecutor();
+        ScheduledExecutorService rawExecutor = newSingleThreadScheduledExecutor();
         ScheduledExecutorService executor = MdcPropagation.wrap(rawExecutor);
         try {
             // schedule(Runnable, ...)
@@ -250,7 +252,7 @@ class MdcPropagationTest {
     @Test
     @DisplayName("Check a periodic task captures MDC context once at scheduling time, reused for every execution")
     void checkWrappedScheduledExecutorServiceReusesSnapshotAcrossPeriodicExecutions() throws Exception {
-        ScheduledExecutorService rawExecutor = Executors.newSingleThreadScheduledExecutor();
+        ScheduledExecutorService rawExecutor = newSingleThreadScheduledExecutor();
         ScheduledExecutorService executor = MdcPropagation.wrap(rawExecutor);
         try {
             // Given
@@ -277,7 +279,7 @@ class MdcPropagationTest {
     @Test
     @DisplayName("Check lifecycle methods of a wrapped ScheduledExecutorService delegate to the underlying executor")
     void checkWrappedScheduledExecutorServiceDelegatesLifecycle() throws Exception {
-        ScheduledExecutorService rawExecutor = Executors.newSingleThreadScheduledExecutor();
+        ScheduledExecutorService rawExecutor = newSingleThreadScheduledExecutor();
         ScheduledExecutorService executor = MdcPropagation.wrap(rawExecutor);
 
         assertFalse(executor.isShutdown());
@@ -291,7 +293,7 @@ class MdcPropagationTest {
     @Test
     @DisplayName("Check a wrapped Executor carries context through a whole CompletableFuture chain")
     void checkExecutorCarriesCompletableFutureChain() throws Exception {
-        ExecutorService pool = Executors.newFixedThreadPool(2);
+        ExecutorService pool = newFixedThreadPool(2);
         try {
             // Given
             MDC.put("request-id", "abc-123");
@@ -323,7 +325,7 @@ class MdcPropagationTest {
     @Test
     @DisplayName("Check a wrapped Executor restores the running thread's own context after each task")
     void checkExecutorRestoresContext() throws Exception {
-        ExecutorService pool = Executors.newSingleThreadExecutor();
+        ExecutorService pool = newSingleThreadExecutor();
         try {
             // Given: a task submitted with a context, then one submitted without
             MDC.put("request-id", "abc-123");
