@@ -48,14 +48,10 @@ final class LoggedRequestState {
     private final long startTime;
 
     /**
-     * Every {@link MDC} entry put for this request (see {@link RequestMdc#put(String, String)}), so a thread
-     * completing the request without carrying its entries can be lent them, and so they are removed once the
-     * request is done.
-     * <p>
-     * This map is bound to the thread carrying the request, which is how an entry is recorded without being told
-     * which request it belongs to. It holds nothing but strings, as a value bound to a pooled thread can outlive
-     * the application and must not pin its class loader, and is concurrent, as entries can be recorded and read
-     * from different threads.
+     * Every {@link MDC} entry put for this request (see {@link RequestMdc}), for a thread completing it to be
+     * lent them, and for them to be removed once it is done. Bound to the thread carrying the request, it holds
+     * nothing but strings, which cannot pin the class loader of the application, and is concurrent, as threads
+     * other than the one carrying the request read it.
      */
     private final Map<String, String> mdcEntries = new ConcurrentHashMap<>();
 
@@ -67,13 +63,9 @@ final class LoggedRequestState {
     private final AtomicBoolean requestLogged = new AtomicBoolean();
 
     /**
-     * Whether the {@code "Received ..."} line has already been logged with the request body, see
-     * {@link #markRequestLogged(boolean)}.
-     * <p>
-     * Tracked apart from {@link #requestLogged}: an entity read several times - by a filter validating its
-     * signature, then by the resource method - goes through the interceptors each time, and only a body
-     * already logged makes a line carrying it a repetition. A body read after the line announced the request
-     * without one - as some containers decide from the {@code Content-Type} header alone - is still logged.
+     * Whether the {@code "Received ..."} line has already been logged with the request body, which a line
+     * logged without it does not prevent: an entity read twice, by a filter then by the resource method, reaches
+     * the interceptors twice, and only a body logged already makes a line a repetition.
      */
     private final AtomicBoolean requestBodyLogged = new AtomicBoolean();
 

@@ -51,14 +51,12 @@ import com.chavaillaz.jakarta.rs.internal.Sanitizer;
  *
  * }
  * }</pre>
- * The resolver is asked for the class of the feature looking it up, and a feature it resolves nothing for, as
- * one of an application declaring no resolver at all, uses the default configuration (see
- * {@link #defaults()}). An application registering its providers explicitly passes the configuration to
- * {@link LoggedFeature#LoggedFeature(LoggedFilterConfiguration)} instead.
+ * The resolver is asked for the class of the feature, and the default configuration applies when it resolves
+ * none (see {@link #defaults()}). An application registering its providers explicitly passes the
+ * configuration to {@link LoggedFeature#LoggedFeature(LoggedFilterConfiguration)} instead.
  * <p>
- * It applies to every resource the feature logs: what varies from a resource to another - which bodies are
- * logged and how they are filtered, which parameters are mapped - is declared on the resource itself, with
- * {@link LoggedBody} and {@link LoggedMapping}.
+ * It applies to every resource the feature logs, what varies from one to another being declared on the
+ * resource itself, with {@link LoggedBody} and {@link LoggedMapping}.
  */
 public final class LoggedFilterConfiguration {
 
@@ -86,8 +84,7 @@ public final class LoggedFilterConfiguration {
     }
 
     /**
-     * Gets the default configuration, used by a {@link LoggedFeature} the application declares none for (see
-     * {@link LoggedFeature#LoggedFeature()}).
+     * Gets the default configuration, the one of a {@link LoggedFeature} the application declares none for.
      *
      * @return The configuration every setting of {@link Builder} documents the default of
      */
@@ -105,14 +102,12 @@ public final class LoggedFilterConfiguration {
     }
 
     /**
-     * Indicates whether the value of the given parameter carries a credential by the conventions callers
-     * follow to name one - {@code Authorization}, {@code Cookie} or {@code X-Api-Key} for a header,
-     * {@code access_token}, {@code password} or {@code client_secret} for a query parameter, among others,
-     * whatever their casing: the default of {@link Builder#sensitiveParameters(BiPredicate)}, to compose
-     * with when extending it.
+     * Indicates whether the given parameter is named the way callers conventionally name a credential -
+     * {@code Authorization}, {@code Cookie} or {@code X-Api-Key} for a header, {@code access_token},
+     * {@code password} or {@code client_secret} for a query parameter, among others, whatever their casing.
+     * The default of {@link Builder#sensitiveParameters(BiPredicate)}, to compose with.
      * <p>
-     * Path parameters are never reported: their names are chosen by the application itself, not by whoever
-     * calls it, so there is no equivalent list of names that "just happen" to carry a credential.
+     * Path parameters are never reported: the application names them, not its callers.
      *
      * @param type The type of the parameter
      * @param name The name of the parameter
@@ -240,9 +235,8 @@ public final class LoggedFilterConfiguration {
         }
 
         /**
-         * Sets the name of the MDC entry of the given field, to align it with the names other applications
-         * use, or with the schema of whatever the logs are shipped to. Defaults to
-         * {@link LoggedField#getDefaultField()}.
+         * Sets the name of the MDC entry of the given field, to align it with other applications or with the
+         * schema the logs are shipped to. Defaults to {@link LoggedField#getDefaultField()}.
          *
          * @param field The field to name
          * @param name  The name of its MDC entry
@@ -259,8 +253,8 @@ public final class LoggedFilterConfiguration {
         }
 
         /**
-         * Leaves the given field out of MDC altogether. The lines logging the requests show it all the same,
-         * the provider keeping what they need of a request apart from MDC.
+         * Leaves the given field out of MDC. The lines logging a request still show its method, URI, status and
+         * duration, and a request identifier left out is no longer returned to the caller.
          *
          * @param field The field to leave out
          * @return This builder
@@ -271,13 +265,12 @@ public final class LoggedFilterConfiguration {
         }
 
         /**
-         * Sets the header a request identifier is read from, and returned to the caller in (see
+         * Sets the header the identifier of a request is read from, and returned to the caller in (see
          * {@link #withoutReturnedRequestId()}). Defaults to {@value LoggedFeature#REQUEST_ID_HEADER}.
          * <p>
          * The identifier is sanitized and truncated to 128 characters, and a random UUID is generated for a
-         * request without one. Note that it is taken from the client as-is beyond that: it is a correlation
-         * hint, never an authenticated value, so nothing downstream should treat two requests sharing one as
-         * necessarily related. See {@link #requestId(Function)} to generate it server-side instead.
+         * request without one. It comes from the client all the same: a correlation hint, never an authenticated
+         * value. See {@link #requestId(Function)} to generate it server-side instead.
          *
          * @param header The name of the header
          * @return This builder
@@ -292,14 +285,14 @@ public final class LoggedFilterConfiguration {
         }
 
         /**
-         * Sets how the identifier of a request is obtained, for example to always generate it server-side
-         * when the callers are untrusted:
+         * Sets how the identifier of a request is obtained, for example to always generate it server-side when
+         * the callers are untrusted:
          * <pre>{@code
          * .requestId(request -> UUID.randomUUID().toString())
          * }</pre>
-         * The identifier obtained is sanitized and truncated like one read from the header, and a request
-         * the strategy obtains none for - returning {@code null} or a blank value, or failing - gets a
-         * random UUID. Defaults to reading the {@link #requestIdHeader(String) request identifier header}.
+         * The identifier is sanitized and truncated like one read from the header, and a request the strategy
+         * obtains none for - {@code null}, blank, or failing - gets a random UUID. Defaults to reading the
+         * {@link #requestIdHeader(String) request identifier header}.
          *
          * @param strategy The strategy getting the identifier of the given request
          * @return This builder
@@ -310,13 +303,9 @@ public final class LoggedFilterConfiguration {
         }
 
         /**
-         * Stops returning the identifier a request was logged under to the caller.
-         * <p>
-         * Returned by default, in the {@link #requestIdHeader(String) request identifier header}, unless the
-         * response already carries that header: without it, the identifier tying every log line of a request
-         * together exists only on the server, and a caller reporting "your API returned a 500 at about
-         * 14:32" leaves whoever picks up the report searching by timestamp, where one quoting it points
-         * straight at the request.
+         * Stops returning the identifier a request was logged under to the caller, in the
+         * {@link #requestIdHeader(String) request identifier header}, which is done by default unless the
+         * response carries that header already: a caller quoting it points straight at the lines of its request.
          *
          * @return This builder
          */
@@ -326,14 +315,12 @@ public final class LoggedFilterConfiguration {
         }
 
         /**
-         * Sets which parameters have their value kept out of the logs: an automatic {@link LoggedMapping}
-         * skips them entirely, and the query parameters logged as {@link LoggedField#REQUEST_PARAMETERS}
-         * have their value masked while keeping their name. An explicit mapping naming a parameter is a
-         * deliberate decision and is left alone by both.
+         * Sets which parameters have their value kept out of the logs: an automatic {@link LoggedMapping} skips
+         * them, and {@link LoggedField#REQUEST_PARAMETERS} masks the value of a query parameter, keeping its
+         * name. An explicit mapping naming a parameter is a deliberate decision, left alone.
          * <p>
-         * Defaults to {@link #isCredential(MappingType, String)}, which only knows what callers
-         * conventionally name their secrets. Compose with it to extend (or restrict) it for an application
-         * that knows its own, for example to also mask a query parameter carrying a signed URL token:
+         * Defaults to {@link #isCredential(MappingType, String)}, to compose with for an application knowing
+         * its own, for example to also mask a query parameter carrying a signed URL token:
          * <pre>{@code
          * .sensitiveParameters((type, name) -> isCredential(type, name)
          *         || (type == QUERY && "url-signature".equalsIgnoreCase(name)))
@@ -348,11 +335,9 @@ public final class LoggedFilterConfiguration {
         }
 
         /**
-         * Sets the level a request is logged at once answered, given the status it was answered with, for
-         * example to leave an expected {@code 404} at {@code INFO}. Defaults to {@link LoggedSupport#levelOf(int)},
-         * see there why it is not simply {@code INFO}.
-         * <p>
-         * A status the function returns {@code null} for is logged at its default level.
+         * Sets the level a request is logged at once answered, given its status, for example to leave an
+         * expected {@code 404} at {@code INFO}. A status the function returns {@code null} for is logged at its
+         * default level. Defaults to {@link LoggedSupport#levelOf(int)}.
          *
          * @param levels The level to log a request answered with the given status at
          * @return This builder
@@ -364,11 +349,8 @@ public final class LoggedFilterConfiguration {
 
         /**
          * Sets how the bodies are captured, given the maximum size to capture in bytes, or {@code -1} for no
-         * limit. Defaults to capturing them in memory ({@link BoundedLoggedBodyCapture}).
-         * <p>
-         * This is the extension point for the mechanics of body capture itself, as opposed to
-         * {@link LoggedBodyFilter}, which only transforms content already captured: plug in a different
-         * strategy, for example spilling very large bodies to a temporary file instead of memory.
+         * limit, for example spilling large ones to a temporary file; {@link LoggedBodyFilter} transforms what
+         * was captured. Defaults to capturing them in memory ({@link BoundedLoggedBodyCapture}).
          *
          * @param factory The creation of the capture of a body keeping at most the given number of bytes
          * @return This builder
@@ -379,16 +361,16 @@ public final class LoggedFilterConfiguration {
         }
 
         /**
-         * Sets the MDC entries of the application describing a request, put along with the fields of this
-         * library before any line logging the request, and removed along with them once it is done. For example,
-         * to put the user an authentication filter identified:
+         * Sets the MDC entries of the application describing a request, put along with the fields before any
+         * line logging it, and removed with them once it is done. For example, to put the user an
+         * authentication filter identified:
          * <pre>{@code
          * .mdcEntries((request, resource) -> Optional.ofNullable(request.getSecurityContext().getUserPrincipal())
          *         .map(user -> Map.of("user-id", user.getName()))
          *         .orElse(Map.of()))
          * }</pre>
-         * Their values are sanitized as the fields are, and ignored when blank. A function failing costs the
-         * request these entries alone. Defaults to none.
+         * Values are sanitized as the fields are, and ignored when blank. A function failing costs the request
+         * these entries alone. Defaults to none.
          *
          * @param entries The entries describing the given request, by MDC key, given the resource method matched
          * @return This builder
@@ -402,8 +384,8 @@ public final class LoggedFilterConfiguration {
          * Builds the configuration set on this builder.
          *
          * @return The configuration built
-         * @throws IllegalStateException if two fields are given the same name, as the entry of one would
-         *                               then silently overwrite the entry of the other
+         * @throws IllegalStateException if two fields are given the same name, the entry of one overwriting the
+         *                               entry of the other
          */
         public LoggedFilterConfiguration build() {
             Map<String, LoggedField> fieldsByName = new HashMap<>();

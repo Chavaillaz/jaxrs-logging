@@ -17,15 +17,12 @@ import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
 /**
- * Configuration for body logging of HTTP requests or responses.
+ * Logs the bodies of the requests of a resource, or of their responses, and activates the logging of its
+ * requests as {@link Logged} does. Declared on its own, once or repeated, or inside {@link Logged}.
  * <p>
- * Declared as the content of {@link Logged} ({@code @Logged(@LoggedBody(...))}), or on its own, once or
- * repeated: either way, it activates the logging of the requests of the resource, as {@code @Logged} does.
- * <p>
- * A body is captured while its entity is read or written, which a resource method taking it as a stream - an
- * {@code InputStream} or a {@code Reader} parameter - does once the providers are done with it: such a body is
- * logged once the method read it to its end or closed it, and at the latest once the request is answered, as
- * far as the method read it. Like any other body, it is captured up to the {@link #limit()}.
+ * A body is captured while its entity is read or written. One the resource method reads as a stream - an
+ * {@code InputStream} or a {@code Reader} parameter - is logged once the method read it to its end or closed
+ * it, and at the latest once the request is answered, as far as the method read it.
  */
 @Documented
 @Retention(RUNTIME)
@@ -34,75 +31,70 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 public @interface LoggedBody {
 
     /**
-     * Indicates how the request or response body must be logged, none logging no body at all.
+     * How the body is logged, empty to log none.
      * <p>
      * A body is captured in memory by default, up to the {@link #limit()}, and a request body logged as
-     * {@link LogType#MDC} is kept until the request completes, to be put in MDC for its {@code "Processed ..."}
-     * line.
+     * {@link LogType#MDC} is kept until the request completes.
      *
      * @return The types of logging to be done
      */
     LogType[] value() default {};
 
     /**
-     * Limits the size of the request or response body to be logged (if activated).
-     * <p>
-     * Defaults to {@link LoggedBodyCapture#DEFAULT_LIMIT}, 64 KiB, as a body is buffered while it is captured:
-     * {@code -1} removes the limit, at the risk of a large body costing as much in memory and in the logs. A
-     * body cut short by the limit is logged with {@link BoundedLoggedBodyCapture#TRUNCATION_MARKER} appended,
-     * so it is never mistaken for a complete one. A limit below {@code -1} is invalid: the resource then logs
-     * no body at all, which is reported once, as an error.
+     * Size of the body logged, beyond which it is cut and logged with
+     * {@link BoundedLoggedBodyCapture#TRUNCATION_MARKER} appended. Defaults to
+     * {@link LoggedBodyCapture#DEFAULT_LIMIT}, 64 KiB, as a body is buffered while captured; {@code -1} removes
+     * the limit. A limit below {@code -1} is reported as an error, and the resource then logs no body.
      *
-     * @return The maximum size of the body to be logged in bytes, or {@code -1} for no limit
+     * @return The maximum size of the body logged in bytes, {@code -1} for no limit
      */
     int limit() default DEFAULT_LIMIT;
 
     /**
-     * Indicates which filters must be applied before logging the request or response body.
-     * <p>
-     * Applied in the order declared here, so filters that depend on one another's output (for example one
-     * masking a value another then truncates) run predictably.
+     * Filters applied to the body before it is logged, in the order declared.
      *
-     * @return The list of filters to be applied
+     * @return The filters
      */
     Class<? extends LoggedBodyFilter>[] filters() default {};
 
     /**
-     * Indicates whether the logging configuration must be applied to the request, the response, or both.
+     * Directions the configuration applies to. A configuration targeting a single direction wins over one
+     * targeting both.
      *
-     * @return The targets to which the logging configuration must be applied
+     * @return The directions
      */
     Direction[] targets() default {REQUEST, RESPONSE};
 
     /**
-     * Type of logging to be applied to the request and response body.
+     * How a body is logged.
      */
     enum LogType {
 
         /**
-         * Writes the element as a new log line.
+         * On a line of its own for a request, {@code "Received ..."}, and on the {@code "Processed ..."} line for
+         * a response.
          */
         LOG,
 
         /**
-         * Writes the element as an MDC entry of the {@code "Processed ..."} line.
+         * As an MDC entry of the {@code "Processed ..."} line.
          */
         MDC
 
     }
 
     /**
-     * Direction (request or response) targeted by the logging configuration.
+     * Direction of the body a configuration applies to.
      */
     enum Direction {
 
         /**
-         * Apply the logging configuration to the request body.
+         * The body of the request.
          */
         REQUEST,
 
         /**
-         * Apply the logging configuration to the response body.
+         * The body of the response.
          */
         RESPONSE
 

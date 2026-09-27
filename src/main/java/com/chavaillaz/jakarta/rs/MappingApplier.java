@@ -28,17 +28,10 @@ import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
  * Works out the MDC entries the {@link LoggedMapping} annotations of a resource method ask for, from the
  * parameters of a request.
  * <p>
- * Kept apart from any request context: it reads the parameters it is handed and hands every entry over to
- * the given output, so its rules can be exercised on plain maps, and the order the mappings apply in can be
- * worked out once per resource method (see {@link #inApplicationOrder(Collection)}) rather than on every
- * request.
- * <p>
- * Mappings apply in an order chosen so that the more specific intent wins: exclusions first (a mapping
- * declaring no MDC key means "never map this"), then explicit mappings, then automatic ones. Each explicit
- * mapping claims the names of the parameters it reads, per type of parameter, and a later mapping leaves a
- * claimed parameter alone, so no parameter is mapped twice under two different keys, nor at all once
- * excluded. An automatic mapping only ever adds entries, and never replaces one (see
- * {@link #applyAutomatic}).
+ * Mappings apply so the more specific intent wins (see {@link #inApplicationOrder(Collection)}): exclusions
+ * first - mappings declaring no MDC key - then explicit mappings, then automatic ones. A mapping claims the names
+ * of the parameters it reads, per type, and a later one leaves a claimed parameter alone, so no parameter is
+ * mapped twice, nor once excluded. An automatic mapping only adds entries (see {@link #applyAutomatic}).
  */
 final class MappingApplier {
 
@@ -109,11 +102,8 @@ final class MappingApplier {
     /**
      * Creates the set recording the names of the parameters of the given type claimed by the mappings.
      * <p>
-     * Header names are compared without regard to case, as HTTP defines them that way and nothing makes
-     * a client spell one the way the annotation naming it does - HTTP/2 and HTTP/3 send every header
-     * name lower cased, whatever the application wrote - so a header a mapping names, or excludes, is never
-     * mapped again by an automatic mapping. Path and query parameter names are case-sensitive and are matched
-     * as written.
+     * Header names are compared without regard to case, as HTTP defines them, and HTTP/2 sends them lower cased;
+     * path and query parameter names as written.
      *
      * @param type The type of parameter the mappings read
      * @return The (empty) set to record claimed names in
@@ -123,11 +113,9 @@ final class MappingApplier {
     }
 
     /**
-     * Claims the names of the parameters the given explicit mapping reads, unless a mapping applied before
-     * it already claimed one of them, in which case the given mapping does nothing at all.
-     * <p>
-     * An exclusion - a mapping declaring no MDC key - only claims its names, so that no later mapping (in
-     * particular an automatic one, which applies last for exactly this reason) can map them.
+     * Claims the names of the parameters the given explicit mapping reads, unless a mapping applied before it
+     * claimed one of them, the given mapping then doing nothing. An exclusion only claims its names, for no
+     * later mapping to map them.
      *
      * @param mapping      The explicit mapping to claim the parameters of
      * @param claimedNames The names of the parameters of its type claimed so far
@@ -145,12 +133,8 @@ final class MappingApplier {
     }
 
     /**
-     * Maps the first of the parameters named by the given mapping that the request has to the MDC key the
-     * mapping declares.
-     * <p>
-     * The names are read in the order they are declared, so "the first of the parameters" is the same one
-     * from a restart of the application to the next whenever several of them are present, and a name
-     * declared twice is merely read twice rather than being an error.
+     * Maps the first of the parameters the given mapping names that the request has, in the order declared, to
+     * the MDC key the mapping declares.
      *
      * @param mapping    The explicit mapping to apply
      * @param key        The MDC key the mapping declares, its prefix included
@@ -168,15 +152,12 @@ final class MappingApplier {
     }
 
     /**
-     * Maps every parameter the client sent and no explicit mapping claimed to an MDC entry named after it,
-     * for a mapping declared with {@link LoggedMapping#auto()}.
+     * Maps every parameter the client sent and no explicit mapping claimed to an MDC entry named after it, for
+     * a mapping declared with {@link LoggedMapping#auto()}.
      * <p>
-     * The MDC key is therefore chosen by the caller, not by the application, which is what the guards here
-     * are about: a parameter carrying a credential is skipped outright rather than logged, and an entry is
-     * only ever added, never put under a key already taken - one of the provider's own fields, the key of an
-     * explicit mapping, or an entry the request carries, put by the application or by another library - so
-     * no client can relabel its request by naming a parameter {@code request-id}, or the {@code tenant} an
-     * explicit mapping reads from a header the gateway sets.
+     * The client chooses these keys, so a parameter carrying a credential is skipped, and no entry is put under a
+     * key taken - a field, the key of an explicit mapping, an entry the thread carries: no client can relabel
+     * its request by naming a parameter {@code request-id}.
      *
      * @param mapping      The automatic mapping to apply
      * @param parameters   The parameters of the request of the type of the mapping, by name

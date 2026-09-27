@@ -10,15 +10,12 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
 /**
- * Annotation defining a mapping from a parameter to an MDC entry
- * to be used by the {@link LoggedFeature} when logging a request.
+ * Maps parameters of the requests of a resource - query or path parameters, headers - to MDC entries, and
+ * activates the logging of its requests as {@link Logged} does.
  * <p>
- * Declaring one activates the logging of the requests of the resource, as {@link Logged} does.
- * <p>
- * The mappings declared on every declaration site of the resource method all apply, but a parameter is
- * mapped once at most: of the mappings naming it, mapping or excluding it, the one declared on the most
- * specific site wins (see {@link LoggedUtils#declarationSites}), and among those declared on the same site,
- * the first one. An automatic mapping leaves out the parameters named by the mappings that apply.
+ * The mappings of every declaration site apply (see {@link LoggedUtils#declarationSites}), but a parameter is
+ * mapped once at most, by the mapping naming it on the most specific site, the first one declared there. An
+ * automatic mapping leaves out the parameters the others name.
  */
 @Documented
 @Retention(RUNTIME)
@@ -27,48 +24,42 @@ import java.lang.annotation.Target;
 public @interface LoggedMapping {
 
     /**
-     * Type of the parameters to map.
+     * Type of the parameters mapped.
      *
      * @return The type of the parameters
      */
     MappingType type();
 
     /**
-     * Flag indicating if the mapping must be done automatically
-     * (one to one, without changing the names of parameters) for the given type.
+     * Maps every parameter of the type under its own name, after {@link #mdcPrefix()}.
      * <p>
-     * The resulting MDC key is derived from the parameter or header name, which is controlled by the client
-     * sending the request, so an automatic mapping only ever adds entries: a parameter whose key is taken
-     * already - by a {@link LoggedField} (e.g. {@code request-id}, {@code duration}), by an explicit mapping,
-     * or by an entry already in MDC - is left out, whatever the prefix, as is a parameter without a name.
-     * Always set a non-empty {@link #mdcPrefix()} all the same when enabling this for an untrusted source:
-     * without it, a client could choose the key of an entry the application only puts later on.
+     * The client chooses these names, so an automatic mapping only adds entries: a parameter whose key is
+     * taken - by a {@link LoggedField}, an explicit mapping or an entry already in MDC - is left out, as is one
+     * without a name. Set a prefix all the same for an untrusted client, which could otherwise choose the key
+     * of an entry the application puts later on.
      *
-     * @return {@code true} to automatically map the parameters, {@code false} otherwise
+     * @return {@code true} to map every parameter, {@code false} to map those named
      */
     boolean auto() default false;
 
     /**
-     * Prefix to be added to the MDC key.
-     * <p>
-     * Effectively mandatory when using {@link #auto()} on client-controlled input (headers, query or
-     * path parameters), as it keeps the keys a client chooses apart from those of the entries the
-     * application puts while serving the request.
+     * Prefix of the MDC keys, keeping the names a client chooses (see {@link #auto()}) apart from the keys of
+     * the application.
      *
      * @return The prefix
      */
     String mdcPrefix() default "";
 
     /**
-     * MDC key the first of the named parameters the request carries is mapped to, after {@link #mdcPrefix()}.
-     * Left empty, the named parameters are not mapped at all, not even by an automatic mapping.
+     * MDC key of the first named parameter the request carries, after {@link #mdcPrefix()}. Left empty, the
+     * named parameters are mapped by no mapping at all, automatic ones included.
      *
-     * @return The MDC key
+     * @return The MDC key, empty to exclude the named parameters
      */
     String mdcKey() default "";
 
     /**
-     * Names of the parameters of the defined type to be mapped to the given MDC key.
+     * Names of the parameters mapped to {@link #mdcKey()}.
      *
      * @return The parameter names
      */
@@ -80,17 +71,17 @@ public @interface LoggedMapping {
     enum MappingType {
 
         /**
-         * Represents a query parameter from a request.
+         * Query parameter.
          */
         QUERY,
 
         /**
-         * Represents a path parameter from a request.
+         * Path parameter.
          */
         PATH,
 
         /**
-         * Represents a header from a request.
+         * Header.
          */
         HEADER
 

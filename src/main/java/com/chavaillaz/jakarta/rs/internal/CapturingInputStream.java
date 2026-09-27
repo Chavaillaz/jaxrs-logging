@@ -7,18 +7,10 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 /**
- * Input stream copying each byte of the entity stream it wraps to a capture, exactly once, however the
- * message body reader goes through it.
- * <p>
- * Copying whatever each read returns is not enough for that. A reader peeking at a stream that supports it
- * reads bytes again after {@link #reset()}, which would copy them twice, so this stream keeps track of how
- * far reading got and how much of it the capture already holds. A reader skipping bytes would have the
- * wrapped stream skip them unseen, so this stream skips by reading, as {@link InputStream#skip(long)} does,
- * and the bytes skipped reach the capture too.
- * <p>
- * It tells when the body it copies has ended - it was read to its end, or closed - for the capture of an
- * entity read as a stream, which the application reads once the providers are done with it, to be handed
- * over then.
+ * Input stream copying each byte of the entity stream it wraps to a capture exactly once, however it is read:
+ * bytes read again after {@link #reset()} are not copied twice, and bytes skipped are read, as
+ * {@link InputStream#skip(long)} does, so they reach the capture too. It tells when the body ended - read to its
+ * end, or closed - for the body of an entity read as a stream to be handed over then.
  */
 final class CapturingInputStream extends InputStream {
 

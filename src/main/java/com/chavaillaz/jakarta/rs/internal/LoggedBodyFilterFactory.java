@@ -19,13 +19,8 @@ import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
 /**
- * Instantiates and caches {@link LoggedBodyFilter} instances by class, so the same filter class
- * referenced by multiple resource methods (or by both the request and response configuration of one)
- * is only reflectively instantiated once.
- * <p>
- * Not tied to any particular provider: usable from both {@link LoggedFeature} (server side) and
- * {@link LoggedClientFeature} (client side), since a {@link LoggedBodyFilter} is defined as stateless
- * and thread-safe regardless of which side captured the body it filters.
+ * Instantiates the {@link LoggedBodyFilter} classes, once per class, for {@link LoggedFeature} and
+ * {@link LoggedClientFeature} alike, a filter being stateless and thread-safe.
  */
 public class LoggedBodyFilterFactory {
 
@@ -35,19 +30,10 @@ public class LoggedBodyFilterFactory {
     protected static final Logger log = LoggerFactory.getLogger(LoggedBodyFilterFactory.class);
 
     /**
-     * Filter cached for a body filter class that failed to be instantiated, so that failure is remembered
-     * instead of being retried (and re-logged) on every single request referencing it.
-     * <p>
-     * It drops the body it is given, writing {@link BoundedLoggedBodyCapture#FILTERING_FAILURE_MARKER} in
-     * its place, rather than leaving it untouched: a filter is a "this must never reach the logs"
-     * instruction, and one that could not even be created has redacted nothing, which is the same reason a
-     * filter throwing on a body has that body dropped. A mistake as small as a constructor that is not public
-     * would otherwise have every payload the filter protects logged in the clear.
-     * <p>
-     * A plain {@code null} cannot be used for that purpose: {@link ConcurrentHashMap#computeIfAbsent}
-     * does not record a mapping when the function returns {@code null} (see its Javadoc), so returning
-     * {@code null} on failure would cause the reflective instantiation (and the {@code log.error} call)
-     * to be repeated on every request instead of once.
+     * Filter cached for a class that failed to be instantiated, reported once: it drops the body, writing
+     * {@link BoundedLoggedBodyCapture#FILTERING_FAILURE_MARKER} in its place, as a filter that could not be
+     * created redacted nothing - a constructor that is not public would otherwise have every payload it
+     * protects logged in the clear.
      */
     protected static final LoggedBodyFilter FAILED_BODY_FILTER = new LoggedBodyFilter() {
 
@@ -66,9 +52,7 @@ public class LoggedBodyFilterFactory {
     };
 
     /**
-     * Cache of instances for request and response body filters.
-     * Uses a concurrent map as an instance of this factory is typically shared across concurrently
-     * processed requests.
+     * Filters instantiated, by class.
      */
     protected final Map<Class<?>, LoggedBodyFilter> cache = new ConcurrentHashMap<>();
 
@@ -109,12 +93,8 @@ public class LoggedBodyFilterFactory {
     }
 
     /**
-     * Gets (instantiating and caching if not already done) the instance for the given filter class.
-     * <p>
-     * A class that cannot be initialized fails with a {@link LinkageError} rather than an exception - an
-     * {@link ExceptionInInitializerError} the first time, as when a pattern constant does not compile, and a
-     * {@link NoClassDefFoundError} every time after - which is treated like any other failure to instantiate
-     * the filter, rather than escaping every guard up to the exchange.
+     * Gets the instance of the given filter class, instantiated once. A class that cannot be initialized, failing
+     * with a {@link LinkageError}, is treated as any other failure to instantiate it.
      *
      * @param type The body filter class to be instantiated
      * @param <T>  The body filter type

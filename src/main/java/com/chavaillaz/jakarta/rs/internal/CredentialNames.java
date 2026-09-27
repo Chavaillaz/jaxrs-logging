@@ -10,30 +10,16 @@ import com.chavaillaz.jakarta.rs.LoggedFilterConfiguration;
 import com.chavaillaz.jakarta.rs.LoggedMapping;
 
 /**
- * The header and query parameter names that carry a credential often enough to be kept out of the logs
- * without anyone having to ask.
- * <p>
- * This is a denylist, and a denylist of names nobody controls at that: it catches what callers
- * conventionally call their secrets, not what an application's own API happens to name them. It is a
- * floor, not a guarantee - see
- * {@link LoggedFilterConfiguration.Builder#sensitiveParameters(java.util.function.BiPredicate)} to raise it for a
- * particular application.
- * <p>
- * Every name here is lower case and every lookup lower-cases what it is given, which is why the sets are
- * only reachable through {@link #isHeader(String)} and {@link #isQueryParameter(String)}: HTTP header
- * names are case-insensitive, and a query parameter carrying a secret does not become safe by being
- * spelled {@code Access_Token}.
+ * The names of the headers and query parameters carrying a credential often enough to be kept out of the logs
+ * by default: what callers conventionally name their secrets, a floor rather than a guarantee (see
+ * {@link LoggedFilterConfiguration.Builder#sensitiveParameters(java.util.function.BiPredicate)}). Names are
+ * compared whatever their casing.
  */
 public final class CredentialNames {
 
     /**
-     * Headers whose value must never be copied into MDC by an automatic {@link LoggedMapping}: such a
-     * mapping is a blanket "map everything the client sent" instruction, which is exactly how bearer
-     * tokens, session cookies and API keys end up permanently stored in a log aggregator by an
-     * application that never intended to log them.
-     * <p>
-     * Only automatic mappings consult this. An explicit mapping naming a header is a deliberate decision
-     * by the developer and is left alone.
+     * Headers an automatic {@link LoggedMapping} leaves out, as it would otherwise copy bearer tokens, session
+     * cookies and API keys into the logs. An explicit mapping naming one is a deliberate decision, left alone.
      */
     private static final Set<String> HEADERS = Set.of(
             "authorization",
@@ -58,19 +44,9 @@ public final class CredentialNames {
             "x-vault-token");
 
     /**
-     * Query parameters whose value must never be written to the logs, for the same reason as
-     * {@link #HEADERS} and with more urgency: unlike a header, a query parameter is logged by default,
-     * without anything having to be configured, as part of {@link LoggedField#REQUEST_PARAMETERS}.
-     * <p>
-     * Passing a credential in a query string is bad practice and well known as such, yet it is exactly
-     * what OAuth's implicit and authorization-code-in-URL flows, presigned URLs and countless internal
-     * APIs do, so an application has no say in whether its callers do it. Reaching a value here is not a
-     * decision by the developer the way an explicitly named {@link LoggedMapping} is, so, unlike a
-     * header, this applies whether or not any mapping is involved.
-     * <p>
-     * Names too commonly used for ordinary things are deliberately absent - {@code code} would mask an
-     * OAuth authorization code and a country code alike - and are left to applications that know their
-     * own callers.
+     * Query parameters whose value is masked in {@link LoggedField#REQUEST_PARAMETERS}, logged by default, and
+     * left out of automatic mappings: OAuth flows, presigned URLs and many APIs pass credentials in the query
+     * string. Names too common for other uses, such as {@code code}, are left to the application.
      */
     private static final Set<String> QUERY_PARAMETERS = Set.of(
             "password",

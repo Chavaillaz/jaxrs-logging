@@ -20,20 +20,14 @@ import org.slf4j.MDC;
 import com.chavaillaz.jakarta.rs.LoggedFeature;
 
 /**
- * Propagates the calling thread's MDC context map to a task run on another thread.
+ * Propagates the MDC context map of the calling thread to a task run on another one.
  * <p>
- * MDC is backed by a thread-local, so entries set by {@link LoggedFeature} (or by application code) on the
- * thread handling a request are not visible to a task submitted to an {@link ExecutorService}, a manually
- * started {@link Thread}, or any other thread hand-off - including a {@code @Suspended AsyncResponse} or a
- * reactive resource method resuming on a different worker thread. Wrap a task (or a whole
- * {@link ExecutorService}) with this class to copy the submitting thread's MDC context map onto the thread
- * that actually runs it, and restore that thread's own previous context map once the task completes - rather
- * than merging into it, so a pooled thread never leaks one task's MDC entries into the next one it happens
- * to run.
+ * MDC is thread-local, so the entries {@link LoggedFeature} puts for a request are not visible to a task handed
+ * to an {@link ExecutorService}, a {@link Thread}, or a {@code @Suspended} response resumed elsewhere. A task
+ * wrapped here runs with a copy of the context map of the thread wrapping it, and gives its thread back its own
+ * context map once done, so a pooled thread never carries the entries of one task into the next.
  * <p>
- * Every method rejects a {@code null} argument with a {@link NullPointerException} right away, as the
- * {@link ExecutorService} contract has it for a task: a {@code null} wrapped into a task that is not
- * {@code null} itself would otherwise only fail once run, on a pool thread, far from the code at fault.
+ * Every method rejects a {@code null} argument right away, rather than once run on a pool thread.
  */
 public final class MdcPropagation {
 
@@ -42,8 +36,7 @@ public final class MdcPropagation {
     }
 
     /**
-     * Wraps the given task so it runs with a copy of the calling thread's current MDC context map,
-     * captured at the time this method is called (not when the returned task is eventually run).
+     * Wraps the given task to run with a copy of the context map the calling thread has now.
      *
      * @param task The task to wrap
      * @return A task running the given one with the calling thread's MDC context map applied
@@ -63,8 +56,7 @@ public final class MdcPropagation {
     }
 
     /**
-     * Wraps the given task so it runs with a copy of the calling thread's current MDC context map,
-     * captured at the time this method is called (not when the returned task is eventually run).
+     * Wraps the given task to run with a copy of the context map the calling thread has now.
      *
      * @param task The task to wrap
      * @param <T>  The type of the result returned by the task
@@ -85,12 +77,8 @@ public final class MdcPropagation {
     }
 
     /**
-     * Wraps the given executor so every task submitted to it (through any of {@link ExecutorService}'s
-     * task-accepting methods) runs with a copy of the submitting thread's MDC context map, captured at
-     * submission time.
-     * <p>
-     * Lifecycle methods ({@link ExecutorService#shutdown()}, {@link ExecutorService#awaitTermination}, ...)
-     * are delegated as-is to the given executor.
+     * Wraps the given executor so every task submitted to it runs with a copy of the context map of the thread
+     * submitting it, the other methods delegated as they are.
      *
      * @param executor The executor to wrap
      * @return An executor propagating MDC context to every task it runs
@@ -101,17 +89,9 @@ public final class MdcPropagation {
     }
 
     /**
-     * Wraps the given executor so every task submitted to it (through any of {@link ExecutorService}'s or
-     * {@link ScheduledExecutorService}'s task-accepting methods) runs with a copy of the submitting
-     * thread's MDC context map, captured at submission time.
-     * <p>
-     * For a periodic task ({@link ScheduledExecutorService#scheduleAtFixedRate} or
-     * {@link ScheduledExecutorService#scheduleWithFixedDelay}), the context map is captured once, when the
-     * task is scheduled, and that snapshot is applied to every execution of it: a later change to the MDC of
-     * the scheduling thread is not picked up.
-     * <p>
-     * Lifecycle methods ({@link ExecutorService#shutdown()}, {@link ExecutorService#awaitTermination}, ...)
-     * are delegated as-is to the given executor.
+     * Wraps the given executor so every task submitted to it runs with a copy of the context map of the thread
+     * submitting it, the other methods delegated as they are. A periodic task runs every time with the context
+     * map captured when it was scheduled.
      *
      * @param executor The executor to wrap
      * @return An executor propagating MDC context to every task it runs
@@ -122,22 +102,17 @@ public final class MdcPropagation {
     }
 
     /**
-     * Wraps the given executor so every task it runs does so with a copy of the MDC context map of the
-     * thread that submitted it, captured at submission time.
-     * <p>
-     * This is the mechanism to reach for with {@link java.util.concurrent.CompletableFuture}, whose
-     * {@code *Async} methods all accept an {@link Executor}: passing a wrapped one to every stage of a
-     * chain carries the context along the whole chain on its own, because each stage runs with the
-     * context restored and therefore submits the next one from a thread that already has it.
+     * Wraps the given executor so every task runs with a copy of the context map of the thread submitting it.
+     * Given to every stage of a {@link java.util.concurrent.CompletableFuture} chain, it carries the context along
+     * the chain, each stage submitting the next from a thread having it.
      * <pre>{@code
      * Executor executor = MdcPropagation.wrap(pool);
      * CompletableFuture.supplyAsync(() -> load(id), executor)
      *         .thenApplyAsync(this::render, executor)
      *         .thenAcceptAsync(response::resume, executor);
      * }</pre>
-     * Note that the {@code *Async} methods taking no executor run on the common {@link java.util.concurrent.ForkJoinPool}
-     * instead, which cannot be wrapped: use the overloads taking one, as above, or wrap the individual
-     * stage functions (see {@link #wrapSupplier}, {@link #wrapFunction} and their siblings).
+     * The {@code *Async} methods taking no executor run on the common {@link java.util.concurrent.ForkJoinPool},
+     * which cannot be wrapped: wrap their functions instead (see {@link #wrapSupplier} and its siblings).
      *
      * @param executor The executor to wrap
      * @return An executor propagating MDC context to every task it runs
@@ -148,14 +123,10 @@ public final class MdcPropagation {
     }
 
     /**
-     * Wraps the given supplier so it runs with a copy of the calling thread's current MDC context map,
-     * captured at the time this method is called (not when the returned supplier is eventually run), for
-     * {@link java.util.concurrent.CompletableFuture#supplyAsync(Supplier)}.
-     * <p>
-     * Named rather than being another {@code wrap} overload, like the four below: {@link Supplier} has
-     * the same shape as {@link Callable}, and {@link Function} the same as {@link Consumer}, so an
-     * overload for each would make {@code wrap(() -> value)} ambiguous at every existing call site
-     * instead of resolving to the one meant.
+     * Wraps the given supplier to run with a copy of the context map the calling thread has now, for
+     * {@link java.util.concurrent.CompletableFuture#supplyAsync(Supplier)}. Named apart from {@code wrap}, like
+     * the functions below, as {@link Supplier} has the shape of {@link Callable} and {@link Function} of
+     * {@link Consumer}: an overload would make {@code wrap(() -> value)} ambiguous.
      *
      * @param task The supplier to wrap
      * @param <T>  The type of the result returned by the supplier
@@ -236,15 +207,10 @@ public final class MdcPropagation {
     }
 
     /**
-     * Wraps the given asynchronous response so the request is completed with a copy of the MDC context
-     * map of the thread that called this method, whichever thread eventually completes it.
-     * <p>
-     * A resource method taking a {@code @Suspended AsyncResponse} returns before the response exists, and
-     * the container only runs the response filters and writes the entity when {@code resume} is called -
-     * on whatever thread the application calls it from. Without this, that thread has none of the MDC of
-     * the request: {@link LoggedFeature} still logs its {@code Processed ...} line with the entries it put
-     * for the request, but every other line logged while completing it - by a response filter or a message
-     * body writer of the application, for instance - lands with no request identifier, no URI and no method.
+     * Wraps the given asynchronous response so the request completes with a copy of the context map the calling
+     * thread has now, whichever thread resumes it: the response filters and message body writers of the
+     * application then log with the entries of the request, which {@link LoggedFeature} lends its own lines
+     * anyway.
      * <pre>{@code
      * @GET
      * public void get(@Suspended AsyncResponse response) {
@@ -252,12 +218,8 @@ public final class MdcPropagation {
      *     pool.execute(() -> propagating.resume(load()));
      * }
      * }</pre>
-     * Wrapping the response rather than every hop that leads to it is deliberate: it covers the
-     * completion however the application got there - a pool, a {@code CompletableFuture} chain, a
-     * callback from a client library - and it also covers the timeout handler, which the container would
-     * otherwise invoke with the unwrapped response on a timer thread.
-     * <p>
-     * Only the methods completing the request apply the context; the others delegate as-is.
+     * It covers the completion however it is reached - a pool, a {@code CompletableFuture} chain, a client
+     * callback - and the timeout handler. Only the methods completing the request apply the context.
      *
      * @param response The asynchronous response to wrap
      * @return An asynchronous response completing the request with the calling thread's MDC context map
@@ -268,9 +230,7 @@ public final class MdcPropagation {
     }
 
     /**
-     * Runs the given action with the given context map applied, restoring the running thread's own
-     * context map once it completes - rather than merging into it, so a pooled thread never leaks one
-     * task's MDC entries into the next one it happens to run.
+     * Runs the given action with the given context map, giving the running thread its own back once done.
      *
      * @param context The context map to apply while running the action, {@code null} to run it with none
      * @param action  The action to run

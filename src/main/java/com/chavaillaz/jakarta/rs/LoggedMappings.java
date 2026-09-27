@@ -9,8 +9,7 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
 /**
- * Annotation defining a list of mappings from parameters to MDC entries
- * to be used by the {@link LoggedFeature} when logging a request.
+ * Container of repeated {@link LoggedMapping} annotations, which the compiler declares in their place.
  */
 @Documented
 @Retention(RUNTIME)
@@ -18,9 +17,9 @@ import java.lang.annotation.Target;
 public @interface LoggedMappings {
 
     /**
-     * List defining the mapping from parameters of the given types to MDC entries.
+     * The mappings.
      *
-     * @return The list of mappings
+     * @return The mappings
      */
     LoggedMapping[] value() default {};
 

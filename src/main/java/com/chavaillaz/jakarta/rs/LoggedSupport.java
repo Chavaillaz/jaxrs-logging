@@ -6,8 +6,7 @@ import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
 
 /**
  * The level {@link LoggedFeature} and {@link LoggedClientFeature} log an exchange at by default, given the
- * status it was answered with: the two providers sit on opposite sides of the JAX-RS API and share no
- * supertype, so it lives here rather than written twice and left to drift apart.
+ * status it was answered with.
  */
 public final class LoggedSupport {
 
@@ -19,10 +18,8 @@ public final class LoggedSupport {
      * Gets the level at which an exchange answered with the given status is logged: {@link Level#ERROR}
      * for a server error, {@link Level#WARN} for a client error, {@link Level#INFO} otherwise.
      * <p>
-     * A failed exchange logged like a successful one is a line nobody is alerted on. A client error is no
-     * error, though: on the server side, a {@code 404} or a {@code 400} says something about the caller rather
-     * than about the service, and on the client side, it points at a bug of the application rather than at an
-     * outage - {@code WARN} keeps both visible without either being an incident.
+     * A client error is a warning rather than an error: on the server side, it says something about the caller
+     * rather than the service, and on the client side, it points at a bug rather than an outage.
      *
      * @param status The status the exchange was answered with, {@code 0} when unknown
      * @return The level to log the exchange at

@@ -101,12 +101,8 @@ class MdcPropagatingExecutorService implements ExecutorService {
     }
 
     /**
-     * Delegated rather than left to the default {@link ExecutorService#close()}, which shuts the
-     * executor down and waits for it to terminate through the methods above: an executor overriding
-     * {@code close()} does so because that default does not suit it. The common
-     * {@link java.util.concurrent.ForkJoinPool} is the extreme case - it cannot be shut down, so its
-     * own {@code close()} does nothing, while the default waits forever for it to terminate, spinning
-     * a whole core on the thread closing it.
+     * Delegated rather than left to the default, which waits for the executor to terminate: the common
+     * {@link java.util.concurrent.ForkJoinPool} never does, and its own {@code close()} does nothing.
      */
     @Override
     public void close() {

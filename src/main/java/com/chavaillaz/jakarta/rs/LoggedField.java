@@ -1,8 +1,8 @@
 package com.chavaillaz.jakarta.rs;
 
 /**
- * List of context fields to be written in MDC by {@link LoggedFeature}, under the default names given here
- * unless its configuration renames them (see {@link LoggedFilterConfiguration.Builder#fieldName(LoggedField, String)}).
+ * Fields {@link LoggedFeature} describes a request with in MDC, under the names given here unless the
+ * configuration renames them (see {@link LoggedFilterConfiguration.Builder#fieldName(LoggedField, String)}).
  */
 public enum LoggedField {
 
@@ -23,9 +23,8 @@ public enum LoggedField {
     REQUEST_URI("request-uri"),
 
     /**
-     * Query parameters of the request, as a query string sorted by name, the values of a parameter separated by
-     * commas, with the value of those carrying a credential masked, and the characters separating parameters
-     * escaped in their names and values.
+     * Query parameters of the request, as a query string sorted by name, the values of a parameter separated
+     * by commas, those of a credential masked, and {@code %}, {@code &} and, in a name, {@code =} escaped.
      */
     REQUEST_PARAMETERS("request-parameters"),
 
@@ -62,18 +61,18 @@ public enum LoggedField {
     private final String defaultField;
 
     /**
-     * Creates a new context field to be logged in MDC.
+     * Creates a field logged under the given name by default.
      *
-     * @param defaultField The default MDC field name
+     * @param defaultField The name of its MDC entry by default
      */
     LoggedField(String defaultField) {
         this.defaultField = defaultField;
     }
 
     /**
-     * Gets the default MDC field name to be used.
+     * Gets the name of the MDC entry of the field by default.
      *
-     * @return The default name
+     * @return The name by default
      */
     public String getDefaultField() {
         return this.defaultField;

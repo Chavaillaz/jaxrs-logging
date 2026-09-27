@@ -6,11 +6,9 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 
 /**
- * What happens when logging itself fails, for the providers and the capture of bodies alike: the failure is
- * reported and swallowed, so logging an exchange is never the reason it fails.
- * <p>
- * The providers log from {@code finally} blocks, so an exchange is logged even when it failed: an exception
- * thrown there would replace the one the exchange failed with, or turn a good response into a 500.
+ * Reports and swallows the failures of logging, so logging an exchange is never the reason it fails: thrown from
+ * the {@code finally} block logging an exchange, an exception would replace the one it failed with, or turn a good
+ * response into a 500.
  */
 public final class LoggingGuard {
 

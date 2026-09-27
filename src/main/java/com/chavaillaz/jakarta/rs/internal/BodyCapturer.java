@@ -25,22 +25,14 @@ import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
 
 /**
- * Captures the body of an entity as it is read or written, for a provider to log: copies the entity stream to
- * a {@link LoggedBodyCapture}, and hands over the body it renders once the entity is done, without any of it
- * being allowed to fail the exchange it observes. Shared by {@link LoggedFeature} and
- * {@link LoggedClientFeature}, which differ only in what they do with a body once captured.
+ * Captures the body of an entity as it is read or written, copying the entity stream to a
+ * {@link LoggedBodyCapture}, and hands over the body it renders once the entity is done: shared by
+ * {@link LoggedFeature} and {@link LoggedClientFeature}, which differ in what they do with it.
  * <p>
- * Each step is guarded, as a capture of the application's own (see
- * {@link LoggedFilterConfiguration.Builder#bodyCapture}) - one spilling to a temporary file, say - can fail
- * the way file system access does:
- * <ul>
- *     <li>putting the capture in place happens before the entity is read or written, which a failure must
- *     not prevent, and a capture created but not wired in is released right away;</li>
- *     <li>rendering what was captured happens once the entity is done, and the capture is released whether
- *     that worked or not;</li>
- *     <li>the sink of the capture, written to along with the entity stream, is guarded by
- *     {@link GuardedBodyCapture}.</li>
- * </ul>
+ * No step fails the exchange, as a capture of the application (see
+ * {@link LoggedFilterConfiguration.Builder#bodyCapture}) can fail as file system access does: putting it in
+ * place is reported rather than preventing the entity from being read or written, so is rendering it, the
+ * capture being released either way, and its sink is guarded (see {@link GuardedBodyCapture}).
  */
 public final class BodyCapturer {
 
@@ -75,15 +67,10 @@ public final class BodyCapturer {
     }
 
     /**
-     * Reads the entity of the given context, capturing its body along the way if the given configuration
-     * logs it.
-     * <p>
-     * The body of an entity read as a stream - an {@link InputStream} or a {@link Reader} the application
-     * reads once the providers are done with it, as the parameter of a resource method or the entity of a
-     * client response - is handed over once that stream ends, read to its end or closed, and the body of any
-     * other entity once it is read. The handing over of a stream is given to the provider as well, for it to
-     * run once its exchange is done, if the stream has not ended by then: it hands over as much of the body
-     * as the application read, whatever it reads next going uncaptured.
+     * Reads the entity of the given context, capturing its body if the configuration logs it: handed over once
+     * read, or once its stream ends for an entity read as a stream ({@link InputStream} or {@link Reader}). The
+     * handing over of a stream is given to the caller too, to run once the exchange is done, handing over as
+     * much of the body as was read.
      *
      * @param context       The context of the entity being read
      * @param configuration The body logging configuration of the entity
@@ -157,11 +144,8 @@ public final class BodyCapturer {
     }
 
     /**
-     * Creates a capture and wraps the entity stream with it, reporting anything either step throws and
-     * returning {@code null} instead, so the body is left out of the logs rather than the exchange failing.
-     * <p>
-     * The two steps are taken apart rather than as one block so that a capture created and then not wired
-     * in can be released, as {@link #end} only ever sees one put in place.
+     * Creates a capture and wraps the entity stream with it, reporting a failure and returning {@code null}
+     * instead, a capture created but not wired in being released.
      *
      * @param configuration The body logging configuration of the entity
      * @param wiring        The wrapping of the entity stream with the created capture
@@ -182,14 +166,9 @@ public final class BodyCapturer {
     }
 
     /**
-     * Hands the body the given capture rendered over to the given handler, then releases the capture,
-     * reporting anything either of them throws: whatever a capture was given to hold the body with, it gets
-     * back here, once, and whether or not rendering what it collected worked.
-     * <p>
-     * Rendering a body takes about as much memory again as capturing it did, which the heap may not have
-     * for a large one - one its capture was cut short for lack of memory, typically. Only that allocation
-     * fails, so the body is left out of the logs, as it would be if a filter had failed on it, rather than
-     * the error escaping to fail the exchange.
+     * Hands the body the given capture renders over to the given handler, then releases the capture, reporting
+     * what either throws. Rendering a large body can take more memory than the heap has left: only that
+     * allocation fails, so the body is left out of the logs rather than the error failing the exchange.
      *
      * @param capture       The capture to read from and release, {@code null} if none could be put in place
      * @param configuration The body logging configuration of the entity
@@ -227,10 +206,8 @@ public final class BodyCapturer {
     }
 
     /**
-     * Releases the given capture, if there is one, swallowing anything it throws.
-     * <p>
-     * Used on the path where putting a capture in place failed: something has already gone wrong and is
-     * being reported, so a capture that cannot even be released adds nothing worth a second line.
+     * Releases the given capture, if there is one, swallowing what it throws, as the failure to put it in place
+     * is the one reported.
      *
      * @param capture The capture to release, possibly {@code null}
      */

@@ -9,14 +9,10 @@ import com.chavaillaz.jakarta.rs.LoggedBody;
 import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
 
 /**
- * Base for the body filters replacing part of a body matched by a regular expression, so a value that
- * must not reach the logs is masked while the rest of the payload stays readable.
- * <p>
- * Ready-made subclasses cover the two formats this is almost always needed for,
- * {@link JsonMaskingBodyFilter} and {@link FormMaskingBodyFilter}, with
- * {@link RegexMaskingBodyFilter} left for anything else. As {@link LoggedBody#filters()} takes classes
- * that must be instantiable without arguments, configuring one for a resource means declaring a subclass
- * fixing its configuration:
+ * Base of the body filters masking what a regular expression matches, keeping the rest of the body readable:
+ * {@link JsonMaskingBodyFilter} and {@link FormMaskingBodyFilter}, and {@link RegexMaskingBodyFilter} for any
+ * other format. As {@link LoggedBody#filters()} takes classes instantiable without arguments, a resource names
+ * a subclass fixing the configuration:
  * <pre>{@code
  * public class CredentialsMask extends JsonMaskingBodyFilter {
  *
@@ -26,13 +22,10 @@ import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
  *
  * }
  * }</pre>
- * {@link LoggedClientFeature.Builder#bodyFilters(LoggedBodyFilter...)} takes instances directly, so no
- * subclass is needed there.
+ * {@link LoggedClientFeature.Builder#bodyFilters(LoggedBodyFilter...)} takes instances directly.
  * <p>
- * Masking is deliberately done on the captured text rather than on a parsed representation of it: the
- * body reaching a filter may have been truncated by {@link LoggedBody#limit()}, or be malformed - which
- * is precisely when the logs matter most - and a parser would reject both. The trade-off is that
- * matching is structural only as far as a regular expression can be, which each subclass documents.
+ * Masking works on the captured text rather than a parsed document, as a body cut by {@link LoggedBody#limit()},
+ * or malformed, is one a parser rejects: matching is structural only as far as a regular expression is.
  */
 public abstract class MaskingBodyFilter implements LoggedBodyFilter {
 
@@ -57,10 +50,8 @@ public abstract class MaskingBodyFilter implements LoggedBodyFilter {
     protected final String mask;
 
     /**
-     * Creates a filter masking the given group of every match of the given pattern.
-     * <p>
-     * A group the pattern does not have is rejected here, rather than failing on every body filtered, each
-     * of which would then be dropped.
+     * Creates a filter masking the given group of every match of the given pattern, rejecting a group the
+     * pattern does not have rather than dropping every body it filters.
      *
      * @param pattern The pattern matching the values to mask
      * @param group   The number of the capturing group to replace within each match
@@ -90,10 +81,7 @@ public abstract class MaskingBodyFilter implements LoggedBodyFilter {
     /**
      * {@inheritDoc}
      * <p>
-     * Hands the body back as it is, without allocating anything, for the common case of a payload carrying
-     * none of the values this filter masks. Otherwise, builds the masked body in a single pass, copying the
-     * text between the values to mask - what surrounds a value, a JSON property name or a parameter name,
-     * being kept - and writing the mask in place of each value, rather than building a string per match.
+     * Hands the body back as it is when nothing matches, and builds the masked body in one pass otherwise.
      */
     @Override
     public CharSequence apply(CharSequence body) {

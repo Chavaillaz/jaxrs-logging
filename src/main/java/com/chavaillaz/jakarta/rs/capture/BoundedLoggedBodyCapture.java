@@ -27,19 +27,15 @@ import org.slf4j.LoggerFactory;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
 /**
- * Default {@link LoggedBodyCapture} implementation, capturing at most a configured number of bytes in
- * memory.
+ * Default {@link LoggedBodyCapture}, capturing at most a given number of bytes in memory.
  * <p>
- * A text body is decoded with the charset its media type declares, and as UTF-8 when it declares none (see
- * {@link #charsetOf(MediaType)}). A body whose media type is not text-based (see {@link #isBinary(MediaType)})
- * is rendered as lowercase hexadecimal instead, as a binary payload decoded as text reads as nothing but
- * replacement characters.
+ * A text body is decoded with the charset of its media type, UTF-8 when it declares none (see
+ * {@link #charsetOf(MediaType)}), and any other body is rendered as lowercase hexadecimal (see
+ * {@link #isBinary(MediaType)}), as a binary payload decoded as text reads as replacement characters.
  * <p>
- * A body the limit cut short ends with {@link #TRUNCATION_MARKER}, so it is not mistaken for a complete, and
- * malformed, payload. A body whose {@link LoggedBodyFilter} throws - a {@link StackOverflowError} included,
- * as a regular expression gives up on a payload too large for it - is replaced with
- * {@link #FILTERING_FAILURE_MARKER}: the redaction it was meant to go through did not happen, so it must not
- * be logged, and the failure is reported rather than allowed to fail the exchange.
+ * A body the limit cut short ends with {@link #TRUNCATION_MARKER}. A body a {@link LoggedBodyFilter} fails on -
+ * a {@link StackOverflowError} included, as a regular expression gives up on a payload too large for it - is
+ * replaced with {@link #FILTERING_FAILURE_MARKER}, its redaction not having happened, and the failure reported.
  */
 public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
 
@@ -49,31 +45,20 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
     protected static final Logger log = LoggerFactory.getLogger(BoundedLoggedBodyCapture.class);
 
     /**
-     * Appended to the rendered content when the configured limit dropped part of the body.
+     * Appended to a body the limit cut short, so it is not mistaken for a complete, malformed, one.
      */
     public static final String TRUNCATION_MARKER = "...[truncated]";
 
     /**
-     * Written in place of the whole body when a {@link LoggedBodyFilter} failed on it.
-     * <p>
-     * The body is dropped rather than logged as captured, because a filter is a "this must never reach
-     * the logs" instruction: a filter that threw has, by definition, not finished redacting, so what it
-     * was working on is exactly what must not be written. Dropping it costs one unreadable log line;
-     * logging it costs a credential in a log aggregator.
+     * Written in place of a body a {@link LoggedBodyFilter} failed on: a filter that threw has not finished
+     * redacting, so the body must not be logged.
      */
     public static final String FILTERING_FAILURE_MARKER = "[body dropped: a filter failed]";
 
     /**
-     * The {@code application} subtypes that carry text rather than bytes, in lower case.
-     * <p>
-     * The {@code application} type is the only one needing a list: {@code text/*} is textual by
-     * definition, and everything else ({@code image}, {@code audio}, {@code video}, {@code multipart})
-     * is not. Subtypes ending in a structured syntax suffix are recognized separately, see
-     * {@link #isTextualApplicationSubtype(String)}.
-     * <p>
-     * Besides the usual structured and form text, the list covers the text formats of streaming and
-     * configuration APIs - newline-delimited JSON of a bulk request, JSON text sequences, YAML, GraphQL -
-     * which, logged as hexadecimal, are as good as unlogged.
+     * The {@code application} subtypes carrying text, in lower case, those with a structured syntax suffix apart
+     * (see {@link #isTextualApplicationSubtype(String)}): {@code text/*} is textual by definition, and the other
+     * types are not.
      */
     protected static final Set<String> TEXTUAL_APPLICATION_SUBTYPES = Set.of(
             "json",
@@ -96,8 +81,7 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
             "+yaml");
 
     /**
-     * Where the captured bytes are kept, and the sink the entity stream is teed to (see {@link CaptureBuffer}
-     * for why it is neither synchronized nor wrapped).
+     * Where the captured bytes are kept, and the sink the entity stream is teed to.
      */
     private final CaptureBuffer buffer;
 
@@ -125,10 +109,8 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
     /**
      * {@inheritDoc}
      * <p>
-     * The body is copied no more than it has to be, as a large one is copied in full each time: it is
-     * decoded once, straight from the array it was captured in, and each filter either hands it back as it
-     * is or produces its filtered copy (see {@link LoggedBodyFilter#apply(CharSequence)}), the result being
-     * turned into a string once, at the end.
+     * The body is decoded once, from the array it was captured in, and copied by the filters changing it alone
+     * (see {@link LoggedBodyFilter#apply(CharSequence)}).
      */
     @Override
     public String content(Set<LoggedBodyFilter> filters, @Nullable MediaType mediaType) {
@@ -144,24 +126,20 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
                 body = filter.apply(body);
             }
         } catch (Exception | StackOverflowError e) {
-            // StackOverflowError is the one Error caught: it is how java.util.regex fails on a payload
-            // large enough for the pattern it runs, filters are regular expressions more often than not,
-            // and nothing is left behind once it has unwound. Letting it out instead would fail the
-            // exchange this capture is only observing, which no Exception thrown here is allowed to do.
+            // StackOverflowError is the one Error caught: how java.util.regex fails on a payload too large for its
+            // pattern, leaving nothing behind once unwound
             log.error("A body filter failed, the body is dropped rather than logged unfiltered", e);
             return FILTERING_FAILURE_MARKER;
         }
 
-        // Appended after filtering, so a filter neither has to preserve the marker nor can mistake it
-        // for part of the payload it is inspecting
+        // Appended after filtering, so no filter sees it as part of the payload
         String rendered = body.toString();
         return truncated && !rendered.isEmpty() ? rendered + TRUNCATION_MARKER : rendered;
     }
 
     /**
      * Gets the charset a text body of the given media type is encoded with: the one its {@code charset}
-     * parameter declares, or UTF-8 - the default of JAX-RS itself - when it declares none, or one this JVM
-     * does not support.
+     * parameter declares, or UTF-8, the default of JAX-RS, when it declares none or one this JVM lacks.
      *
      * @param mediaType The media type of the captured body, or {@code null} if unknown
      * @return The charset to decode the body with
@@ -172,19 +150,10 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
     }
 
     /**
-     * Decodes the given bytes as text, once, straight from the array they were captured in.
-     * <p>
-     * A body cut short by the limit may end in the middle of a character, which must be left out rather than
-     * decoded to a trailing replacement character. How that character is found depends on the charset, and
-     * the common ones are spared a decoding pass of their own:
-     * <ul>
-     *     <li>a single-byte charset has nothing to cut, every byte being a whole character;</li>
-     *     <li>UTF-8 tells from the last few bytes alone where its last character starts, and how long it is
-     *     (see {@link #completeUtf8Length(byte[], int)});</li>
-     *     <li>any other charset is decoded as if more input were to follow, which makes a decoder stop in
-     *     front of an incomplete sequence instead of reporting it as malformed - a UTF-16 surrogate pair or a
-     *     Shift_JIS double byte alike - and the characters it decoded are the result.</li>
-     * </ul>
+     * Decodes the given bytes as text, leaving out a character the limit cut in half rather than decoding it to
+     * a replacement character: a single-byte charset cuts none, UTF-8 tells from its last bytes where its last
+     * character starts (see {@link #completeUtf8Length(byte[], int)}), and any other charset is decoded as if more
+     * input were to follow, which stops a decoder in front of an incomplete sequence.
      *
      * @param bytes     The bytes captured, possibly cut in the middle of a character
      * @param size      The number of bytes captured, at the start of the array
@@ -210,13 +179,8 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
     }
 
     /**
-     * Gets how many of the given UTF-8 bytes form complete characters, so that a character the limit cut in
-     * the middle of can be left out.
-     * <p>
-     * UTF-8 marks the first byte of each character, and tells from it how many bytes the character takes,
-     * so only the last few bytes need to be read: the last one not continuing a character is where the last
-     * character starts. Bytes that are not valid UTF-8 are left in place, for the decoding that follows to
-     * replace as it would anywhere else in the body.
+     * Gets how many of the given UTF-8 bytes form complete characters, from the last byte starting a character,
+     * which tells how many bytes it takes. Bytes that are not valid UTF-8 are left for the decoding to replace.
      *
      * @param bytes The bytes captured, encoded in UTF-8
      * @param size  The number of bytes captured, at the start of the array
@@ -244,15 +208,9 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
     }
 
     /**
-     * Indicates whether a body of the given media type should be treated as binary (and thus rendered
-     * as hexadecimal rather than decoded as text).
-     * <p>
-     * Textual: any {@code text/*} type, and the {@code application} subtypes commonly used for
-     * structured or form text (see {@link #TEXTUAL_APPLICATION_SUBTYPES}), including any with a
-     * {@code +json}, {@code +xml} or {@code +yaml} structured syntax suffix, e.g. {@code application/hal+json}.
-     * Binary: everything else, notably {@code application/octet-stream}, {@code application/pdf},
-     * {@code application/protobuf}, {@code image/*}, {@code audio/*}, {@code video/*} and {@code multipart/*}.
-     * A missing media type is treated as textual.
+     * Indicates whether a body of the given media type is binary, rendered as hexadecimal: any but a
+     * {@code text/*} type, the {@code application} subtypes carrying text (see {@link #TEXTUAL_APPLICATION_SUBTYPES}),
+     * and those with a {@code +json}, {@code +xml} or {@code +yaml} suffix. A missing media type is textual.
      *
      * @param mediaType The media type of the captured body, or {@code null} if unknown
      * @return {@code true} if the body should be treated as binary, {@code false} otherwise

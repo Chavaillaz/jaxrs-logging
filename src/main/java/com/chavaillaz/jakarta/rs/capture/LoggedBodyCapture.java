@@ -12,21 +12,16 @@ import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
 /**
- * Captures a request or response body as it flows through a stream, to later expose it (optionally
- * filtered) as text.
+ * Captures a request or response body as it is read or written, and renders it as text once done.
  * <p>
- * An instance is meant to be used once, for a single request or response body: {@link #sink()} receives a
- * copy of the body while it is being read or written, {@link #content(Set)} is called once that is done to
- * retrieve what was captured, and {@link #close()} releases whatever the capture held. For a body the
- * application reads as a stream once the providers are done with it, that is once the stream ends - or, on
- * the server, once its request is answered if it never does - possibly on another thread than the one that
- * read it.
+ * An instance captures a single body: {@link #sink()} receives a copy of it, {@link #content(Set)} renders it
+ * once the entity is done - for a body read as a stream, once the stream ends, possibly on another thread - and
+ * {@link #close()} releases what the capture holds.
  * <p>
- * This is the extension point for the mechanics of body capture itself (bounded in-memory buffering by
- * default, see {@link BoundedLoggedBodyCapture}), as opposed to {@link LoggedBodyFilter}, which only
- * transforms content already captured. Pass one to {@link LoggedFilterConfiguration.Builder#bodyCapture}, or
- * override {@code createBodyCapture(int)} on {@link LoggedClientFeature}, to plug in a different strategy,
- * for example spilling very large bodies to a temporary file, or capturing a digest of the content.
+ * The default one captures in memory, up to a limit (see {@link BoundedLoggedBodyCapture}), and
+ * {@link LoggedBodyFilter} transforms what was captured. Plug in another one - spilling large bodies to a
+ * temporary file, say - with {@link LoggedFilterConfiguration.Builder#bodyCapture}, or by overriding
+ * {@code createBodyCapture(int)} of {@link LoggedClientFeature}.
  */
 public interface LoggedBodyCapture extends AutoCloseable {
 
@@ -56,12 +51,8 @@ public interface LoggedBodyCapture extends AutoCloseable {
     }
 
     /**
-     * Gets the output stream receiving a copy of every byte of the request or response body, once each, as
-     * it is read or written.
-     * <p>
-     * A sink that throws does not fail the exchange it observes: the providers report the failure, stop
-     * writing to the sink, and leave the body out of the logs rather than logging the part of it captured
-     * before the failure as if it were the whole.
+     * Gets the stream receiving a copy of each byte of the body as it is read or written. A sink failing fails
+     * the capture alone: the failure is reported, and the body left out of the logs rather than logged in part.
      *
      * @return The output stream capturing the body
      */
@@ -77,11 +68,9 @@ public interface LoggedBodyCapture extends AutoCloseable {
     @Nullable String content(Set<LoggedBodyFilter> filters);
 
     /**
-     * Gets the captured content, filtered by the given filters, using the given media type to decide how
-     * to render it as text (see {@link BoundedLoggedBodyCapture} for the default rule).
-     * Must be called only once the stream wrapping {@link #sink()} has been fully read or written.
-     * <p>
-     * Defaults to ignoring the media type, delegating to {@link #content(Set)}.
+     * Gets the captured content, rendered as the given media type says (see {@link BoundedLoggedBodyCapture})
+     * and filtered by the given filters, once the stream wrapping {@link #sink()} was fully read or written.
+     * Ignores the media type by default.
      *
      * @param filters   The filters to apply to the captured content
      * @param mediaType The media type of the captured request or response body, or {@code null} if unknown
@@ -92,16 +81,9 @@ public interface LoggedBodyCapture extends AutoCloseable {
     }
 
     /**
-     * Releases whatever this capture holds, the exchange being done with it: a temporary file a large body
-     * was spilled to, a buffer taken from a pool.
-     * <p>
-     * Called once per capture created, by the provider that created it, whatever happened: after the content
-     * has been read, after reading it failed, or after the entity stream could not be wrapped at all. The one
-     * capture never released is that of a client response read as a stream that the calling code neither
-     * reads to its end nor closes itself, which a capture holding more than memory must allow for.
-     * <p>
-     * Whatever it throws is reported and swallowed like every other failure of logging, hence no checked
-     * exception. Does nothing by default, which suits a capture holding nothing but memory.
+     * Releases what this capture holds - a temporary file, a pooled buffer - once per capture, whatever happened,
+     * but for a client response read as a stream the calling code neither reads to its end nor closes. What it
+     * throws is reported and swallowed, like any failure of logging. Does nothing by default.
      */
     @Override
     default void close() {

@@ -12,10 +12,8 @@ import java.util.concurrent.TimeUnit;
 import org.jspecify.annotations.Nullable;
 
 /**
- * {@link AsyncResponse} decorator delegating everything to an underlying response, except that the
- * methods completing the request apply the MDC context map captured when it was wrapped, so the
- * container runs its response filters - and this library its completion - with the context of the
- * request being completed rather than with whatever the completing thread happened to carry.
+ * {@link AsyncResponse} decorator completing the request with the MDC context map captured when it was
+ * wrapped, rather than the one of the thread completing it.
  */
 record MdcPropagatingAsyncResponse(AsyncResponse delegate, @Nullable Map<String, String> context) implements AsyncResponse {
 
@@ -47,13 +45,11 @@ record MdcPropagatingAsyncResponse(AsyncResponse delegate, @Nullable Map<String,
     @Override
     public void setTimeoutHandler(@Nullable TimeoutHandler handler) {
         if (handler == null) {
-            // Clearing the handler lets the container time the request out its own way again: wrapped,
-            // it became a handler failing on the very timeout it was meant to leave alone
+            // Cleared, the container times the request out its own way again
             delegate.setTimeoutHandler(null);
             return;
         }
-        // Handed this wrapper rather than the response the container passes, so a handler completing
-        // the request on the timer thread does so with the context too
+        // Handed this wrapper, so a handler completing the request on the timer thread applies the context
         delegate.setTimeoutHandler(ignored -> inContext(context, () -> {
             handler.handleTimeout(this);
             return null;

@@ -11,20 +11,13 @@ import java.util.Arrays;
 import java.util.function.BiFunction;
 
 /**
- * Buffer keeping, in memory, at most a given number of the bytes written to it: the bytes of a body a
+ * Buffer keeping in memory at most a given number of the bytes written to it, those of a body a
  * {@link BoundedLoggedBodyCapture} captures.
  * <p>
- * It is written to along with the entity stream, once per chunk read or written - once per byte for a reader
- * reading a byte at a time - so it does as little per write as it can: it applies its limit itself, and takes
- * no lock, as a {@link java.io.ByteArrayOutputStream} does on every write. It is not thread-safe, a capture
- * being confined to the thread reading or writing the entity, and read back by the callback that made it.
- * <p>
- * It hands out the array it fills rather than a copy of it (see {@link #array()}), so the captured body can
- * be decoded straight from where it was written.
- * <p>
- * A body is cut and reported as truncated wherever the buffer stops growing: at the limit, at the largest
- * array the JVM can allocate, or where the heap cannot spare a larger array. In none of these cases does the
- * capture fail the exchange it only observes.
+ * Written to along with the entity stream, it takes no lock, unlike a {@link java.io.ByteArrayOutputStream}: a
+ * capture is confined to the thread reading or writing the entity. It hands out the array it fills rather than
+ * a copy (see {@link #array()}), and cuts a body wherever it stops growing - at the limit, at the largest array
+ * the JVM allocates, or where the heap cannot spare a larger one - reporting it as truncated.
  */
 final class CaptureBuffer extends OutputStream {
 
@@ -35,15 +28,13 @@ final class CaptureBuffer extends OutputStream {
     static final int MAX_CAPACITY = Integer.MAX_VALUE - 8;
 
     /**
-     * Initial capacity of the array, also its final one when a smaller limit is configured, so a small body
-     * does not pay for an array sized after a generous limit, and a large one does not pay for the repeated
-     * copies of an array growing from a handful of bytes.
+     * Initial capacity of the array, unless the limit is smaller.
      */
     static final int INITIAL_CAPACITY = 1024;
 
     /**
      * Grows the array to a given length, keeping its content: {@link Arrays#copyOf(byte[], int)}, which a test
-     * replaces with an allocation failing the way it does once the heap cannot spare the array.
+     * replaces with an allocation failing as when the heap cannot spare the array.
      */
     private final BiFunction<byte[], Integer, byte[]> resize;
 
@@ -98,8 +89,7 @@ final class CaptureBuffer extends OutputStream {
         checkFromIndexSize(off, len, b.length);
         int kept = reserve(len);
         if (kept < len) {
-            // Reported only when bytes were actually dropped, not when the limit was merely reached: a body
-            // exactly as long as the limit is complete, and must not be logged as if part of it were missing
+            // Only when bytes were dropped: a body exactly as long as the limit is complete
             truncated = true;
         }
         if (kept > 0) {
@@ -123,13 +113,9 @@ final class CaptureBuffer extends OutputStream {
     }
 
     /**
-     * Grows the array to hold at least the given number of bytes, doubling its size so a body written in
-     * small chunks is copied a logarithmic number of times, but never beyond what this buffer can keep.
-     * <p>
-     * A heap that cannot spare the larger array leaves the body kept as far as the current one holds, and
-     * reported as truncated as it would be at the limit: only the allocation failed, and the capture must not
-     * fail the exchange it observes. The array is not asked to grow again, as the JVM runs a full garbage
-     * collection before each allocation it then fails.
+     * Grows the array to hold at least the given number of bytes, doubling it within what this buffer keeps. A
+     * heap that cannot spare the larger array leaves the body cut where the current one ends, and the array is
+     * not asked to grow again, as the JVM runs a full garbage collection before each allocation it then fails.
      *
      * @param minCapacity The number of bytes the array must be able to hold
      */
@@ -162,8 +148,7 @@ final class CaptureBuffer extends OutputStream {
     }
 
     /**
-     * Indicates whether at least one byte was dropped because the limit was reached, meaning what was kept
-     * is incomplete and may end in the middle of a multi-byte character.
+     * Indicates whether bytes were dropped, what was kept possibly ending in the middle of a character.
      *
      * @return {@code true} if bytes were dropped, {@code false} otherwise
      */

@@ -7,19 +7,14 @@ import java.util.Collection;
 import java.util.regex.Pattern;
 
 /**
- * Masks the value of the named parameters of an {@code application/x-www-form-urlencoded} body, keeping
- * the rest of the payload readable.
+ * Masks the value of the named parameters of an {@code application/x-www-form-urlencoded} body.
  * <pre>{@code
  * new FormMaskingBodyFilter("password", "client_secret");
  * // grant_type=password&username=jane&password=hunter2
  * // -> grant_type=password&username=jane&password=***
  * }</pre>
- * Only a value is ever masked, never a parameter name that happens to equal one: in the example above,
- * {@code grant_type=password} is left alone, which matters because an OAuth token request carries both.
- * <p>
- * Parameter names are matched exactly and in their encoded form, which is how they appear in the body.
- * Empty values are matched too, so a parameter sent with no value still shows as masked rather than
- * silently revealing that it was empty.
+ * A value equal to a masked name is left alone, as {@code grant_type=password} is above. Names are matched
+ * exactly, encoded as the body carries them, and an empty value is masked too.
  */
 public class FormMaskingBodyFilter extends MaskingBodyFilter {
 
@@ -55,8 +50,7 @@ public class FormMaskingBodyFilter extends MaskingBodyFilter {
         String names = parameters.stream()
                 .map(Pattern::quote)
                 .collect(joining("|"));
-        // The first group anchors the name to the start of the body or to a separator, so a parameter
-        // name is only recognized where one can actually begin, and is kept as-is by the replacement
+        // The first group anchors the name where a parameter begins, and is kept by the replacement
         return Pattern.compile("(\\A|[&?])(?:" + names + ")=([^&]*)");
     }
 

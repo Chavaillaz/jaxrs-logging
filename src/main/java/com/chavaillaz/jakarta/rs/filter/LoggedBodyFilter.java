@@ -1,31 +1,27 @@
 package com.chavaillaz.jakarta.rs.filter;
 
 /**
- * Functional interface to filter the content of a request and response body.
- * Note that its implementations must be stateless and thread-safe.
+ * Rewrites a captured body before it is logged, typically to mask what must not reach the logs. Shared by
+ * every request, an implementation must be stateless and thread-safe.
  * <p>
- * Implementing {@link #filter(StringBuilder)} is enough. A filter that often has nothing to change in a body
- * - one masking a value most payloads do not carry, typically - can also override {@link #apply(CharSequence)}
- * to hand the body back as it is in that case, which spares a copy of the whole body per filter and per
- * request (see {@link MaskingBodyFilter}).
+ * Implementing {@link #filter(StringBuilder)} is enough. A filter with nothing to change in most bodies can also
+ * override {@link #apply(CharSequence)} to hand such a body back as it is, sparing a copy of it (see
+ * {@link MaskingBodyFilter}).
  */
 @FunctionalInterface
 public interface LoggedBodyFilter {
 
     /**
-     * Filters the given body to update or delete possible sensitive elements.
+     * Filters the given body, masking or removing what must not be logged.
      *
      * @param body The body content
      */
     void filter(StringBuilder body);
 
     /**
-     * Filters the given body without modifying it, returning the filtered content.
-     * <p>
-     * This is what the body captures call. By default, it copies the body into a {@link StringBuilder}
-     * given to {@link #filter(StringBuilder)}, which a filter changing nothing in most bodies can avoid by
-     * overriding this method to return the body itself when it has nothing to change - the result is only
-     * read, never modified, so returning the very sequence given is safe.
+     * Filters the given body without modifying it, as the captures call it: copies it into a
+     * {@link StringBuilder} for {@link #filter(StringBuilder)} by default. The result is only read, so it may
+     * be the very sequence given.
      *
      * @param body The body content, which must not be modified
      * @return The filtered body, possibly the very sequence given if nothing was filtered

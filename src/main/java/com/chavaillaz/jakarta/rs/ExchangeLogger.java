@@ -13,11 +13,9 @@ import org.slf4j.Logger;
 import org.slf4j.event.Level;
 
 /**
- * Writes the lines {@link LoggedFeature} logs an exchange with - {@code Received ...} once a request is read,
- * {@code Processed ...} once it is answered - and returns the identifier they were logged under to the
- * caller, the way its configuration says to.
- * <p>
- * Only writes: when each line is due, and what goes in MDC along with it, is the provider's to decide.
+ * Writes the lines a request is logged with - {@code Received ...} once read, {@code Processed ...} once
+ * answered - and returns the identifier they were logged under to the caller, as configured. When each line is
+ * due is the filter's to decide.
  */
 final class ExchangeLogger {
 
@@ -25,10 +23,10 @@ final class ExchangeLogger {
     private final LoggedFilterConfiguration configuration;
 
     /**
-     * Creates the writer of the lines of a provider.
+     * Creates the writer of the lines of a feature.
      *
-     * @param log           The logger of the provider
-     * @param configuration The configuration of the provider
+     * @param log           The logger of the feature
+     * @param configuration The configuration of the feature
      */
     ExchangeLogger(Logger log, LoggedFilterConfiguration configuration) {
         this.log = log;
@@ -47,12 +45,8 @@ final class ExchangeLogger {
     }
 
     /**
-     * Logs a request answered, with the body of the response on the following lines if it has one, at the
-     * level the configuration gives to its status (see
-     * {@link LoggedFilterConfiguration.Builder#responseLevel(java.util.function.IntFunction)}).
-     * <p>
-     * A level function of the application failing costs the line its level - the default one of the status
-     * is used instead - rather than the line itself.
+     * Logs a request answered, with the body of the response on the following lines if it has one, at the level
+     * the configuration gives its status, or the default one of the status if that fails.
      *
      * @param method   The method of the request, {@code null} if unknown
      * @param uri      The URI of the request, {@code null} if unknown
@@ -68,20 +62,15 @@ final class ExchangeLogger {
     }
 
     /**
-     * Returns the identifier a request was logged under to the caller, in the header the configuration
-     * names (see {@link LoggedFilterConfiguration.Builder#withoutReturnedRequestId()} for why).
-     * <p>
-     * Left alone if the response already carries the header, whatever its casing, so an application (or a
-     * gateway in front of it) deliberately setting its own is not overwritten by this one.
+     * Returns the identifier a request was logged under to the caller, in the header the configuration names,
+     * unless the response carries that header already, whatever its casing.
      *
      * @param headers   The headers of the response to be sent
      * @param requestId The identifier the request was logged under, {@code null} if unknown
      */
     void returnRequestId(MultivaluedMap<String, Object> headers, @Nullable String requestId) {
         String header = configuration.returnedRequestIdHeader();
-        // HTTP header names are case-insensitive, but the response header map is only a MultivaluedMap in
-        // the JAX-RS API, so a container backing it with a case-sensitive one would otherwise send the
-        // header twice with two different values
+        // Compared without regard to case, as a container may back the response headers with a case-sensitive map
         if (header != null && isNotBlank(requestId) && headers.keySet().stream().noneMatch(header::equalsIgnoreCase)) {
             headers.putSingle(header, requestId);
         }

@@ -9,18 +9,17 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
 /**
- * Activates the logging of the requests received by a JAX-RS resource, by {@link LoggedFeature}.
+ * Activates the logging of the requests of a JAX-RS resource by {@link LoggedFeature}, and holds the
+ * {@link LoggedBody} configurations of their bodies.
  * <p>
- * Put on a resource class, it applies to every resource method of it; put on a resource method, to that
- * method alone - and the same goes for the interfaces and superclasses of the class, and the methods of
- * theirs a resource method implements or overrides (see {@link LoggedUtils#declarationSites}). Its content,
- * the {@link LoggedBody} configurations, is taken from the most specific declaration found, entirely: a method
- * redeclaring a bare {@code @Logged} opts out of the body logging its class configures.
+ * Declared on a resource class, it applies to every resource method of it; on a resource method, to that
+ * method alone - and so on the interfaces and superclasses of the class, and on the methods of theirs a
+ * resource method implements or overrides (see {@link LoggedUtils#declarationSites}). The most specific
+ * declaration wins entirely: a method redeclaring a bare {@code @Logged} opts out of the body logging of its
+ * class.
  * <p>
- * The other annotations of this library activate the logging as well, as they configure it: a resource
- * declaring a {@link LoggedBody} or a {@link LoggedMapping}, once or repeated, has its requests logged,
- * {@code @Logged} or not. None of them is a JAX-RS name binding: {@link LoggedFeature} reads them itself,
- * wherever they are declared, whatever the JAX-RS implementation makes of those an interface declares.
+ * {@link LoggedBody} and {@link LoggedMapping} activate the logging as well. None of them is a JAX-RS name
+ * binding: {@link LoggedFeature} reads them wherever they are declared.
  */
 @Documented
 @Retention(RUNTIME)
@@ -28,7 +27,7 @@ import java.lang.annotation.Target;
 public @interface Logged {
 
     /**
-     * Body logging configurations for requests and/or responses, none logging no body at all.
+     * Body logging configurations, none logging no body.
      *
      * @return The body logging configurations
      */

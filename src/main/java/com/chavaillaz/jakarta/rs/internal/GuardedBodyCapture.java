@@ -15,20 +15,13 @@ import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
 /**
- * Decorates a {@link LoggedBodyCapture} so that its sink failing does not fail the exchange it observes.
+ * Decorates a {@link LoggedBodyCapture} so its sink failing - a capture of the application spilling to a full
+ * disk (see {@link LoggedFilterConfiguration.Builder#bodyCapture}) - does not fail the exchange: the first
+ * failure is reported, the sink receives nothing more, and the body is left out of the logs rather than logged
+ * in part.
  * <p>
- * The sink is written to along with the entity stream, so whatever it throws - a capture of the application's
- * own spilling to a temporary file on a full disk, for instance (see
- * {@link LoggedFilterConfiguration.Builder#bodyCapture}) - would surface in the middle of reading or writing
- * the entity. Its first failure is reported and swallowed instead, and the sink receives nothing from then on.
- * What it collected until then is not logged at all: a body missing an arbitrary part reads, in the logs, as
- * the one the application handled, which is worse than no body.
- * <p>
- * The sink also stops receiving anything once the capture is released, as the entity stream can outlive it:
- * an entity read as a stream - an {@code InputStream} parameter of a resource method, a client response read
- * as one - has its body handed over once the stream ends, or once its request is answered if it never does,
- * and whatever is read of it afterwards would otherwise go on filling a capture nobody reads again, up to the
- * rest of an upload.
+ * The sink also stops receiving anything once the capture is released, as an entity read as a stream can go on
+ * being read after its body was handed over, which would otherwise fill a capture nobody reads.
  *
  * @see BodyCapturer
  */
@@ -77,13 +70,8 @@ final class GuardedBodyCapture implements LoggedBodyCapture {
 
     /**
      * Sink forwarding everything to the one of the guarded capture until that one fails or the capture is
-     * released.
-     * <p>
-     * Written to once per chunk of the entity - once per byte for a reader reading a byte at a time - so
-     * each method forwards directly, rather than through a shared helper taking the operation as a lambda
-     * that could cost an allocation per write. Confined to the thread reading or writing the entity, as the
-     * capture itself is (see {@link CaptureBuffer}), until the capture is released - which the stream it is
-     * teed to can outlive, on any thread, hence the one flag that is volatile.
+     * released. Each method forwards directly, as it runs once per chunk of the entity. Confined to the thread
+     * reading or writing the entity but for the release, possibly on another thread, hence the volatile flag.
      */
     private static final class GuardedSink extends OutputStream {
 
@@ -134,8 +122,7 @@ final class GuardedBodyCapture implements LoggedBodyCapture {
 
         @Override
         public void close() {
-            // Closed along with the entity stream by a TeeOutputStream: a sink failing to close may not have
-            // written out what it was given, which makes its content as unreliable as a failed write does
+            // Closed along with the entity stream: a sink failing to close may not have written what it was given
             if (isOpen()) {
                 try {
                     sink.close();

@@ -66,29 +66,26 @@ import com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory;
 import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
 
 /**
- * Client-side counterpart of {@link LoggedFeature}, logging the calls made through a JAX-RS {@code Client}
- * and propagating the identifier of the current request (see {@link LoggedField#REQUEST_ID}) to the service
- * called, in its {@value LoggedFeature#REQUEST_ID_HEADER} header by default (see
- * {@link Builder#correlationIdHeader(String)}), so both sides of a call are logged under one identifier. The
- * identifier is read from MDC on the thread running the filters: an asynchronous call runs them on the
- * executor of the client, which must propagate MDC for the call to carry it (see
- * {@link com.chavaillaz.jakarta.rs.mdc.MdcPropagation#wrap(java.util.concurrent.ExecutorService)}).
- * <p>
- * Having no resource method to read annotations from, it is configured through {@link #builder()}, and
- * applies to every call made through the {@code Client} or {@code WebTarget} it is registered on, as a
- * {@link Feature} registering the filter and the interceptor doing the work (see
- * {@link #configure(FeatureContext)}). It is not a {@code @Provider} a container discovers: RESTEasy hands the
- * providers it discovers in a deployment to every client created there, which would get one configured by
- * default, next to the one the application registers.
- * It logs, with the credentials the URI of a call may carry masked (see {@link #getLoggedUri(URI)}):
+ * Client-side counterpart of {@link LoggedFeature}, logging the calls made through a JAX-RS {@code Client},
+ * the credentials their URI carries masked (see {@link #getLoggedUri(URI)}):
  * <ul>
  *     <li>{@code Calling [method] [uri]}, once the request is about to be sent</li>
  *     <li>{@code Called [method] [uri] with status [status] in [duration]ms}, once the response is received</li>
  * </ul>
- * A body is logged on a line of its own: the response body is only read if and when the calling code reads
- * the entity (see {@link #captureResponseBody(ReaderInterceptorContext)}), possibly long after the
- * {@code "Called ..."} line, and possibly never. For the same reason, only {@link LoggedBody.LogType#LOG} is
- * supported, as nothing marks the end of a call that an MDC entry holding the body could be scoped to.
+ * It propagates the identifier of the current request (see {@link LoggedField#REQUEST_ID}) to the service
+ * called, in its {@value LoggedFeature#REQUEST_ID_HEADER} header by default, so both sides of a call are logged
+ * under one identifier. It reads it from MDC on the thread running the filters, which an asynchronous call runs
+ * on the executor of the client: that executor must propagate MDC (see
+ * {@link com.chavaillaz.jakarta.rs.mdc.MdcPropagation#wrap(java.util.concurrent.ExecutorService)}).
+ * <p>
+ * Configured through {@link #builder()}, it applies to every call made through the {@code Client} or
+ * {@code WebTarget} it is registered on, as a {@link Feature} registering the filter and the interceptor doing
+ * the work (see {@link #configure(FeatureContext)}). It is no {@code @Provider}, as RESTEasy hands the providers
+ * it discovers to every client of the deployment.
+ * <p>
+ * A body is logged on a line of its own, as a response body is only read if and when the calling code reads
+ * the entity (see {@link #captureResponseBody(ReaderInterceptorContext)}): nothing marks the end of a call that
+ * an MDC entry holding it could be scoped to, so only {@link LoggedBody.LogType#LOG} is supported.
  */
 @ConstrainedTo(CLIENT)
 public class LoggedClientFeature implements Feature {
@@ -227,14 +224,11 @@ public class LoggedClientFeature implements Feature {
         }
 
         /**
-         * Sets the MDC key read to obtain the identifier propagated to the services called (see
-         * {@link #correlationIdHeader(String)}), falling back to a random one when absent from MDC (e.g. the
-         * calling thread serves no request a {@link LoggedFeature} logs) or blank. Defaults to {@code request-id};
-         * change it to match a renamed {@link LoggedField#REQUEST_ID} MDC key (see
-         * {@link LoggedFilterConfiguration.Builder#fieldName(LoggedField, String)}).
-         * <p>
-         * The identifier is propagated the way a {@link LoggedFeature} logs one it receives, sanitized and
-         * truncated to 128 characters, as the entry read can hold whatever the application put in MDC.
+         * Sets the MDC key the identifier propagated to the services called is read from, a random one being
+         * sent when the entry is absent or blank. Defaults to {@code request-id}, to change along with a renamed
+         * {@link LoggedField#REQUEST_ID} (see {@link LoggedFilterConfiguration.Builder#fieldName(LoggedField, String)}).
+         * The identifier is sanitized and truncated to 128 characters, as a {@link LoggedFeature} does one it
+         * receives.
          *
          * @param mdcKey The MDC key to read the correlation identifier from
          * @return This builder
@@ -265,14 +259,11 @@ public class LoggedClientFeature implements Feature {
         }
 
         /**
-         * Sets which query parameters of the calls have their value masked in the lines logging them, the way
-         * {@link LoggedFilterConfiguration.Builder#sensitiveParameters(BiPredicate)} does for the requests a
-         * service receives, so both can be given the same predicate: it is asked about the
-         * {@link MappingType#QUERY} parameters of the URI of each call, by their decoded name.
-         * <p>
-         * Defaults to {@link LoggedFilterConfiguration#isCredential(MappingType, String)}, which only knows
-         * what callers conventionally name their secrets. Compose with it to also mask, for example, the key a
-         * partner API expects in its query string:
+         * Sets which query parameters of the calls have their value masked, as
+         * {@link LoggedFilterConfiguration.Builder#sensitiveParameters(BiPredicate)} does for the requests
+         * received, so both can be given the same predicate, asked about the {@link MappingType#QUERY} parameters
+         * of each call by their decoded name. Defaults to {@link LoggedFilterConfiguration#isCredential}, to
+         * compose with, for example to mask the key a partner API expects in its query string:
          * <pre>{@code
          * .sensitiveParameters((type, name) -> isCredential(type, name) || "partner-key".equalsIgnoreCase(name))
          * }</pre>
@@ -345,9 +336,7 @@ public class LoggedClientFeature implements Feature {
         }
 
         /**
-         * Adds filters to be applied (both directions) before logging a body, in the given order (and in
-         * declaration order across multiple calls), so filters that depend on one another's output run
-         * predictably.
+         * Adds filters applied to the bodies of both directions before they are logged, in the order given.
          *
          * @param filters The filter classes to add
          * @return This builder
@@ -360,15 +349,9 @@ public class LoggedClientFeature implements Feature {
         }
 
         /**
-         * Adds already built filters to be applied (both directions) before logging a body, in the given
-         * order (and in declaration order across multiple calls), so filters that depend on one another's
-         * output run predictably.
-         * <p>
-         * Unlike the overload taking classes, which mirrors what {@link LoggedBody#filters()} can express
-         * and therefore needs each filter to be instantiable without arguments, this one takes instances:
-         * a configured built-in filter such as
-         * {@code new JsonMaskingBodyFilter("password")} can be passed straight in, without a subclass
-         * declared only to fix its arguments.
+         * Adds filters applied to the bodies of both directions before they are logged, in the order given, after
+         * those given as classes. Instances, such as {@code new JsonMaskingBodyFilter("password")}, need no
+         * subclass fixing their arguments, as the classes {@link LoggedBody#filters()} takes do.
          *
          * @param filters The filter instances to add
          * @return This builder
@@ -418,15 +401,14 @@ public class LoggedClientFeature implements Feature {
     }
 
     /**
-     * Propagates the correlation identifier and logs the {@code "Calling ..."} line, as the filter this provider
-     * registers (see {@link #configure(FeatureContext)}) sees the request of a call about to be sent. Nothing
-     * done here can fail the call, which is made all the same when it cannot be described.
+     * Propagates the correlation identifier and logs the {@code "Calling ..."} line, as the filter this feature
+     * registers sees the request of a call (see {@link #configure(FeatureContext)}). Nothing done here fails the
+     * call.
      *
      * @param requestContext The context of the request about to be sent
      */
     protected void filter(ClientRequestContext requestContext) {
-        // Guarded apart from the description of the call, so a call that cannot be described still carries
-        // the identifier correlating it with the service it reaches
+        // Guarded apart, so a call that cannot be described still carries the identifier
         safely(() -> propagateCorrelationId(requestContext));
         safely(() -> {
             requestContext.setProperty(REQUEST_TIME_PROPERTY, nanoTime());
@@ -443,39 +425,30 @@ public class LoggedClientFeature implements Feature {
      * @param requestContext The context of the request about to be sent
      */
     private void propagateCorrelationId(ClientRequestContext requestContext) {
-        // HTTP header names are case-insensitive, but the client-side header map is not guaranteed to be (it
-        // is a plain MultivaluedMap in the JAX-RS Client API), so a caller having already set the header under
-        // a different casing would otherwise get it sent twice with two different values
+        // Compared without regard to case, as the headers of a client request may be a case-sensitive map
         if (requestContext.getHeaders().keySet().stream().noneMatch(correlationIdHeader::equalsIgnoreCase)) {
-            // Made what a LoggedFeature logs of an identifier it receives, as MDC holds whatever the application
-            // put there: a control character in a header fails the call in the HTTP clients of the JDK, among
-            // others, and a blank identifier correlates nothing, so it is replaced as a missing one is
+            // Sanitized as a LoggedFeature does one it receives: a control character in a header fails the call in
+            // the HTTP client of the JDK, and a blank identifier correlates nothing
             requestContext.getHeaders().putSingle(correlationIdHeader, requestIdOf(MDC.get(correlationIdMdcKey)));
         }
     }
 
     /**
-     * Renders the given URI the way it is logged, with the credentials it may carry masked: the password of
-     * its user information ({@code https://user:secret@host}), the {@code access_token} of an OAuth call, the
-     * signature of a presigned URL.
-     * <p>
-     * The user information is replaced as a whole, being either a credential or the name going with one,
-     * and the value of every query parameter the configuration reports as sensitive (see
-     * {@link Builder#sensitiveParameters(BiPredicate)}) is masked while its name stays visible, as
-     * {@link LoggedFeature} does for the requests it receives. Everything else is left exactly as it was given.
+     * Renders the given URI as it is logged, the credentials it carries masked: its user information as a
+     * whole ({@code https://user:secret@host}), and the value of the query parameters the configuration reports as
+     * sensitive (see {@link Builder#sensitiveParameters(BiPredicate)}), their name visible. The rest is left as
+     * given.
      *
      * @param uri The URI of the call
      * @return The URI as it must be logged
      */
     protected String getLoggedUri(URI uri) {
         String authority = uri.getRawAuthority();
-        // The user information ends at the last '@' of the authority, a character it cannot contain itself.
-        // It is found there rather than through getRawUserInfo(), which is null for an authority that
-        // java.net.URI cannot parse as a host and a port - a host name with an underscore, as containers are
-        // commonly named - although the credentials it holds are just as real
+        // Found at the last '@' of the authority rather than through getRawUserInfo(), null for an authority
+        // java.net.URI cannot parse as a host and a port, a host name with an underscore as containers have
         int userInfoEnd = authority == null ? -1 : authority.lastIndexOf('@');
         if (uri.isOpaque() || (userInfoEnd < 0 && uri.getRawQuery() == null)) {
-            // Nothing to mask, which is the case of almost every call: returned without being rebuilt
+            // Nothing to mask, as for almost every call
             return uri.toString();
         }
 
@@ -499,8 +472,7 @@ public class LoggedClientFeature implements Feature {
     }
 
     /**
-     * Masks the value of every parameter of the given raw query the configuration reports as sensitive, leaving
-     * the other parameters, and the encoding of all of them, as they were.
+     * Masks the value of the parameters of the given raw query the configuration reports as sensitive.
      *
      * @param rawQuery The query of a URI, still encoded
      * @return The query with the values of its sensitive parameters masked
@@ -509,8 +481,7 @@ public class LoggedClientFeature implements Feature {
         return stream(rawQuery.split("&", -1))
                 .map(parameter -> {
                     int separator = parameter.indexOf('=');
-                    // Decoded before being compared, so a name the caller escaped is recognized all the same;
-                    // the raw components of a java.net.URI are always validly encoded, so this cannot fail
+                    // Decoded to be compared, which cannot fail on the raw query of a java.net.URI
                     return separator >= 0 && sensitiveParameters.test(QUERY, URLDecoder.decode(parameter.substring(0, separator), UTF_8))
                             ? parameter.substring(0, separator + 1) + DEFAULT_MASK
                             : parameter;
@@ -519,9 +490,7 @@ public class LoggedClientFeature implements Feature {
     }
 
     /**
-     * Captures and logs the request body while the entity is being written, which only happens for a call
-     * made with an entity (e.g. {@code target.request().post(entity)}). What was written is logged even when
-     * writing the rest failed.
+     * Captures and logs the request body as the entity is written, as far as it was when writing it failed.
      *
      * @param context The context of the entity being written
      * @throws IOException             if an IO error arises while writing the entity
@@ -541,11 +510,8 @@ public class LoggedClientFeature implements Feature {
 
     /**
      * Logs the {@code "Called ..."} line, at the level {@link #getResponseLevel(int)} gives the status, as the
-     * filter this provider registers (see {@link #configure(FeatureContext)}) sees the response of a call.
-     * Nothing done here can fail the call, whose response has been received.
-     * <p>
-     * A call aborted by a request filter running earlier ({@link ClientRequestContext#abortWith}) never
-     * reaches {@link #filter(ClientRequestContext)}, where it starts, and is logged with a zero duration.
+     * filter this feature registers sees the response of a call. Nothing done here fails the call. A call a
+     * filter aborted before this one ({@link ClientRequestContext#abortWith}) is logged with a zero duration.
      *
      * @param requestContext  The context of the request sent
      * @param responseContext The context of the response received
@@ -578,9 +544,8 @@ public class LoggedClientFeature implements Feature {
     }
 
     /**
-     * Gets the level a call answered with the given status is logged at: the one
-     * {@link #getResponseLevel(int)} gives, or the default one of the status when it gives none - or fails,
-     * which costs the line its level rather than the line itself.
+     * Gets the level a call answered with the given status is logged at: the one {@link #getResponseLevel(int)}
+     * gives, or the default one of the status when it gives none, or fails.
      *
      * @param status The status of the response received
      * @return The level to log the call at
@@ -592,14 +557,9 @@ public class LoggedClientFeature implements Feature {
     }
 
     /**
-     * Captures and logs the response body while the entity is being read, which only happens when the calling
-     * code reads it (e.g. {@code response.readEntity(MyType.class)}): a response whose entity is never read has
-     * its body never logged.
-     * <p>
-     * A buffered entity can be read any number of times, each read going through the interceptors again: a
-     * body already logged for the call (see {@link #RESPONSE_BODY_LOGGED_PROPERTY}) is not logged again. An
-     * entity read as a stream ({@code response.readEntity(InputStream.class)}) is only read once this returns:
-     * its body is logged once the calling code read that stream to its end, or closed it.
+     * Captures and logs the response body as the calling code reads the entity, never if it does not. A
+     * buffered entity read again is not logged again (see {@link #RESPONSE_BODY_LOGGED_PROPERTY}), and one read
+     * as a stream is logged once the calling code read it to its end, or closed it.
      *
      * @param context The context of the entity being read
      * @return The entity read
@@ -626,11 +586,9 @@ public class LoggedClientFeature implements Feature {
     /**
      * {@inheritDoc}
      * <p>
-     * Registers the {@link CallFilter} logging the calls and the {@link BodyInterceptor} capturing their
-     * bodies, which both call this provider back, so registering this provider is enough. The two need
-     * priorities of their own, which one class cannot declare: the filter runs at
-     * {@link Priorities#HEADER_DECORATOR}, before the filters of the application on the request and after
-     * them on the response, while a body is captured after any entity coder.
+     * Registers the filter logging the calls, at {@link Priorities#HEADER_DECORATOR}, before the filters of the
+     * application on the request and after them on the response, and the interceptor capturing their bodies
+     * after any entity coder, which both call this feature back.
      */
     @Override
     public boolean configure(FeatureContext context) {
@@ -640,10 +598,8 @@ public class LoggedClientFeature implements Feature {
     }
 
     /**
-     * Logs the calls on behalf of the {@link LoggedClientFeature} that registered it, which implements no filter
-     * contract itself, so that every runtime calls this filter alone, once per call: Jersey and RESTEasy
-     * register a component for every contract it implements, feature or not, and would call such a feature
-     * next to this filter, whereas Apache CXF registers a feature as a feature alone.
+     * Logs the calls for the feature that registered it, which implements no filter contract itself: Jersey and
+     * RESTEasy would call such a feature as a filter too, next to this one.
      */
     @ConstrainedTo(CLIENT)
     @Priority(HEADER_DECORATOR)
@@ -668,12 +624,9 @@ public class LoggedClientFeature implements Feature {
     }
 
     /**
-     * Captures the bodies logged by the {@link LoggedClientFeature} that registered it, from after any entity
-     * coder ({@link Priorities#ENTITY_CODER}), so what it captures is the entity rather than its transfer
-     * encoding - a {@code Content-Encoding: gzip} body is logged as the payload, not as compressed bytes.
-     * <p>
-     * Every decision about a body stays with the feature, which this interceptor calls back, so a subclass
-     * overriding {@link #createBodyCapture(int)} or either capture method stays in control.
+     * Captures the bodies for the feature that registered it, after any entity coder
+     * ({@link Priorities#ENTITY_CODER}), so a {@code Content-Encoding: gzip} body is logged as the payload rather
+     * than compressed. The feature it calls back decides everything else.
      */
     @ConstrainedTo(CLIENT)
     @Priority(ENTITY_CODER + 100)
@@ -716,10 +669,8 @@ public class LoggedClientFeature implements Feature {
     }
 
     /**
-     * Creates the {@link LoggedBodyCapture} used to capture a request or response body.
-     * <p>
-     * Same extension point as {@link LoggedFilterConfiguration.Builder#bodyCapture} on the server side:
-     * override to plug in a different body capture strategy.
+     * Creates the capture of a request or response body, to override for another capture strategy, as
+     * {@link LoggedFilterConfiguration.Builder#bodyCapture} sets it on the server side.
      *
      * @param limit The maximum size of the body to capture in bytes, or {@code -1} for no limit
      * @return The body capture to use

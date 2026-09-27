@@ -33,11 +33,9 @@ import org.apache.commons.lang3.reflect.TypeUtils;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Reads the annotations configuring this library from the resource method matched by a request, the methods
- * it overrides, the interfaces and superclasses of its class and the class itself, most specific first (see
- * {@link #declarationSites}).
- * <p>
- * Stateless and uncached: the providers cache what they read through it, once per resource method.
+ * Reads the annotations of this library declared for a resource method: on the method, the methods it
+ * overrides, its class, and the interfaces and superclasses of the class, most specific first (see
+ * {@link #declarationSites}). {@link LoggedFeature} reads them once per resource method, as it is deployed.
  */
 public final class LoggedUtils {
 
@@ -46,11 +44,11 @@ public final class LoggedUtils {
     }
 
     /**
-     * Merges the {@link LoggedMapping} annotations declared on every declaration site of the matched resource
-     * method (see {@link #declarationSites}), a mapping competing for a parameter with one declared on a more
-     * specific site being left out (see {@link #mergeMappings}).
+     * Merges the {@link LoggedMapping} annotations of every declaration site of the resource method (see
+     * {@link #declarationSites}), leaving out a mapping competing for a parameter with one declared on a more
+     * specific site (see {@link #mergeMappings}).
      *
-     * @param resourceInfo The instance to access resource class and method
+     * @param resourceInfo The resource method and its class
      * @return The merged mappings, in the order of their declaration sites
      */
     public static Set<LoggedMapping> getMergedMappings(ResourceInfo resourceInfo) {
@@ -71,9 +69,9 @@ public final class LoggedUtils {
     }
 
     /**
-     * Adds the given mappings to the merged mappings, except those competing for a parameter with a
-     * mapping already merged (see {@link #areConflicting(LoggedMapping, LoggedMapping)}): one declared
-     * closer to the resource method, or before it on the same site.
+     * Adds the given mappings to the merged ones, but those competing for a parameter with a mapping merged
+     * already (see {@link #areConflicting(LoggedMapping, LoggedMapping)}), declared closer to the resource method
+     * or before on the same site.
      *
      * @param mergedMappings The set of merged mappings
      * @param mappings       The mappings to add, in the order they are declared in
@@ -87,11 +85,8 @@ public final class LoggedUtils {
     }
 
     /**
-     * Indicates whether the two given mappings compete for the same parameters, so that only one of them
-     * can apply.
-     * <p>
-     * Header names are compared without regard to case, as HTTP defines them that way, and as they are
-     * matched against the request (see {@link MappingApplier}).
+     * Indicates whether the two given mappings compete for the same parameters, only one of them applying.
+     * Header names are compared without regard to case, as HTTP defines them.
      *
      * @param first  The first mapping
      * @param second The second mapping
@@ -111,9 +106,9 @@ public final class LoggedUtils {
     }
 
     /**
-     * Gets the given annotation from the declaration sites of the resource method matched by the current request.
+     * Gets the given annotation from the declaration sites of the resource method, the most specific declaring it.
      *
-     * @param resourceInfo   The instance to access resource class and method
+     * @param resourceInfo   The resource method and its class
      * @param annotationType The annotation type to get
      * @param <A>            The annotation type
      * @return The annotations found, or an empty list otherwise
@@ -123,14 +118,14 @@ public final class LoggedUtils {
     }
 
     /**
-     * Gets the given annotation from the declaration sites of the resource method matched by the current request.
+     * Gets the given annotation from the declaration sites of the resource method.
      * <p>
-     * The first declaration site (see {@link #declarationSites(Class, Method)}) that declares the annotation
-     * type, or its repeatable wrapper, wins entirely: a more specific declaration <em>replaces</em> a less
-     * specific one rather than being merged with it. This is what lets a resource method opt out of a
-     * class-level configuration by redeclaring an empty one (e.g. a bare {@code @Logged}).
+     * The first declaration site (see {@link #declarationSites(Class, Method)}) declaring the annotation type, or
+     * its repeatable wrapper, wins entirely: a more specific declaration <em>replaces</em> a less specific one,
+     * which lets a resource method opt out of the configuration of its class by redeclaring an empty one (a
+     * bare {@code @Logged}).
      *
-     * @param resourceInfo   The instance to access resource class and method
+     * @param resourceInfo   The resource method and its class
      * @param annotationType The annotation type to get
      * @param wrapperType    The wrapper annotation type in case the annotation type is repeatable, {@code null} otherwise
      * @param mapper         The function to extract the annotation to get (repeatable) from its wrapper,
@@ -199,22 +194,14 @@ public final class LoggedUtils {
      *     <li>the resource class itself</li>
      *     <li>its superclasses, the nearest first</li>
      * </ol>
-     * A method annotation is never inherited by an override (regardless of
-     * {@link java.lang.annotation.Inherited}), so listing the methods overridden, generic ones included -
-     * their type variables resolved against the resource class - is what lets a resource method pick up an
-     * annotation declared on the abstract base resource or the interface it implements. Superclasses rank
-     * above interfaces there, as JAX-RS has it for the annotations it inherits.
-     * <p>
-     * Interfaces deliberately rank above the resource class, so an API contract declared on an interface is
-     * not silently overridden by a broad annotation on the class implementing it, which the base classes it
-     * extends refine rather than override.
-     * <p>
-     * The order within a level follows {@link org.apache.commons.lang3.ClassUtils#getAllInterfaces(Class)},
-     * which is deterministic (declaration order, depth first), so a resource class implementing several
-     * interfaces that each declare a competing annotation always resolves the same way.
+     * A method annotation is never inherited by an override, so the methods a resource method overrides or
+     * implements are listed, generic ones included, their type variables resolved against the resource class;
+     * superclasses rank above interfaces there, as JAX-RS has it. Interfaces rank above the resource class, so a
+     * broad annotation of the class does not override the contract an interface declares. Within a level, the
+     * order is the deterministic one of {@link org.apache.commons.lang3.ClassUtils#getAllInterfaces(Class)}.
      *
-     * @param resourceClass  The resource class matched by the current request, possibly {@code null}
-     * @param resourceMethod The resource method matched by the current request, possibly {@code null}
+     * @param resourceClass  The resource class, possibly {@code null}
+     * @param resourceMethod The resource method, possibly {@code null}
      * @return The declaration sites, in decreasing order of priority
      */
     public static List<AnnotatedElement> declarationSites(@Nullable Class<?> resourceClass, @Nullable Method resourceMethod) {
@@ -248,8 +235,8 @@ public final class LoggedUtils {
      * @param types          The superclasses or interfaces of the resource class
      * @param methods        The methods of a type the resource method may override: those it declares for a
      *                       superclass, its members for an interface, inherited ones included
-     * @param resourceClass  The resource class matched by the current request
-     * @param resourceMethod The resource method matched by the current request
+     * @param resourceClass  The resource class
+     * @param resourceMethod The resource method
      * @return The methods the resource method overrides or implements
      */
     private static List<Method> overriddenMethods(List<Class<?>> types, Function<Class<?>, Method[]> methods, Class<?> resourceClass, Method resourceMethod) {
@@ -300,8 +287,8 @@ public final class LoggedUtils {
      * {@code create(String)}, whose parameter type differs from the {@code Object} the method is erased to.
      *
      * @param method         The method of a superclass or an interface of the resource class
-     * @param resourceClass  The resource class matched by the current request
-     * @param resourceMethod The resource method matched by the current request
+     * @param resourceClass  The resource class
+     * @param resourceMethod The resource method
      * @return {@code true} if the resource method overrides or implements the method, {@code false} otherwise
      */
     private static boolean isImplementedBy(Method method, Class<?> resourceClass, Method resourceMethod) {
