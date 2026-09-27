@@ -169,6 +169,20 @@ class LoggedFeatureContainerTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check a HEAD request is logged once, as itself")
+    void checkHeadRequestLogged() throws Exception {
+        // When: answered by the GET method of the resource
+        MockHttpResponse response = invoke(MockHttpRequest.create("HEAD", "/article"));
+
+        // Then
+        assertEquals(200, response.getStatus());
+        assertEquals(1, lines("Processed"));
+        assertTrue(processed().getMessage().getFormattedMessage().startsWith("Processed HEAD /article with status 200"));
+        Map<String, String> left = MDC.getCopyOfContextMap();
+        assertTrue(left == null || left.isEmpty(), () -> "Left in MDC: " + left);
+    }
+
+    @Test
     @DisplayName("Check a response without entity is logged")
     void checkEmptyResponseLogged() throws Exception {
         // When

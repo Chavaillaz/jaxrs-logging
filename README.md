@@ -53,9 +53,10 @@ register it. The library runs on these, smoke-tested with the same resources on 
 | Apache CXF 4.2  | CXF (Jakarta REST 4.0)                    | Given to the `JAXRSServerFactoryBean`                |
 
 Quarkus and CXF answer an exception no `ExceptionMapper` handles outside of JAX-RS, so the request failing with
-it is not logged as `Processed ...`, which an `ExceptionMapper<Throwable>` of the application avoids. Micronaut is
-not supported: its JAX-RS module is no JAX-RS implementation, and neither discovers the providers of a library
-nor runs the writer interceptors completing the requests answered with an entity.
+it is not logged as `Processed ...`, which an `ExceptionMapper<Throwable>` of the application avoids. Jersey
+serves a `HEAD` request as a `GET` one, which is how it is logged. Micronaut is not supported: its JAX-RS module
+is no JAX-RS implementation, and neither discovers the providers of a library nor runs the writer interceptors
+completing the requests answered with an entity.
 
 ## Usage
 

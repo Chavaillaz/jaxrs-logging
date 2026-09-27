@@ -1766,6 +1766,34 @@ class LoggedFeatureTest extends AbstractFilterTest {
     }
 
     @Test
+    @DisplayName("Check a HEAD request is completed once its response is described, its entity never being written")
+    void checkHeadRequestCompletedOnceDescribed() throws Exception {
+        // Quarkus answers a HEAD request with the entity of its GET method, which it never writes: the request
+        // waited for a writer interceptor that never ran, and was never logged as processed
+        setupTest(AnnotatedResource.class, "bodyAsLog");
+
+        // Given
+        PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(
+                MockHttpRequest.create("HEAD", "example.company.com/service"));
+        ContainerResponseContextImpl responseContext = getResponseContext(requestContext);
+
+        // When
+        loggingFilter.filter(requestContext);
+        loggingFilter.filter(requestContext, responseContext);
+
+        // Then
+        assertEquals(List.of("Processed HEAD /service with status 200"), getProcessedMessages());
+        Map<String, String> left = MDC.getCopyOfContextMap();
+        assertTrue(left == null || left.isEmpty(), () -> "Left in MDC: " + left);
+
+        // When: a runtime writing the entity all the same, as RESTEasy does
+        loggingFilter.aroundWriteTo(writerContext(requestContext, output -> output.write(OUTPUT.getBytes(UTF_8))));
+
+        // Then: logged once, without a body sent to no one
+        assertEquals(List.of("Processed HEAD /service with status 200"), getProcessedMessages());
+    }
+
+    @Test
     @DisplayName("Check a request two filters apply to is logged once, by the first to see it")
     void checkRequestLoggedOnceWhateverFiltersApply() throws Exception {
         // A runtime keeping the filters two features register on a resource method, or a feature registered twice

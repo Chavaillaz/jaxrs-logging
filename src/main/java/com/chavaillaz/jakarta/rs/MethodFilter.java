@@ -8,6 +8,7 @@ import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
 import static com.chavaillaz.jakarta.rs.internal.Sanitizer.sanitize;
+import static jakarta.ws.rs.HttpMethod.HEAD;
 import static jakarta.ws.rs.RuntimeType.SERVER;
 import static java.lang.String.valueOf;
 import static java.util.Objects.requireNonNullElse;
@@ -286,7 +287,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
         safely(() -> {
             LoggedRequestState state = startedState(requestContext);
             if (state != null) {
-                setup().mdc().onBehalfOf(state, () -> describeResponse(state, responseContext));
+                setup().mdc().onBehalfOf(state, () -> describeResponse(state, requestContext, responseContext));
             }
         });
     }
@@ -310,12 +311,13 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
 
     /**
      * Describes the response in MDC, returns the request identifier to the caller, and completes the request
-     * when the response has no entity to write.
+     * when no entity is written: the response has none, or answers a HEAD request.
      *
      * @param state           The state of the request answered
+     * @param requestContext  The context of the request answered
      * @param responseContext The context of the response to send
      */
-    private void describeResponse(LoggedRequestState state, ContainerResponseContext responseContext) {
+    private void describeResponse(LoggedRequestState state, ContainerRequestContext requestContext, ContainerResponseContext responseContext) {
         Setup setup = setup();
         try {
             // First, for the request to be logged with its status whatever fails below
@@ -331,9 +333,10 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
             setup.mdc().put(RESPONSE_STATUS, valueOf(state.getStatus()));
             setup.exchangeLogger().returnRequestId(responseContext.getHeaders(), setup.mdc().recorded(state, REQUEST_ID));
         } finally {
-            // Without an entity to write (204 No Content), aroundWriteTo is never called: the request is completed
-            // here whatever happened above, as completing it is what removes its MDC entries
-            if (!responseContext.hasEntity()) {
+            // Without an entity to write, aroundWriteTo is never called: the request is completed here whatever
+            // happened above, as completing it removes its MDC entries. A HEAD request is answered with the entity
+            // of its GET method, which Quarkus never writes
+            if (!responseContext.hasEntity() || HEAD.equals(requestContext.getMethod())) {
                 logResponse(state, EMPTY);
             }
         }
