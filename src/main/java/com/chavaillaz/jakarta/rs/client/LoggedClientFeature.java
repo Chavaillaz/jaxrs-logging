@@ -206,9 +206,9 @@ public final class LoggedClientFeature implements Feature {
         /**
          * Sets the MDC key the identifier propagated to the services called is read from, a random one being
          * sent when the entry is absent or blank. Defaults to {@code request-id}, to change along with a renamed
-         * {@link LoggedField#REQUEST_ID} (see {@link LoggedFeatureConfiguration.Builder#fieldName(LoggedField, String)}).
-         * The identifier is sanitized and truncated to 128 characters, as a {@link LoggedFeature} does one it
-         * receives.
+         * {@link LoggedField#REQUEST_ID} (see
+         * {@link LoggedFeatureConfiguration.Builder#fieldName(LoggedField, String)}). The identifier is sanitized
+         * and truncated to 128 characters, as a {@link LoggedFeature} does one it receives.
          *
          * @param mdcKey The MDC key to read the request identifier from
          * @return This builder

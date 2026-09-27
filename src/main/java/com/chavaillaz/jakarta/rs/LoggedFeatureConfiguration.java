@@ -146,7 +146,8 @@ public final class LoggedFeatureConfiguration {
      * Gets the name of the MDC entry of the given field.
      *
      * @param field The field to get the name of
-     * @return The name of its MDC entry, or {@code null} for a field left out (see {@link Builder#withoutField(LoggedField)})
+     * @return The name of its MDC entry, or {@code null} for a field left out (see
+     *         {@link Builder#withoutField(LoggedField)})
      */
     public @Nullable String getFieldName(LoggedField field) {
         return fieldNames.get(field);

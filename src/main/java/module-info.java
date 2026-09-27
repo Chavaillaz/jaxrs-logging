@@ -10,8 +10,9 @@
  *     <li>{@link com.chavaillaz.jakarta.rs.mdc}: the propagation of MDC to the threads a task is handed to</li>
  * </ul>
  * The package of the feature is open, as a JAX-RS implementation injects the context resolvers of the
- * application into {@code LoggedFeature}, or into the filters it registers, by reflection. The body filter classes a resource names are instantiated by
- * reflection too, so the package declaring them must be exported to this module.
+ * application into {@code LoggedFeature}, or into the filters it registers, by reflection. The body filter
+ * classes a resource names are instantiated by reflection too, so the package declaring them must be exported to
+ * this module.
  */
 module com.chavaillaz.jakarta.rs {
 
