@@ -17,8 +17,8 @@ The dependency is available in maven central (see badge for version):
 </dependency>
 ```
 
-It requires Java 21 or later, and is built against the Jakarta RESTful Web Services 3.1 API, which the
-application server or JAX-RS implementation of the application provides.
+It requires Java 21 or later, and the Jakarta RESTful Web Services API 3.1 or later, which the application
+server or JAX-RS implementation of the application provides: built against 4.0, it calls nothing 4.0 added.
 
 The jar is a named module, `com.chavaillaz.jakarta.rs`, exporting the following packages:
 
