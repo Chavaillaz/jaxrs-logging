@@ -55,10 +55,10 @@ class MethodResolverTest extends AbstractFilterTest {
         @LoggedBody(MDC)
         void bothMethod();
 
-        @LoggedBody(value = LOG, targets = REQUEST)
+        @LoggedBody(value = LOG, directions = REQUEST)
         void requestOnlyMethod();
 
-        @LoggedBody(value = LOG, targets = RESPONSE)
+        @LoggedBody(value = LOG, directions = RESPONSE)
         void responseOnlyMethod();
 
         @Logged
@@ -71,13 +71,13 @@ class MethodResolverTest extends AbstractFilterTest {
         @LoggedMapping(type = QUERY, paramNames = "secret")
         void unorderedMappingsMethod();
 
-        @LoggedBody(value = LOG, targets = {REQUEST, REQUEST})
-        void repeatedTargetMethod();
+        @LoggedBody(value = LOG, directions = {REQUEST, REQUEST})
+        void repeatedDirectionMethod();
 
         @Logged({@LoggedBody(LOG), @LoggedBody(MDC)})
         void competingMethod();
 
-        @Logged({@LoggedBody(value = LOG, targets = REQUEST), @LoggedBody(value = MDC, targets = REQUEST)})
+        @Logged({@LoggedBody(value = LOG, directions = REQUEST), @LoggedBody(value = MDC, directions = REQUEST)})
         void competingRequestOnlyMethod();
 
         @LoggedBody(value = LOG, limit = -2)
@@ -100,7 +100,7 @@ class MethodResolverTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check a configuration targeting both directions applies to request and response")
+    @DisplayName("Check a configuration for both directions applies to request and response")
     void checkBothDirectionsConfiguration() throws Exception {
         setup("bothMethod");
 
@@ -135,9 +135,9 @@ class MethodResolverTest extends AbstractFilterTest {
 
     @Test
     @DisplayName("Check a configuration naming its direction twice still applies to that direction")
-    void checkRepeatedTargetConfiguration() throws Exception {
+    void checkRepeatedDirectionConfiguration() throws Exception {
         // Recognized by the number of directions it listed, it applied to neither, without a word
-        setup("repeatedTargetMethod");
+        setup("repeatedDirectionMethod");
 
         MethodConfiguration configuration = resolver.resolve(resourceInfo);
 
@@ -149,8 +149,7 @@ class MethodResolverTest extends AbstractFilterTest {
     @ValueSource(strings = {"competingMethod", "competingRequestOnlyMethod"})
     @DisplayName("Check the first of several configurations competing for a direction is the one applied")
     void checkFirstCompetingConfigurationApplied(String methodName) throws Exception {
-        // The first one used to win among those targeting a single direction, and the last one among those
-        // targeting both
+        // The first one used to win among those for a single direction, and the last one among those for both
         setup(methodName);
 
         assertEquals(Set.of(LOG), resolver.resolve(resourceInfo).body(REQUEST).types());
@@ -224,7 +223,7 @@ class MethodResolverTest extends AbstractFilterTest {
     }
 
     @ParameterizedTest(name = "{0}")
-    @ValueSource(strings = {"competingMethod", "bothMethod", "repeatedTargetMethod", "singleMappingMethod", "repeatedMappingMethod"})
+    @ValueSource(strings = {"competingMethod", "bothMethod", "repeatedDirectionMethod", "singleMappingMethod", "repeatedMappingMethod"})
     @DisplayName("Check a resource method declaring an annotation of this library, once or repeated, is logged")
     void checkAnnotatedMethodLogged(String methodName) throws Exception {
         setup(methodName);

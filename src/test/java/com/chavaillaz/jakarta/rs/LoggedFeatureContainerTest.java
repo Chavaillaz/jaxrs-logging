@@ -611,8 +611,8 @@ class LoggedFeatureContainerTest extends AbstractFilterTest {
         @POST
         @Consumes(TEXT_PLAIN)
         @Produces(TEXT_PLAIN)
-        @LoggedBody(value = LOG, targets = REQUEST)
-        @LoggedBody(value = LOG, targets = RESPONSE)
+        @LoggedBody(value = LOG, directions = REQUEST)
+        @LoggedBody(value = LOG, directions = RESPONSE)
         public String create(String draft) {
             return "drafted " + draft;
         }

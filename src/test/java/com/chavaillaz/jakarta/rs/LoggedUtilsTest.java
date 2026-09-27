@@ -144,7 +144,7 @@ class LoggedUtilsTest {
     interface ConflictingAnnotationsInterface {
 
         // Method-level configuration for the same method, applying to the request only
-        @LoggedBody(value = LOG, targets = REQUEST)
+        @LoggedBody(value = LOG, directions = REQUEST)
         void method();
 
     }
@@ -204,7 +204,7 @@ class LoggedUtilsTest {
         // interface's class-level LoggedBody(MDC, both)
         assertEquals(1, result.size());
         assertEquals(Set.of(LOG), Set.of(result.getFirst().value()));
-        assertEquals(Set.of(REQUEST), Set.of(result.getFirst().targets()));
+        assertEquals(Set.of(REQUEST), Set.of(result.getFirst().directions()));
     }
 
     interface CrudApi<T> {

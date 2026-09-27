@@ -2249,8 +2249,8 @@ class LoggedFeatureTest extends AbstractFilterTest {
         @LoggedBody(LogType.LOG)
         void bodyAsLog();
 
-        @LoggedBody(value = LogType.MDC, targets = REQUEST)
-        @LoggedBody(value = LogType.LOG, targets = RESPONSE)
+        @LoggedBody(value = LogType.MDC, directions = REQUEST)
+        @LoggedBody(value = LogType.LOG, directions = RESPONSE)
         void bodyAsMix();
 
         @LoggedBody(value = {LogType.MDC, LogType.LOG}, filters = FailingBodyFilter.class)

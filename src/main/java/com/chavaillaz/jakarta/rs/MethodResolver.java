@@ -117,12 +117,12 @@ final class MethodResolver {
     /**
      * Resolves the body logging configuration applying to the given direction into its ready-to-use form.
      *
-     * @param resource The resource method and its class
-     * @param target   The direction to resolve the configuration of
+     * @param resource  The resource method and its class
+     * @param direction The direction to resolve the configuration of
      * @return The body logging configuration, {@link LoggedBodyConfiguration#NONE} if none applies
      */
-    private LoggedBodyConfiguration resolve(ResourceInfo resource, Direction target) {
-        return findAnnotation(resource, target)
+    private LoggedBodyConfiguration resolve(ResourceInfo resource, Direction direction) {
+        return findAnnotation(resource, direction)
                 .map(annotation -> new LoggedBodyConfiguration(
                         stream(annotation.value()).collect(toUnmodifiableSet()),
                         annotation.limit(),
@@ -131,21 +131,21 @@ final class MethodResolver {
     }
 
     /**
-     * Finds the {@link LoggedBody} annotation applying to the given direction: one targeting it alone wins
-     * over one targeting both, and among several as specific, the first one declared.
+     * Finds the {@link LoggedBody} annotation applying to the given direction: one applying to it alone wins
+     * over one applying to both, and among several as specific, the first one declared.
      *
-     * @param resource The resource method and its class
-     * @param target   The direction to find the configuration of
+     * @param resource  The resource method and its class
+     * @param direction The direction to find the configuration of
      * @return The body logging annotation applying, if any
      */
-    private Optional<LoggedBody> findAnnotation(ResourceInfo resource, Direction target) {
+    private Optional<LoggedBody> findAnnotation(ResourceInfo resource, Direction direction) {
         LoggedBody both = null;
         for (LoggedBody logging : getAnnotations(resource, LoggedBody.class)) {
-            Set<Direction> targets = EnumSet.noneOf(Direction.class);
-            Collections.addAll(targets, logging.targets());
-            if (targets.equals(EnumSet.of(target))) {
+            Set<Direction> directions = EnumSet.noneOf(Direction.class);
+            Collections.addAll(directions, logging.directions());
+            if (directions.equals(EnumSet.of(direction))) {
                 return Optional.of(logging);
-            } else if (both == null && targets.equals(EnumSet.allOf(Direction.class))) {
+            } else if (both == null && directions.equals(EnumSet.allOf(Direction.class))) {
                 both = logging;
             }
         }
@@ -166,11 +166,11 @@ final class MethodResolver {
         /**
          * Gets the body logging configuration of the given direction.
          *
-         * @param target The direction
+         * @param direction The direction
          * @return The body logging configuration, never {@code null}
          */
-        LoggedBodyConfiguration body(Direction target) {
-            return target == REQUEST ? requestBody : responseBody;
+        LoggedBodyConfiguration body(Direction direction) {
+            return direction == REQUEST ? requestBody : responseBody;
         }
 
         /**

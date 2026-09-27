@@ -58,12 +58,12 @@ public @interface LoggedBody {
     Class<? extends LoggedBodyFilter>[] filters() default {};
 
     /**
-     * Directions the configuration applies to. A configuration targeting a single direction wins over one
-     * targeting both.
+     * Directions the configuration applies to. A configuration applying to a single direction wins over one
+     * applying to both.
      *
      * @return The directions
      */
-    Direction[] targets() default {REQUEST, RESPONSE};
+    Direction[] directions() default {REQUEST, RESPONSE};
 
     /**
      * How a body is logged.

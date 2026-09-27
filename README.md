@@ -129,18 +129,18 @@ Additional logging features can be activated by adding `@LoggedBody` (repeatable
   before writing it in logs, for example to remove sensitive data that could be present
   (see [Body filters](#body-filters) for the ready-made ones).
 * **limit**: Size limit in bytes of the body logged, 64 KiB by default (`-1` for none).
-* **targets**: Whether the configuration applies to the request, the response, or both (default).
+* **directions**: Whether the configuration applies to the request, the response, or both (default).
 
 By default, `@LoggedBody` applies to both the request and the response. Repeat the annotation with different
-`targets` to configure them separately:
+`directions` to configure them separately:
 
 ```java
-@LoggedBody(value = MDC, targets = REQUEST)
-@LoggedBody(value = LOG, targets = RESPONSE)
+@LoggedBody(value = MDC, directions = REQUEST)
+@LoggedBody(value = LOG, directions = RESPONSE)
 ```
 
-A configuration targeting a single direction wins over one targeting both, and among several as specific as
-one another, the first one declared wins.
+A configuration applying to a single direction wins over one applying to both, and among several as specific
+as one another, the first one declared wins.
 
 `@LoggedBody` and `@LoggedMapping` activate the logging too, as they configure it: a method declaring a single
 `@LoggedBody`, or several, has its requests logged, bodies included, whether it is `@Logged` or not.
