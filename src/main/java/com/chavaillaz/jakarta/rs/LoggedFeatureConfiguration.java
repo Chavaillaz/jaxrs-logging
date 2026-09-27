@@ -198,7 +198,7 @@ public final class LoggedFeatureConfiguration {
      * @param status The status the request was answered with, {@code 0} when unknown
      * @return The level to log the request at, never {@code null}
      */
-    Level responseLevel(int status) {
+    Level responseLevelOf(int status) {
         return requireNonNullElseGet(responseLevel.apply(status), () -> levelOf(status));
     }
 

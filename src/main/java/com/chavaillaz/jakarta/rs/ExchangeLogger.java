@@ -56,7 +56,7 @@ final class ExchangeLogger {
      */
     void processed(@Nullable String method, @Nullable String uri, int status, long duration, String body) {
         Level level = safely(log, "Unable to get the level of the request, its default one is used instead",
-                () -> configuration.responseLevel(status), levelOf(status));
+                () -> configuration.responseLevelOf(status), levelOf(status));
         log.atLevel(level)
                 .log("Processed {} {} with status {} in {}ms{}{}", method, uri, status, duration, isNotBlank(body) ? LF : EMPTY, body);
     }

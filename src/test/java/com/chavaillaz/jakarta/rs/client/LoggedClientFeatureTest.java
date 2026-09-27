@@ -323,8 +323,8 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
         URI uri = URI.create("https://partner.company.com/a?Partner-Key=k&access_token=t&topic=news");
 
         // Then: asked about the query parameters by type, the predicate can be shared with the server side
-        assertEquals("https://partner.company.com/a?Partner-Key=***&access_token=***&topic=news", extended.getLoggedUri(uri));
-        assertEquals("https://partner.company.com/a?Partner-Key=k&access_token=t&topic=news", restricted.getLoggedUri(uri));
+        assertEquals("https://partner.company.com/a?Partner-Key=***&access_token=***&topic=news", extended.loggedUriOf(uri));
+        assertEquals("https://partner.company.com/a?Partner-Key=k&access_token=t&topic=news", restricted.loggedUriOf(uri));
     }
 
     @ParameterizedTest(name = "{0}")
@@ -343,7 +343,7 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
     })
     @DisplayName("Check a URI is logged as given, but for the credentials it carries")
     void checkLoggedUri(String uri, String expected) {
-        assertEquals(expected, feature.getLoggedUri(URI.create(uri)));
+        assertEquals(expected, feature.loggedUriOf(URI.create(uri)));
     }
 
     @Test

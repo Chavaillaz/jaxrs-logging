@@ -423,7 +423,7 @@ public final class LoggedClientFeature implements Feature {
         safely(() -> propagateRequestId(requestContext));
         safely(() -> {
             requestContext.setProperty(REQUEST_TIME_PROPERTY, nanoTime());
-            String uri = getLoggedUri(requestContext.getUri());
+            String uri = loggedUriOf(requestContext.getUri());
             requestContext.setProperty(REQUEST_METHOD_PROPERTY, requestContext.getMethod());
             requestContext.setProperty(REQUEST_URI_PROPERTY, uri);
             withRequestId(requestContext.getProperty(REQUEST_ID_PROPERTY),
@@ -483,7 +483,7 @@ public final class LoggedClientFeature implements Feature {
      * @param uri The URI of the call
      * @return The URI as it must be logged
      */
-    String getLoggedUri(URI uri) {
+    String loggedUriOf(URI uri) {
         String authority = uri.getRawAuthority();
         // Found at the last '@' of the authority rather than through getRawUserInfo(), null for an authority
         // java.net.URI cannot parse as a host and a port, a host name with an underscore as containers have
@@ -564,10 +564,10 @@ public final class LoggedClientFeature implements Feature {
             long duration = NANOSECONDS.toMillis(now - start);
             int status = responseContext.getStatus();
 
-            withRequestId(requestContext.getProperty(REQUEST_ID_PROPERTY), () -> log.atLevel(responseLevel(status))
+            withRequestId(requestContext.getProperty(REQUEST_ID_PROPERTY), () -> log.atLevel(responseLevelOf(status))
                     .log("Called {} {} with status {} in {}ms",
                             requestContext.getMethod(),
-                            getLoggedUri(requestContext.getUri()),
+                            loggedUriOf(requestContext.getUri()),
                             status,
                             duration));
         });
@@ -580,7 +580,7 @@ public final class LoggedClientFeature implements Feature {
      * @param status The status of the response received
      * @return The level to log the call at
      */
-    private Level responseLevel(int status) {
+    private Level responseLevelOf(int status) {
         Level level = LoggingGuard.safely(log, "Unable to get the level of the client call, its default one is used instead",
                 () -> responseLevel.apply(status), null);
         return level == null ? levelOf(status) : level;

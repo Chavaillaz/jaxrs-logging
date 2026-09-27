@@ -64,9 +64,9 @@ class LoggedFeatureConfigurationTest {
     void checkDefaultLevelsAndCapture() {
         LoggedFeatureConfiguration configuration = LoggedFeatureConfiguration.defaults();
 
-        assertEquals(Level.INFO, configuration.responseLevel(200));
-        assertEquals(Level.WARN, configuration.responseLevel(404));
-        assertEquals(Level.ERROR, configuration.responseLevel(503));
+        assertEquals(Level.INFO, configuration.responseLevelOf(200));
+        assertEquals(Level.WARN, configuration.responseLevelOf(404));
+        assertEquals(Level.ERROR, configuration.responseLevelOf(503));
         assertInstanceOf(BoundedBodyCapture.class, configuration.createBodyCapture(10));
     }
 
@@ -77,8 +77,8 @@ class LoggedFeatureConfigurationTest {
                 .responseLevel(status -> status == 404 ? Level.INFO : null)
                 .build();
 
-        assertEquals(Level.INFO, configuration.responseLevel(404));
-        assertEquals(Level.ERROR, configuration.responseLevel(503));
+        assertEquals(Level.INFO, configuration.responseLevelOf(404));
+        assertEquals(Level.ERROR, configuration.responseLevelOf(503));
     }
 
     @ParameterizedTest
@@ -180,7 +180,7 @@ class LoggedFeatureConfigurationTest {
 
         assertTrue(configuration.isSensitive(QUERY, "url-signature"));
         assertTrue(configuration.isSensitive(QUERY, "access_token"));
-        assertEquals(Level.DEBUG, configuration.responseLevel(500));
+        assertEquals(Level.DEBUG, configuration.responseLevelOf(500));
         assertInstanceOf(BoundedBodyCapture.class, configuration.createBodyCapture(-1));
     }
 
