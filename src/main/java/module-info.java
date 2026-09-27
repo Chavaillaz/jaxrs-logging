@@ -19,7 +19,6 @@ module com.chavaillaz.jakarta.rs {
     requires transitive jakarta.ws.rs;
     requires transitive org.jspecify;
     requires transitive org.slf4j;
-    requires org.apache.commons.io;
     requires org.apache.commons.lang3;
 
     exports com.chavaillaz.jakarta.rs;

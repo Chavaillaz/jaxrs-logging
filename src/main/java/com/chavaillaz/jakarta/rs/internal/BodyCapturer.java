@@ -15,7 +15,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.IntFunction;
 
-import org.apache.commons.io.output.TeeOutputStream;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 
@@ -133,7 +132,7 @@ public final class BodyCapturer {
         }
 
         LoggedBodyCapture capture = start(configuration,
-                started -> context.setOutputStream(new TeeOutputStream(context.getOutputStream(), started.sink())));
+                started -> context.setOutputStream(new CapturingOutputStream(context.getOutputStream(), started.sink())));
         try {
             context.proceed();
         } finally {

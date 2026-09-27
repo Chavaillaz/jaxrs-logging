@@ -43,6 +43,7 @@ import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
 import jakarta.ws.rs.ext.WriterInterceptor;
 import jakarta.ws.rs.ext.WriterInterceptorContext;
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
@@ -55,7 +56,6 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.core.LogEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -954,7 +954,7 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
 
     private ReaderInterceptorContext readerContext(String body) throws IOException {
         ReaderInterceptorContext context = mock(ReaderInterceptorContext.class);
-        AtomicReference<InputStream> input = new AtomicReference<>(IOUtils.toInputStream(body, UTF_8));
+        AtomicReference<InputStream> input = new AtomicReference<>(new ByteArrayInputStream(body.getBytes(UTF_8)));
         lenient().doAnswer(invocation -> input.get()).when(context).getInputStream();
         lenient().doAnswer(invocation -> {
             input.set(invocation.getArgument(0, InputStream.class));

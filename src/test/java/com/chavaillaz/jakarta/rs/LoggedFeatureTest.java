@@ -86,7 +86,6 @@ import java.util.stream.Stream;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.logging.log4j.core.LogEvent;
 import org.jboss.resteasy.core.Headers;
 import org.jboss.resteasy.core.interception.jaxrs.ContainerResponseContextImpl;
@@ -565,8 +564,8 @@ class LoggedFeatureTest extends AbstractFilterTest {
         loggingFilter.filter(requestContext);
 
         // When
-        loggingFilter.aroundReadFrom(readerContext(requestContext, IOUtils.toInputStream(INPUT, UTF_8), InputStream::readAllBytes));
-        loggingFilter.aroundReadFrom(readerContext(requestContext, IOUtils.toInputStream(INPUT, UTF_8), InputStream::readAllBytes));
+        loggingFilter.aroundReadFrom(readerContext(requestContext, new ByteArrayInputStream(INPUT.getBytes(UTF_8)), InputStream::readAllBytes));
+        loggingFilter.aroundReadFrom(readerContext(requestContext, new ByteArrayInputStream(INPUT.getBytes(UTF_8)), InputStream::readAllBytes));
 
         // Then
         assertEquals(List.of("Received POST /service" + LF + INPUT), getReceivedMessages());
@@ -584,7 +583,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         loggingFilter.filter(requestContext);
 
         // When
-        loggingFilter.aroundReadFrom(readerContext(requestContext, IOUtils.toInputStream(INPUT, UTF_8), stream -> {
+        loggingFilter.aroundReadFrom(readerContext(requestContext, new ByteArrayInputStream(INPUT.getBytes(UTF_8)), stream -> {
             stream.mark(1);
             stream.read();
             stream.reset();
@@ -605,7 +604,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
 
         // Given
         MockHttpRequest request = MockHttpRequest.create("POST", "example.company.com/service");
-        request.setInputStream(IOUtils.toInputStream(INPUT, UTF_8));
+        request.setInputStream(new ByteArrayInputStream(INPUT.getBytes(UTF_8)));
         PreMatchContainerRequestContext requestContext = new PreMatchContainerRequestContext(request);
         loggingFilter.filter(requestContext);
 
@@ -2181,7 +2180,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
 
     PreMatchContainerRequestContext getRequestContext() throws URISyntaxException {
         MockHttpRequest request = MockHttpRequest.create("POST", "example.company.com/service?" + PARAMETERS);
-        request.setInputStream(IOUtils.toInputStream(INPUT, UTF_8));
+        request.setInputStream(new ByteArrayInputStream(INPUT.getBytes(UTF_8)));
         request.contentType(TEXT_PLAIN_TYPE);
         return new PreMatchContainerRequestContext(request);
     }
