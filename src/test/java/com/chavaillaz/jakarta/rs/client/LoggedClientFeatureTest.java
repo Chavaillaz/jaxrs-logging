@@ -72,7 +72,7 @@ import org.slf4j.event.Level;
 
 import com.chavaillaz.jakarta.rs.AbstractFilterTest;
 import com.chavaillaz.jakarta.rs.SensitiveBodyFilter;
-import com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture;
+import com.chavaillaz.jakarta.rs.capture.DelegatingBodyCapture;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.JsonMaskingBodyFilter;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
@@ -944,7 +944,7 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
      * Capture standing in for one holding more than memory (a temporary file, a pooled buffer, ...),
      * recording whether it was given the chance to hand it back.
      */
-    static class ReleasingBodyCapture extends BoundedBodyCapture {
+    static class ReleasingBodyCapture extends DelegatingBodyCapture {
 
         boolean closed = false;
 

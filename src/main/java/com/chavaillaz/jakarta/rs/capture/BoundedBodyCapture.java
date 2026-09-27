@@ -28,14 +28,19 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 /**
  * Default {@link LoggedBodyCapture}, capturing at most a given number of bytes in memory.
  * <p>
- * A text body is decoded with the charset of its media type, UTF-8 when it declares none (see
- * {@link #charsetOf(MediaType)}), and any other body is rendered as lowercase hexadecimal (see
- * {@link #isBinary(MediaType)}), as a binary payload decoded as text reads as replacement characters.
+ * A text body - of a {@code text/*} type, of an {@code application} one carrying text (JSON, XML, JavaScript,
+ * form data, NDJSON, JSON text sequences, YAML, GraphQL, or any with a {@code +json}, {@code +xml} or
+ * {@code +yaml} suffix), or of an unknown type - is decoded with the charset of its media type, UTF-8 when it
+ * declares none, and any other body is rendered as lowercase hexadecimal, as a binary payload decoded as text
+ * reads as replacement characters.
  * <p>
  * A body the limit cut short ends with {@link #TRUNCATION_MARKER}, unless a {@link LoggedBodyFilter} failed on it,
  * the body then being {@link #FILTERING_FAILURE_MARKER} alone (see {@link LoggedBodyCapture#getContent}).
+ * <p>
+ * A capture of the application implements {@link LoggedBodyCapture}, delegating to one of these where it keeps a
+ * body in memory.
  */
-public class BoundedBodyCapture implements LoggedBodyCapture {
+public final class BoundedBodyCapture implements LoggedBodyCapture {
 
     /**
      * Appended to a body the limit cut short, so it is not mistaken for a complete, malformed, one.
@@ -53,7 +58,7 @@ public class BoundedBodyCapture implements LoggedBodyCapture {
      * (see {@link #isTextualApplicationSubtype(String)}): {@code text/*} is textual by definition, and the other
      * types are not.
      */
-    protected static final Set<String> TEXTUAL_APPLICATION_SUBTYPES = Set.of(
+    private static final Set<String> TEXTUAL_APPLICATION_SUBTYPES = Set.of(
             "json",
             "xml",
             "javascript",
@@ -68,7 +73,7 @@ public class BoundedBodyCapture implements LoggedBodyCapture {
      * The structured syntax suffixes (RFC 6838) of the {@code application} subtypes that carry text, in
      * lower case, see {@link #isTextualApplicationSubtype(String)}.
      */
-    protected static final Set<String> TEXTUAL_SUFFIXES = Set.of(
+    private static final Set<String> TEXTUAL_SUFFIXES = Set.of(
             "+json",
             "+xml",
             "+yaml");
@@ -125,7 +130,7 @@ public class BoundedBodyCapture implements LoggedBodyCapture {
      * @param mediaType The media type of the captured body, or {@code null} if unknown
      * @return The charset to decode the body with
      */
-    protected static Charset charsetOf(@Nullable MediaType mediaType) {
+    private static Charset charsetOf(@Nullable MediaType mediaType) {
         String name = mediaType == null ? null : mediaType.getParameters().get(CHARSET_PARAMETER);
         return name == null ? UTF_8 : Charset.forName(name, UTF_8);
     }
@@ -142,7 +147,7 @@ public class BoundedBodyCapture implements LoggedBodyCapture {
      * @param truncated Whether the limit dropped bytes, and may therefore have cut a character in half
      * @return The text the bytes decode to, without any character the limit cut in half
      */
-    protected static CharSequence decode(byte[] bytes, int size, Charset charset, boolean truncated) {
+    private static CharSequence decode(byte[] bytes, int size, Charset charset, boolean truncated) {
         if (!truncated || ISO_8859_1.equals(charset) || US_ASCII.equals(charset)) {
             return new String(bytes, 0, size, charset);
         } else if (UTF_8.equals(charset)) {
@@ -196,7 +201,7 @@ public class BoundedBodyCapture implements LoggedBodyCapture {
      * @param mediaType The media type of the captured body, or {@code null} if unknown
      * @return {@code true} if the body should be treated as binary, {@code false} otherwise
      */
-    protected static boolean isBinary(@Nullable MediaType mediaType) {
+    static boolean isBinary(@Nullable MediaType mediaType) {
         if (mediaType == null || "text".equalsIgnoreCase(mediaType.getType())) {
             return false;
         } else if (!"application".equalsIgnoreCase(mediaType.getType())) {

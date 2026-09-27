@@ -114,6 +114,7 @@ import org.slf4j.event.Level;
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
 import com.chavaillaz.jakarta.rs.MethodFilter.BodyInterceptor;
 import com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture;
+import com.chavaillaz.jakarta.rs.capture.DelegatingBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
 @DisplayName("Logged feature")
@@ -1522,7 +1523,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         // Given: a capture whose rendering needs more memory than the heap has left
         AtomicBoolean closed = new AtomicBoolean();
         MethodFilter capturingFilter = filterWith(LoggedFeatureConfiguration.builder()
-                .bodyCapture(limit -> new BoundedBodyCapture(limit) {
+                .bodyCapture(limit -> new DelegatingBodyCapture(limit) {
 
                     @Override
                     public String getContent(List<LoggedBodyFilter> filters, MediaType mediaType) {
@@ -1644,7 +1645,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
      */
     MethodFilter failingSinkFilter() {
         return filterWith(LoggedFeatureConfiguration.builder()
-                .bodyCapture(limit -> new BoundedBodyCapture(limit) {
+                .bodyCapture(limit -> new DelegatingBodyCapture(limit) {
 
                     @Override
                     public OutputStream getSink() {
@@ -1671,7 +1672,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
      */
     MethodFilter capturingFilter(AtomicBoolean closed) {
         return filterWith(LoggedFeatureConfiguration.builder()
-                .bodyCapture(limit -> new BoundedBodyCapture(limit) {
+                .bodyCapture(limit -> new DelegatingBodyCapture(limit) {
 
                     @Override
                     public void close() {
