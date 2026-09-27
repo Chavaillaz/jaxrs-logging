@@ -27,7 +27,7 @@ public class LoggedBodyFilterFactory {
     /**
      * Logger reporting a body filter class that cannot be instantiated.
      */
-    protected static final Logger log = LoggerFactory.getLogger(LoggedBodyFilterFactory.class);
+    private static final Logger log = LoggerFactory.getLogger(LoggedBodyFilterFactory.class);
 
     /**
      * Filter cached for a class that failed to be instantiated, reported once: it drops the body, writing
@@ -35,7 +35,7 @@ public class LoggedBodyFilterFactory {
      * created redacted nothing - a constructor that is not public would otherwise have every payload it
      * protects logged in the clear.
      */
-    protected static final LoggedBodyFilter FAILED_BODY_FILTER = new LoggedBodyFilter() {
+    static final LoggedBodyFilter FAILED_BODY_FILTER = new LoggedBodyFilter() {
 
         @Override
         public void filter(StringBuilder body) {
@@ -54,7 +54,7 @@ public class LoggedBodyFilterFactory {
     /**
      * Filters instantiated, by class.
      */
-    protected final Map<Class<?>, LoggedBodyFilter> cache = new ConcurrentHashMap<>();
+    final Map<Class<?>, LoggedBodyFilter> cache = new ConcurrentHashMap<>();
 
     /**
      * Creates a factory having instantiated no filter yet.
@@ -99,7 +99,7 @@ public class LoggedBodyFilterFactory {
      * @param <T>  The body filter type
      * @return The instance created, or {@link #FAILED_BODY_FILTER} if it failed
      */
-    protected <T extends LoggedBodyFilter> LoggedBodyFilter getInstance(Class<T> type) {
+    <T extends LoggedBodyFilter> LoggedBodyFilter getInstance(Class<T> type) {
         return cache.computeIfAbsent(type, ignored -> {
             try {
                 return type.getConstructor().newInstance();
