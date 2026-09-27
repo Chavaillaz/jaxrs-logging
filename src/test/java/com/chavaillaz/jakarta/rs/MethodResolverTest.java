@@ -29,23 +29,23 @@ import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import com.chavaillaz.jakarta.rs.LoggedResolver.MethodConfiguration;
+import com.chavaillaz.jakarta.rs.MethodResolver.MethodConfiguration;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
 import com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory;
 
 /**
- * Exercises {@link LoggedResolver} directly: resolution depends on a {@link ResourceInfo} alone, so none of
+ * Exercises {@link MethodResolver} directly: resolution depends on a {@link ResourceInfo} alone, so none of
  * the request and response contexts {@link LoggedFeatureTest} mocks are needed here.
  */
-@DisplayName("Logged resolver")
+@DisplayName("Method resolver")
 @ExtendWith(MockitoExtension.class)
-class LoggedResolverTest extends AbstractFilterTest {
+class MethodResolverTest extends AbstractFilterTest {
 
     @Mock
     ResourceInfo resourceInfo;
 
-    private final LoggedResolver resolver = new LoggedResolver();
+    private final MethodResolver resolver = new MethodResolver();
 
     // Used directly as the resource class and method, so each method's own annotations are found straight
     // away without walking the declaration sites above them (covered on its own, together with the priority
@@ -163,7 +163,7 @@ class LoggedResolverTest extends AbstractFilterTest {
 
         // Given: filters that cannot even be determined, as a @LoggedBody naming a class missing at runtime
         // throws a TypeNotPresentException the moment it is read
-        LoggedResolver failingResolver = new LoggedResolver(new LoggedBodyFilterFactory() {
+        MethodResolver failingResolver = new MethodResolver(new LoggedBodyFilterFactory() {
 
             @Override
             public List<LoggedBodyFilter> getInstances(Class<? extends LoggedBodyFilter>[] filterTypes) {

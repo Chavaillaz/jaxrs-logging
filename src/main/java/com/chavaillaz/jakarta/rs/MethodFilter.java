@@ -38,7 +38,7 @@ import org.jspecify.annotations.Nullable;
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
 import com.chavaillaz.jakarta.rs.LoggedFeature.Setup;
 import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
-import com.chavaillaz.jakarta.rs.LoggedResolver.MethodConfiguration;
+import com.chavaillaz.jakarta.rs.MethodResolver.MethodConfiguration;
 import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
 import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
 
@@ -54,7 +54,7 @@ import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
  * alone, which starts it then.
  * <p>
  * Nothing done here fails a request, every failure being reported instead, and the requests another feature
- * logs are left to it (see {@link LoggedRequestState}).
+ * logs are left to it (see {@link RequestState}).
  */
 @ConstrainedTo(SERVER)
 final class MethodFilter implements ContainerRequestFilter, ContainerResponseFilter, ReaderInterceptor, WriterInterceptor {
@@ -125,7 +125,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
     @Override
     public void filter(ContainerRequestContext requestContext) {
         safely(() -> {
-            if (LoggedRequestState.find(requestContext) == null) {
+            if (RequestState.find(requestContext) == null) {
                 start(requestContext);
             }
         });
@@ -141,7 +141,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
     private void start(ContainerRequestContext requestContext) {
         Setup setup = getSetup();
         // Starts measuring the duration, and records this filter as the one logging the request
-        LoggedRequestState state = LoggedRequestState.attach(requestContext, this);
+        RequestState state = RequestState.attach(requestContext, this);
         // From here on, the entries this thread carries are this request's
         setup.mdc().start(state);
 
@@ -165,7 +165,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
      * @param state          The state of the request received
      * @param requestContext The context of the request received
      */
-    private void putMdcFromRequest(Setup setup, LoggedRequestState state, ContainerRequestContext requestContext) {
+    private void putMdcFromRequest(Setup setup, RequestState state, ContainerRequestContext requestContext) {
         // A strategy of the application failing costs the request its identifier, generated instead
         String requestId = LoggingGuard.safely(log, "Unable to get the identifier of the request, a random one is used instead",
                 () -> setup.configuration().requestIdOf(requestContext), null);
@@ -196,8 +196,8 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
      * @param context The context of the entity being read or written
      * @return The state of the request, {@code null} if another filter logs it, or none
      */
-    @Nullable LoggedRequestState handledState(InterceptorContext context) {
-        LoggedRequestState state = LoggedRequestState.find(context);
+    @Nullable RequestState handledState(InterceptorContext context) {
+        RequestState state = RequestState.find(context);
         return state != null && state.getFilter() == this ? state : null;
     }
 
@@ -224,7 +224,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
             return context.proceed();
         } finally {
             safely(() -> {
-                LoggedRequestState state = handledState(context);
+                RequestState state = handledState(context);
                 String body = state == null ? null : state.getRequestBody();
                 if (state != null && isNotBlank(body) && method.requestBody().logs(LOG)) {
                     logRequest(getSetup(), state, body);
@@ -236,7 +236,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
     /**
      * Captures the request body while the entity is read, for {@link #aroundReadFrom} to log. A body the
      * resource method reads as a stream is handed over once the stream ends, or once the request is answered
-     * (see {@link LoggedRequestState#endStreamedRequestBody()}).
+     * (see {@link RequestState#endStreamedRequestBody()}).
      *
      * @param context The context of the entity being read
      * @param state   The state of the request
@@ -244,7 +244,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
      * @throws IOException             if an IO error arises while reading the entity
      * @throws WebApplicationException if the entity cannot be read
      */
-    @Nullable Object captureRequestBody(ReaderInterceptorContext context, LoggedRequestState state) throws IOException, WebApplicationException {
+    @Nullable Object captureRequestBody(ReaderInterceptorContext context, RequestState state) throws IOException, WebApplicationException {
         return getSetup().bodyCapturer().read(context, captureConfiguration(state, method.requestBody()),
                 state::setRequestBody, state::setStreamedRequestBody);
     }
@@ -256,7 +256,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
      * @param configuration The body logging configuration of the direction
      * @return The configuration, {@link LoggedBodyConfiguration#NONE} when nothing is captured
      */
-    private static LoggedBodyConfiguration captureConfiguration(LoggedRequestState state, LoggedBodyConfiguration configuration) {
+    private static LoggedBodyConfiguration captureConfiguration(RequestState state, LoggedBodyConfiguration configuration) {
         // A request already completed has been logged, so what is written from now on - the later parts of a
         // chunked or event stream response - could never be
         return isLoggingEnabled() && !state.isCompleted() ? configuration : LoggedBodyConfiguration.NONE;
@@ -264,13 +264,13 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
 
     /**
      * Logs the request as received, unless the line would repeat one logged already (see
-     * {@link LoggedRequestState#markRequestLogged(boolean)}), as an entity read twice reaches this twice.
+     * {@link RequestState#markRequestLogged(boolean)}), as an entity read twice reaches this twice.
      *
      * @param setup       What the feature works with
      * @param state       The state of the request, described already
      * @param requestBody The request body to log, blank if none
      */
-    private static void logRequest(Setup setup, LoggedRequestState state, String requestBody) {
+    private static void logRequest(Setup setup, RequestState state, String requestBody) {
         if (state.markRequestLogged(isNotBlank(requestBody))) {
             setup.exchangeLogger().received(state.getMethod(), state.getUri(), requestBody);
         }
@@ -285,7 +285,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
     @Override
     public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext) {
         safely(() -> {
-            LoggedRequestState state = startedState(requestContext);
+            RequestState state = startedState(requestContext);
             if (state != null) {
                 getSetup().mdc().onBehalfOf(state, () -> describeResponse(state, requestContext, responseContext));
             }
@@ -300,11 +300,11 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
      * @param requestContext The context of the request received
      * @return The state of the request, {@code null} if another filter logs it, or starting it failed
      */
-    private @Nullable LoggedRequestState startedState(ContainerRequestContext requestContext) {
-        LoggedRequestState state = LoggedRequestState.find(requestContext);
+    private @Nullable RequestState startedState(ContainerRequestContext requestContext) {
+        RequestState state = RequestState.find(requestContext);
         if (state == null) {
             safely(() -> start(requestContext));
-            state = LoggedRequestState.find(requestContext);
+            state = RequestState.find(requestContext);
         }
         return state != null && state.getFilter() == this ? state : null;
     }
@@ -317,7 +317,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
      * @param requestContext  The context of the request answered
      * @param responseContext The context of the response to send
      */
-    private void describeResponse(LoggedRequestState state, ContainerRequestContext requestContext, ContainerResponseContext responseContext) {
+    private void describeResponse(RequestState state, ContainerRequestContext requestContext, ContainerResponseContext responseContext) {
         Setup setup = getSetup();
         try {
             // First, for the request to be logged with its status whatever fails below
@@ -354,7 +354,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
             context.proceed();
         } finally {
             safely(() -> {
-                LoggedRequestState state = handledState(context);
+                RequestState state = handledState(context);
                 if (state != null) {
                     getSetup().mdc().onBehalfOf(state, () -> logResponseWithBody(state));
                 }
@@ -371,7 +371,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
      *
      * @param state The state of the request answered
      */
-    private void logResponseWithBody(LoggedRequestState state) {
+    private void logResponseWithBody(RequestState state) {
         if (state.isCompleted()) {
             return;
         }
@@ -396,7 +396,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
      * @throws IOException             if an IO error arises while writing the entity
      * @throws WebApplicationException if the entity cannot be written
      */
-    void captureResponseBody(WriterInterceptorContext context, LoggedRequestState state) throws IOException, WebApplicationException {
+    void captureResponseBody(WriterInterceptorContext context, RequestState state) throws IOException, WebApplicationException {
         getSetup().bodyCapturer().write(context, captureConfiguration(state, method.responseBody()), state::setResponseBody);
     }
 
@@ -409,7 +409,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
      * @param state        The state of the request, its response described already
      * @param responseBody The response body to log, blank if none
      */
-    void logResponse(LoggedRequestState state, String responseBody) {
+    void logResponse(RequestState state, String responseBody) {
         if (!state.markCompleted()) {
             return;
         }
@@ -450,13 +450,13 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
 
         @Override
         public @Nullable Object aroundReadFrom(ReaderInterceptorContext context) throws IOException, WebApplicationException {
-            LoggedRequestState state = filter.handledState(context);
+            RequestState state = filter.handledState(context);
             return state == null ? context.proceed() : filter.captureRequestBody(context, state);
         }
 
         @Override
         public void aroundWriteTo(WriterInterceptorContext context) throws IOException, WebApplicationException {
-            LoggedRequestState state = filter.handledState(context);
+            RequestState state = filter.handledState(context);
             if (state == null) {
                 context.proceed();
             } else {

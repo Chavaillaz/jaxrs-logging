@@ -34,14 +34,14 @@ class RequestMdcTest {
         MDC.clear();
     }
 
-    static LoggedRequestState request() {
-        return new LoggedRequestState(new LoggedFeature().filterFor(mock(ResourceInfo.class)));
+    static RequestState request() {
+        return new RequestState(new LoggedFeature().filterFor(mock(ResourceInfo.class)));
     }
 
     @Test
     @DisplayName("Check an entry put for a request is removed once that request is done")
     void checkEntryRemovedWithItsRequest() {
-        LoggedRequestState request = request();
+        RequestState request = request();
         mdc.start(request);
 
         mdc.put("custom-key", "custom-value");
@@ -79,7 +79,7 @@ class RequestMdcTest {
     @Test
     @DisplayName("Check the value put for a field of a request is read back even once MDC was cleared")
     void checkRecordedValueIndependentOfMdc() {
-        LoggedRequestState request = request();
+        RequestState request = request();
         mdc.start(request);
         mdc.put(REQUEST_ID, "abc-123");
 
@@ -95,7 +95,7 @@ class RequestMdcTest {
     @DisplayName("Check a callback of a request has its entries back once the application cleared MDC")
     void checkEntriesReinstatedOnceCleared() {
         // Given: the application clearing MDC while serving the request, then putting its own entries
-        LoggedRequestState request = request();
+        RequestState request = request();
         mdc.start(request);
         mdc.put(REQUEST_ID, "abc-123");
         MDC.clear();
@@ -130,7 +130,7 @@ class RequestMdcTest {
     @DisplayName("Check starting a request keeps what the thread put since the previous one under one of its keys")
     void checkStartKeepsEntriesPutSince() {
         // Given: a request done on this thread, which mapped a header to a key the application uses too
-        LoggedRequestState previous = request();
+        RequestState previous = request();
         mdc.start(previous);
         mdc.put("tenant", "acme");
         mdc.cleanup(previous);
@@ -149,7 +149,7 @@ class RequestMdcTest {
     @DisplayName("Check starting a request sweeps what one done on this thread left, even once put back")
     void checkStartSweepsRestoredEntries() {
         // Given: a request completed within a wrapper that saved the context map before, and restores it after
-        LoggedRequestState previous = request();
+        RequestState previous = request();
         mdc.start(previous);
         mdc.put("header-X-Tenant", "acme");
         Map<String, String> saved = MDC.getCopyOfContextMap();
@@ -168,7 +168,7 @@ class RequestMdcTest {
     @DisplayName("Check a callback of a request done leaves nothing on the thread that carried it")
     void checkLateCallbackLeavesNothing() {
         // Given
-        LoggedRequestState request = request();
+        RequestState request = request();
         mdc.start(request);
         request.markCompleted();
         mdc.cleanup(request);
@@ -184,7 +184,7 @@ class RequestMdcTest {
     @DisplayName("Check a request done stops recording its bodies, which its thread would keep until the next one")
     void checkBodiesNotKept() {
         // Given
-        LoggedRequestState request = request();
+        RequestState request = request();
         mdc.start(request);
         mdc.put("custom-key", "custom-value");
         mdc.put(REQUEST_BODY, "request body");
@@ -202,9 +202,9 @@ class RequestMdcTest {
     @DisplayName("Check entries put on behalf of a request completing within another are that request's")
     void checkNestedRequestKeepsEnclosingOneTracked() {
         // Given: a request suspended earlier, and the request resuming it on this thread
-        LoggedRequestState suspended = request();
+        RequestState suspended = request();
         mdc.start(suspended);
-        LoggedRequestState enclosing = request();
+        RequestState enclosing = request();
         mdc.start(enclosing);
         mdc.put("enclosing-key", "enclosing");
 
@@ -226,10 +226,10 @@ class RequestMdcTest {
     @DisplayName("Check a thread acting for a request it does not carry is lent its entries, then given its own back")
     void checkEntriesLentToThreadCarryingAnotherRequest() {
         // Given: a request suspended earlier, and the request resuming it on this thread
-        LoggedRequestState suspended = request();
+        RequestState suspended = request();
         mdc.start(suspended);
         mdc.put(REQUEST_ID, "suspended");
-        LoggedRequestState enclosing = request();
+        RequestState enclosing = request();
         mdc.start(enclosing);
         mdc.put(REQUEST_ID, "enclosing");
 
@@ -250,7 +250,7 @@ class RequestMdcTest {
     @DisplayName("Check a thread carrying no request is lent the entries of one it acts for, and left without them")
     void checkEntriesLentToIdleThread() throws Exception {
         // Given
-        LoggedRequestState request = request();
+        RequestState request = request();
         mdc.start(request);
         mdc.put(REQUEST_ID, "abc-123");
         ExecutorService worker = newSingleThreadExecutor();

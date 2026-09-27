@@ -388,7 +388,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         // Then: logged with both of them, which the state of the request, kept along with it, no longer holds
         assertEquals(INPUT, getMdcLogged(REQUEST_BODY));
         assertEquals(OUTPUT, getMdcLogged(RESPONSE_BODY));
-        LoggedRequestState state = LoggedRequestState.find(requestContext);
+        RequestState state = RequestState.find(requestContext);
         assertNull(state.getRequestBody());
         assertNull(state.getResponseBody());
     }
@@ -1349,7 +1349,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         loggingFilter.filter(requestContext, responseContext);
 
         // When
-        loggingFilter.logResponse(LoggedRequestState.find(requestContext), "");
+        loggingFilter.logResponse(RequestState.find(requestContext), "");
 
         // Then
         long processedCount = listAppender.getMessages().stream()
@@ -2065,7 +2065,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         // Then: read and written as they are, nothing captured nor logged
         assertEquals(INPUT, entityRead.get());
         assertEquals(OUTPUT, written.toString(UTF_8));
-        assertNull(LoggedRequestState.find(requestContext));
+        assertNull(RequestState.find(requestContext));
         assertTrue(listAppender.getMessages().stream().noneMatch(event -> event.getMessage().getFormattedMessage().startsWith("Received")));
     }
 
@@ -2086,7 +2086,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
 
         // Then: read as it is, nothing captured
         assertEquals(INPUT, entityRead.get());
-        assertNull(LoggedRequestState.find(requestContext).getRequestBody());
+        assertNull(RequestState.find(requestContext).getRequestBody());
     }
 
     @Test
@@ -2305,7 +2305,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         assertDoesNotThrow(() -> loggingFilter.filter(failing));
 
         // Then: the request is served, and its completion still finds the state this filter attached
-        assertNotNull(LoggedRequestState.find(failing));
+        assertNotNull(RequestState.find(failing));
     }
 
     @Test
@@ -2426,13 +2426,13 @@ class LoggedFeatureTest extends AbstractFilterTest {
 
         @Override
         public @Nullable Object aroundReadFrom(ReaderInterceptorContext context) throws IOException {
-            LoggedRequestState state = LoggedRequestState.find(context);
+            RequestState state = RequestState.find(context);
             return state == null ? context.proceed() : new BodyInterceptor(state.getFilter()).aroundReadFrom(context);
         }
 
         @Override
         public void aroundWriteTo(WriterInterceptorContext context) throws IOException {
-            LoggedRequestState state = LoggedRequestState.find(context);
+            RequestState state = RequestState.find(context);
             if (state == null) {
                 context.proceed();
             } else {

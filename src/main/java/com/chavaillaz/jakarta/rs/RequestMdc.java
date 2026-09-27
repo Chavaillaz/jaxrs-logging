@@ -17,15 +17,15 @@ import org.slf4j.MDC;
  * <p>
  * MDC is thread-local, while a request can start on one thread and complete on another (a {@code @Suspended}
  * response resumed from a worker), or in the middle of another request. So every entry is recorded, value
- * included, against its request (see {@link LoggedRequestState#getMdcEntries()}), each thread keeps track of
+ * included, against its request (see {@link RequestState#getMdcEntries()}), each thread keeps track of
  * the request whose entries it carries (see {@link #threadEntries}), and a thread completing a request it does
- * not carry is lent its entries meanwhile (see {@link #onBehalfOf(LoggedRequestState, Runnable)}).
+ * not carry is lent its entries meanwhile (see {@link #onBehalfOf(RequestState, Runnable)}).
  */
 final class RequestMdc {
 
     /**
      * Entries the current thread carries for a request, the map of that request (see
-     * {@link LoggedRequestState#getMdcEntries()}), so {@link #put(String, String)} records an entry against the
+     * {@link RequestState#getMdcEntries()}), so {@link #put(String, String)} records an entry against the
      * right request without being told which. It also tells the next request starting on the thread every entry
      * the previous one may have left there, names only known at runtime included.
      * <p>
@@ -36,7 +36,7 @@ final class RequestMdc {
     private static final ThreadLocal<@Nullable Map<String, String>> threadEntries = new ThreadLocal<>();
 
     /**
-     * Fields holding a body, which a request done stops recording, see {@link #cleanup(LoggedRequestState)}.
+     * Fields holding a body, which a request done stops recording, see {@link #cleanup(RequestState)}.
      */
     private static final List<LoggedField> BODIES = List.of(REQUEST_BODY, RESPONSE_BODY);
 
@@ -57,7 +57,7 @@ final class RequestMdc {
 
     /**
      * Puts the given entry into the current thread's context map, recording it against the request the thread
-     * carries, so {@link #cleanup(LoggedRequestState)} removes it once that request is done.
+     * carries, so {@link #cleanup(RequestState)} removes it once that request is done.
      *
      * @param key   The MDC key
      * @param value The value of the entry, ignored if {@code null} or blank
@@ -118,7 +118,7 @@ final class RequestMdc {
      * @param field The field to get the value of
      * @return The value put for the field, {@code null} if none was or if the field is left out
      */
-    @Nullable String getRecorded(LoggedRequestState state, LoggedField field) {
+    @Nullable String getRecorded(RequestState state, LoggedField field) {
         String key = fieldNames.get(field);
         return key == null ? null : state.getMdcEntries().get(key);
     }
@@ -144,7 +144,7 @@ final class RequestMdc {
      *
      * @param state The state of the request starting
      */
-    void start(LoggedRequestState state) {
+    void start(RequestState state) {
         removeFields();
         removeLeftovers();
         threadEntries.set(state.getMdcEntries());
@@ -195,7 +195,7 @@ final class RequestMdc {
      * @param state  The state of the request to act on behalf of
      * @param action The action to run
      */
-    void onBehalfOf(LoggedRequestState state, Runnable action) {
+    void onBehalfOf(RequestState state, Runnable action) {
         Map<String, String> entries = state.getMdcEntries();
         Map<String, String> previous = threadEntries.get();
         if (previous == entries && !state.isCompleted()) {
@@ -256,7 +256,7 @@ final class RequestMdc {
      *
      * @param state The state of the request done with
      */
-    void cleanup(LoggedRequestState state) {
+    void cleanup(RequestState state) {
         Map<String, String> entries = state.getMdcEntries();
         removeFields();
         entries.keySet().forEach(MDC::remove);

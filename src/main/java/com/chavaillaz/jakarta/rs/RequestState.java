@@ -29,13 +29,13 @@ import org.slf4j.MDC;
  *
  * @see #attach(ContainerRequestContext, MethodFilter)
  */
-final class LoggedRequestState {
+final class RequestState {
 
     /**
      * Name of the single container property this state is stored under, qualified with the class name, as the
      * property map is shared with the container, the application and every other provider.
      */
-    private static final String PROPERTY = LoggedRequestState.class.getName();
+    private static final String PROPERTY = RequestState.class.getName();
 
     /**
      * Filter logging this request, the only one to.
@@ -71,7 +71,7 @@ final class LoggedRequestState {
 
     /**
      * Whether the request has already been completed, guarding
-     * {@link MethodFilter#logResponse(LoggedRequestState, String)} against running more than once: whichever of
+     * {@link MethodFilter#logResponse(RequestState, String)} against running more than once: whichever of
      * the response filter and the writer interceptor gets there first completes it.
      */
     private final AtomicBoolean completed = new AtomicBoolean();
@@ -115,7 +115,7 @@ final class LoggedRequestState {
      *
      * @param filter The filter logging the request
      */
-    LoggedRequestState(MethodFilter filter) {
+    RequestState(MethodFilter filter) {
         this.filter = filter;
         this.startTime = nanoTime();
     }
@@ -127,8 +127,8 @@ final class LoggedRequestState {
      * @param filter  The filter logging the request
      * @return The state of the request
      */
-    static LoggedRequestState attach(ContainerRequestContext context, MethodFilter filter) {
-        LoggedRequestState state = new LoggedRequestState(filter);
+    static RequestState attach(ContainerRequestContext context, MethodFilter filter) {
+        RequestState state = new RequestState(filter);
         context.setProperty(PROPERTY, state);
         return state;
     }
@@ -139,7 +139,7 @@ final class LoggedRequestState {
      * @param context The context of the request being processed
      * @return The state of the request, or {@code null} if no filter logs it
      */
-    static @Nullable LoggedRequestState find(ContainerRequestContext context) {
+    static @Nullable RequestState find(ContainerRequestContext context) {
         return asState(context.getProperty(PROPERTY));
     }
 
@@ -151,7 +151,7 @@ final class LoggedRequestState {
      * @param context The context of the entity being read or written
      * @return The state of the request, or {@code null} if no filter logs it
      */
-    static @Nullable LoggedRequestState find(InterceptorContext context) {
+    static @Nullable RequestState find(InterceptorContext context) {
         return asState(context.getProperty(PROPERTY));
     }
 
@@ -162,8 +162,8 @@ final class LoggedRequestState {
      * @param property The value found in the property map
      * @return The state, or {@code null} if there is none
      */
-    private static @Nullable LoggedRequestState asState(@Nullable Object property) {
-        return property instanceof LoggedRequestState state ? state : null;
+    private static @Nullable RequestState asState(@Nullable Object property) {
+        return property instanceof RequestState state ? state : null;
     }
 
     /**

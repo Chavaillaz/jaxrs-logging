@@ -34,9 +34,9 @@ import com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory;
  * annotations is reported then and leaves the method logging less rather than failing its requests: the
  * reflection it comes from would fail the same way on every request.
  */
-final class LoggedResolver {
+final class MethodResolver {
 
-    private static final Logger log = LoggerFactory.getLogger(LoggedResolver.class);
+    private static final Logger log = LoggerFactory.getLogger(MethodResolver.class);
 
     /**
      * Annotations of this library whose presence on a declaration site has the requests of the resource
@@ -53,7 +53,7 @@ final class LoggedResolver {
     /**
      * Creates a resolver with its own body filter factory.
      */
-    LoggedResolver() {
+    MethodResolver() {
         this(new LoggedBodyFilterFactory());
     }
 
@@ -62,7 +62,7 @@ final class LoggedResolver {
      *
      * @param bodyFilterFactory The factory to instantiate body filter classes with
      */
-    LoggedResolver(LoggedBodyFilterFactory bodyFilterFactory) {
+    MethodResolver(LoggedBodyFilterFactory bodyFilterFactory) {
         this.bodyFilterFactory = bodyFilterFactory;
     }
 

@@ -67,7 +67,7 @@ public class LoggedFeature implements DynamicFeature {
     /**
      * Resolves the configuration of the resource methods, instantiating the body filters they name once.
      */
-    private final LoggedResolver resolver = new LoggedResolver();
+    private final MethodResolver resolver = new MethodResolver();
 
     /**
      * What this feature works with, made from its configuration once known: when constructed with one, and
@@ -253,7 +253,7 @@ public class LoggedFeature implements DynamicFeature {
         public void filter(ContainerRequestContext requestContext) {
             LoggingGuard.safely(log, "Unable to sweep the entries a request left in MDC, the request itself is left unaffected", () -> {
                 // Unless a filter logging the request started it, whose entries the thread now carries
-                if (LoggedRequestState.find(requestContext) == null) {
+                if (RequestState.find(requestContext) == null) {
                     RequestMdc.sweep();
                 }
             });
