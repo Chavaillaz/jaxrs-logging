@@ -140,7 +140,7 @@ final class LoggedResolver {
      */
     private Optional<LoggedBody> findAnnotation(ResourceInfo resource, Direction target) {
         LoggedBody both = null;
-        for (LoggedBody logging : getAnnotation(resource, LoggedBody.class, Logged.class, Logged::value)) {
+        for (LoggedBody logging : getAnnotation(resource, LoggedBody.class)) {
             Set<Direction> targets = EnumSet.noneOf(Direction.class);
             Collections.addAll(targets, logging.targets());
             if (targets.equals(EnumSet.of(target))) {

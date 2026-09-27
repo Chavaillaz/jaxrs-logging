@@ -8,16 +8,18 @@ import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.declarationSites;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.getAnnotation;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.getMergedMappings;
+import static java.lang.annotation.RetentionPolicy.RUNTIME;
 import static java.util.stream.Collectors.toSet;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.doReturn;
 
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.container.ResourceInfo;
+import java.lang.annotation.Repeatable;
+import java.lang.annotation.Retention;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Method;
 import java.util.List;
@@ -178,7 +180,7 @@ class LoggedUtilsTest {
         doReturn(ClassLevelResource.class.getMethod("create", String.class)).when(resourceInfo).getResourceMethod();
 
         // When
-        List<LoggedBody> result = getAnnotation(resourceInfo, LoggedBody.class, Logged.class, Logged::value);
+        List<LoggedBody> result = getAnnotation(resourceInfo, LoggedBody.class);
 
         // Then: the method's own @POST/@Path must not hide the class-level configuration, as they used
         // to by making the resolution stop at the (empty) interface level
@@ -194,7 +196,7 @@ class LoggedUtilsTest {
         doReturn(ConflictingAnnotationsResource.class.getMethod("method")).when(resourceInfo).getResourceMethod();
 
         // When
-        List<LoggedBody> result = getAnnotation(resourceInfo, LoggedBody.class, Logged.class, Logged::value);
+        List<LoggedBody> result = getAnnotation(resourceInfo, LoggedBody.class);
 
         // Then: only the method-level LoggedBody(LOG, REQUEST) is found, not merged with the
         // interface's class-level LoggedBody(MDC, both)
@@ -248,7 +250,7 @@ class LoggedUtilsTest {
         doReturn(resourceClass.getMethod("create", String.class)).when(resourceInfo).getResourceMethod();
 
         // When
-        List<LoggedBody> result = getAnnotation(resourceInfo, LoggedBody.class, Logged.class, Logged::value);
+        List<LoggedBody> result = getAnnotation(resourceInfo, LoggedBody.class);
 
         // Then: create(String) implements create(T), although the interface method erases to create(Object)
         assertEquals(1, result.size());
@@ -263,7 +265,7 @@ class LoggedUtilsTest {
         doReturn(ArticleCrudResource.class.getMethod("create", Integer.class)).when(resourceInfo).getResourceMethod();
 
         // When
-        List<LoggedBody> result = getAnnotation(resourceInfo, LoggedBody.class, Logged.class, Logged::value);
+        List<LoggedBody> result = getAnnotation(resourceInfo, LoggedBody.class);
 
         // Then
         assertTrue(result.isEmpty());
@@ -368,11 +370,65 @@ class LoggedUtilsTest {
         assertEquals(1, sites.stream().filter(inherited::equals).count());
     }
 
+    // An annotation of the application, which the compiler wraps into its container once repeated
+    @Retention(RUNTIME)
+    @Repeatable(Audits.class)
+    @interface Audit {
+
+        String value();
+
+    }
+
+    @Retention(RUNTIME)
+    @interface Audits {
+
+        Audit[] value();
+
+    }
+
+    @Audit("class")
+    @Logged(@LoggedBody(MDC))
+    static class RepeatingResource {
+
+        @Audit("read")
+        @Audit("write")
+        public void repeated() {
+            // No-op
+        }
+
+        @Logged
+        public void optedOut() {
+            // No-op
+        }
+
+    }
+
     @Test
-    @DisplayName("Check a wrapper type given without its mapper, or the other way round, is rejected")
-    void checkWrapperWithoutMapperRejected() {
-        assertThrows(IllegalArgumentException.class, () -> getAnnotation(resourceInfo, LoggedBody.class, Logged.class, null));
-        assertThrows(IllegalArgumentException.class, () -> getAnnotation(resourceInfo, LoggedBody.class, null, Logged::value));
+    @DisplayName("Check a repeated annotation is found on the method, through the container declared in its place")
+    void checkRepeatedAnnotationFound() throws Exception {
+        // Given
+        doReturn(RepeatingResource.class).when(resourceInfo).getResourceClass();
+        doReturn(RepeatingResource.class.getMethod("repeated")).when(resourceInfo).getResourceMethod();
+
+        // When
+        List<Audit> result = getAnnotation(resourceInfo, Audit.class);
+
+        // Then: the method only declares the container, which the annotation of the class used to win over
+        assertEquals(List.of("read", "write"), result.stream().map(Audit::value).toList());
+    }
+
+    @Test
+    @DisplayName("Check a container declared empty, as a bare @Logged, overrides a less specific declaration")
+    void checkEmptyContainerOverrides() throws Exception {
+        // Given
+        doReturn(RepeatingResource.class).when(resourceInfo).getResourceClass();
+        doReturn(RepeatingResource.class.getMethod("optedOut")).when(resourceInfo).getResourceMethod();
+
+        // When
+        List<LoggedBody> result = getAnnotation(resourceInfo, LoggedBody.class);
+
+        // Then: the method opts out of the body logging of its class
+        assertTrue(result.isEmpty());
     }
 
 }

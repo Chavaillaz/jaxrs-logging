@@ -15,6 +15,7 @@ import static org.apache.commons.lang3.reflect.TypeUtils.unrollVariables;
 
 import jakarta.ws.rs.container.ResourceInfo;
 import java.lang.annotation.Annotation;
+import java.lang.annotation.Repeatable;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.Method;
@@ -106,7 +107,13 @@ public final class LoggedUtils {
     }
 
     /**
-     * Gets the given annotation from the declaration sites of the resource method, the most specific declaring it.
+     * Gets the given annotation from the declaration sites of the resource method.
+     * <p>
+     * The first declaration site (see {@link #declarationSites(Class, Method)}) declaring the annotation type wins
+     * entirely: a more specific declaration <em>replaces</em> a less specific one. A repeatable annotation is
+     * found through the container the compiler declares in its place once repeated, and a container declared
+     * empty counts, which lets a resource method opt out of the body logging of its class with a bare
+     * {@code @Logged}.
      *
      * @param resourceInfo   The resource method and its class
      * @param annotationType The annotation type to get
@@ -114,73 +121,29 @@ public final class LoggedUtils {
      * @return The annotations found, or an empty list otherwise
      */
     public static <A extends Annotation> List<A> getAnnotation(ResourceInfo resourceInfo, Class<A> annotationType) {
-        return getAnnotation(resourceInfo, annotationType, null, null);
-    }
-
-    /**
-     * Gets the given annotation from the declaration sites of the resource method.
-     * <p>
-     * The first declaration site (see {@link #declarationSites(Class, Method)}) declaring the annotation type, or
-     * its repeatable wrapper, wins entirely: a more specific declaration <em>replaces</em> a less specific one,
-     * which lets a resource method opt out of the configuration of its class by redeclaring an empty one (a
-     * bare {@code @Logged}).
-     *
-     * @param resourceInfo   The resource method and its class
-     * @param annotationType The annotation type to get
-     * @param wrapperType    The wrapper annotation type in case the annotation type is repeatable, {@code null} otherwise
-     * @param mapper         The function to extract the annotation to get (repeatable) from its wrapper,
-     *                       {@code null} if there is no wrapper type
-     * @param <A>            The annotation type
-     * @param <W>            The wrapper annotation type
-     * @return The annotations found, or an empty list otherwise
-     * @throws IllegalArgumentException if only one of the wrapper type and the mapper is given, which would
-     *                                  otherwise go unnoticed until a resource declares the wrapper
-     */
-    public static <A extends Annotation, W extends Annotation> List<A> getAnnotation(ResourceInfo resourceInfo, Class<A> annotationType, @Nullable Class<W> wrapperType, @Nullable Function<W, A[]> mapper) {
-        if ((wrapperType == null) != (mapper == null)) {
-            throw new IllegalArgumentException("A wrapper type and the mapper extracting the annotations from it go together");
-        }
-
-        Class<?> resourceClass = resourceInfo.getResourceClass();
-        Method resourceMethod = resourceInfo.getResourceMethod();
-        if (resourceClass == null && resourceMethod == null) {
-            return emptyList();
-        }
-
-        for (AnnotatedElement site : declarationSites(resourceClass, resourceMethod)) {
-            List<A> declared = getDeclaredAnnotation(site, annotationType, wrapperType, mapper);
-            if (declared != null) {
-                return declared;
+        for (AnnotatedElement site : declarationSites(resourceInfo.getResourceClass(), resourceInfo.getResourceMethod())) {
+            if (declares(site, annotationType)) {
+                // Looks through the container of a repeatable annotation type
+                return asList(site.getAnnotationsByType(annotationType));
             }
         }
         return emptyList();
     }
 
     /**
-     * Gets the annotation, or the content of its repeatable wrapper, as declared on the given element.
+     * Indicates whether the given element declares the given annotation type, or its container if it is
+     * repeatable, even empty.
      *
-     * @param element        The element to read the annotation from
-     * @param annotationType The annotation type to get
-     * @param wrapperType    The wrapper annotation type in case the annotation type is repeatable, {@code null} otherwise
-     * @param mapper         The function to extract the annotation to get (repeatable) from its wrapper,
-     *                       {@code null} if there is no wrapper type
-     * @param <A>            The annotation type
-     * @param <W>            The wrapper annotation type
-     * @return The annotations declared on the element, or {@code null} if it declares neither the
-     * annotation type nor its wrapper. An <em>empty</em> list is a meaningful result, distinct from
-     * {@code null}: it means the element does declare the wrapper, but with no annotation inside it
-     * (e.g. a bare {@code @Logged}), which deliberately overrides any less specific declaration.
+     * @param element        The element to read the annotations of
+     * @param annotationType The annotation type to look for
+     * @return {@code true} if the element declares the annotation type or its container, {@code false} otherwise
      */
-    private static <A extends Annotation, W extends Annotation> @Nullable List<A> getDeclaredAnnotation(AnnotatedElement element, Class<A> annotationType, @Nullable Class<W> wrapperType, @Nullable Function<W, A[]> mapper) {
+    private static boolean declares(AnnotatedElement element, Class<? extends Annotation> annotationType) {
         if (element.isAnnotationPresent(annotationType)) {
-            return asList(element.getAnnotationsByType(annotationType));
-        } else if (wrapperType != null && element.isAnnotationPresent(wrapperType)) {
-            return stream(element.getAnnotationsByType(wrapperType))
-                    .map(mapper)
-                    .flatMap(Arrays::stream)
-                    .toList();
+            return true;
         }
-        return null;
+        Repeatable repeatable = annotationType.getAnnotation(Repeatable.class);
+        return repeatable != null && element.isAnnotationPresent(repeatable.value());
     }
 
     /**
