@@ -2,9 +2,11 @@ package com.chavaillaz.jakarta.rs.client;
 
 import static com.chavaillaz.jakarta.rs.LoggedFeature.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedFeatureConfiguration.isCredential;
+import static com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture.FILTERING_FAILURE_MARKER;
 import static com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture.TRUNCATION_MARKER;
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.DEFAULT_LIMIT;
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
+import static com.chavaillaz.jakarta.rs.internal.BodyCapturer.FILTER_FAILURE;
 import static com.chavaillaz.jakarta.rs.internal.BodyCapturer.MEMORY_FAILURE;
 import static com.chavaillaz.jakarta.rs.internal.Sanitizer.REQUEST_ID_MAX_LENGTH;
 import static jakarta.ws.rs.HttpMethod.POST;
@@ -577,6 +579,59 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
         assertNotNull(event);
         assertTrue(event.getMessage().getFormattedMessage().endsWith("{\"password\":\"***\"}AB"),
                 event.getMessage().getFormattedMessage());
+    }
+
+    @Test
+    @DisplayName("Check a body filter failing on a call drops its body, reported on the logger of the feature")
+    void checkFailingBodyFilterReportedOnFeatureLogger() throws Exception {
+        // Given
+        feature.filter(requestContext);
+        LoggedClientFeature bodyLoggingFeature = LoggedClientFeature.builder()
+                .logRequestBody()
+                .bodyFilters(body -> {
+                    throw new IllegalStateException("Filter bug");
+                })
+                .build();
+        WriterInterceptorContext context = writerContext(properties, "{\"password\":\"hunter2\"}");
+
+        // When
+        assertDoesNotThrow(() -> bodyLoggingFeature.captureRequestBody(context));
+
+        // Then: under the name of the feature, as every line it writes, rather than of a class of the library
+        LogEvent event = listAppender.findFirstMessage("Request body");
+        assertNotNull(event);
+        assertTrue(event.getMessage().getFormattedMessage().endsWith(LF + FILTERING_FAILURE_MARKER));
+        LogEvent report = listAppender.findFirstMessage(FILTER_FAILURE);
+        assertNotNull(report);
+        assertEquals(LoggedClientFeature.class.getName(), report.getLoggerName());
+    }
+
+    @Test
+    @DisplayName("Check a body filter class that cannot be instantiated is reported on the logger of the feature")
+    void checkUninstantiableBodyFilterReportedOnFeatureLogger() {
+        // When
+        LoggedClientFeature.builder()
+                .logRequestBody()
+                .bodyFilters(UninstantiableBodyFilter.class)
+                .build();
+
+        // Then
+        LogEvent report = listAppender.findFirstMessage("Unable to instantiate body filter");
+        assertNotNull(report);
+        assertEquals(LoggedClientFeature.class.getName(), report.getLoggerName());
+    }
+
+    public static class UninstantiableBodyFilter implements LoggedBodyFilter {
+
+        public UninstantiableBodyFilter(String required) {
+            // No constructor without arguments on purpose
+        }
+
+        @Override
+        public void filter(StringBuilder body) {
+            // Never reached, instantiation always fails
+        }
+
     }
 
     public static class AppendA implements LoggedBodyFilter {

@@ -22,8 +22,6 @@ import java.util.Locale;
 import java.util.Set;
 
 import org.jspecify.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
@@ -34,16 +32,10 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
  * {@link #charsetOf(MediaType)}), and any other body is rendered as lowercase hexadecimal (see
  * {@link #isBinary(MediaType)}), as a binary payload decoded as text reads as replacement characters.
  * <p>
- * A body the limit cut short ends with {@link #TRUNCATION_MARKER}. A body a {@link LoggedBodyFilter} fails on -
- * a {@link StackOverflowError} included, as a regular expression gives up on a payload too large for it - is
- * replaced with {@link #FILTERING_FAILURE_MARKER}, its redaction not having happened, and the failure reported.
+ * A body the limit cut short ends with {@link #TRUNCATION_MARKER}, unless a {@link LoggedBodyFilter} failed on it,
+ * the body then being {@link #FILTERING_FAILURE_MARKER} alone (see {@link LoggedBodyCapture#getContent}).
  */
 public class BoundedBodyCapture implements LoggedBodyCapture {
-
-    /**
-     * Logger reporting a body filter that failed.
-     */
-    protected static final Logger log = LoggerFactory.getLogger(BoundedBodyCapture.class);
 
     /**
      * Appended to a body the limit cut short, so it is not mistaken for a complete, malformed, one.
@@ -51,8 +43,8 @@ public class BoundedBodyCapture implements LoggedBodyCapture {
     public static final String TRUNCATION_MARKER = "...[truncated]";
 
     /**
-     * Written in place of a body a {@link LoggedBodyFilter} failed on: a filter that threw has not finished
-     * redacting, so the body must not be logged.
+     * Written in place of a body a {@link LoggedBodyFilter} failed on, whatever captured it: a filter that threw has
+     * not finished redacting, so the body must not be logged.
      */
     public static final String FILTERING_FAILURE_MARKER = "[body dropped: a filter failed]";
 
@@ -115,21 +107,15 @@ public class BoundedBodyCapture implements LoggedBodyCapture {
         CharSequence body = isBinary(mediaType)
                 ? HexFormat.of().formatHex(bytes, 0, size)
                 : decode(bytes, size, charsetOf(mediaType), truncated);
-
-        try {
-            for (LoggedBodyFilter filter : filters) {
-                body = filter.apply(body);
-            }
-        } catch (Exception | StackOverflowError e) {
-            // StackOverflowError is the one Error caught: how java.util.regex fails on a payload too large for its
-            // pattern, leaving nothing behind once unwound
-            log.error("A body filter failed, the body is dropped rather than logged unfiltered", e);
-            return FILTERING_FAILURE_MARKER;
+        for (LoggedBodyFilter filter : filters) {
+            body = filter.apply(body);
         }
 
-        // Appended after filtering, so no filter sees it as part of the payload
+        // Appended after filtering, so no filter sees it as part of the payload, and never to a body dropped
         String rendered = body.toString();
-        return truncated && !rendered.isEmpty() ? rendered + TRUNCATION_MARKER : rendered;
+        return truncated && !rendered.isEmpty() && !FILTERING_FAILURE_MARKER.equals(rendered)
+                ? rendered + TRUNCATION_MARKER
+                : rendered;
     }
 
     /**

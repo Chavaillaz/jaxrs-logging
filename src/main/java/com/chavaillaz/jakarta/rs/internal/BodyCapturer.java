@@ -31,7 +31,8 @@ import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
  * No step fails the exchange, as a capture of the application (see
  * {@link LoggedFeatureConfiguration.Builder#bodyCapture}) can fail as file system access does: putting it in
  * place is reported rather than preventing the entity from being read or written, so is rendering it, the
- * capture being released either way, and its sink is guarded (see {@link GuardedBodyCapture}).
+ * capture being released either way, and its sink and the body filters are guarded (see
+ * {@link GuardedBodyCapture}). Every failure is reported on the logger of the feature capturing.
  */
 public final class BodyCapturer {
 
@@ -39,6 +40,12 @@ public final class BodyCapturer {
      * Message reporting a body that could not be captured.
      */
     public static final String CAPTURE_FAILURE = "Unable to capture the body, it is left out of the logs, the exchange itself is left unaffected";
+
+    /**
+     * Message reporting a body filter that failed, the body it was filtering being dropped rather than logged
+     * unfiltered.
+     */
+    public static final String FILTER_FAILURE = "A body filter failed, the body is dropped rather than logged unfiltered";
 
     /**
      * Message reporting a body that was captured but could not be rendered, or a capture that could not be
@@ -154,7 +161,7 @@ public final class BodyCapturer {
         LoggedBodyCapture capture = null;
         try {
             capture = captures.apply(configuration.limit());
-            capture = new GuardedBodyCapture(capture, log, CAPTURE_FAILURE);
+            capture = new GuardedBodyCapture(capture, log);
             wiring.accept(capture);
             return capture;
         } catch (Exception e) {

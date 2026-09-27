@@ -2,6 +2,7 @@ package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.REQUEST;
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.RESPONSE;
+import static com.chavaillaz.jakarta.rs.LoggedFeature.log;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.getAnnotations;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.getDeclarationSites;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.getMergedMappings;
@@ -17,9 +18,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import com.chavaillaz.jakarta.rs.LoggedBody.Direction;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import com.chavaillaz.jakarta.rs.internal.LoggedBodyConfiguration;
@@ -31,12 +29,10 @@ import com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory;
  * {@link LoggedUtils#getDeclarationSites}).
  * <p>
  * {@link LoggedFeature} resolves each resource method once, as it is deployed. A failure to read the
- * annotations is reported then and leaves the method logging less rather than failing its requests: the
- * reflection it comes from would fail the same way on every request.
+ * annotations is reported then, on the logger of the feature, and leaves the method logging less rather than
+ * failing its requests: the reflection it comes from would fail the same way on every request.
  */
 final class MethodResolver {
-
-    private static final Logger log = LoggerFactory.getLogger(MethodResolver.class);
 
     /**
      * Annotations of this library whose presence on a declaration site has the requests of the resource
@@ -54,7 +50,7 @@ final class MethodResolver {
      * Creates a resolver with its own body filter factory.
      */
     MethodResolver() {
-        this(new LoggedBodyFilterFactory());
+        this(new LoggedBodyFilterFactory(log));
     }
 
     /**

@@ -11,7 +11,6 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.chavaillaz.jakarta.rs.LoggedFeature;
 import com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture;
@@ -20,14 +19,15 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
 /**
  * Instantiates the {@link LoggedBodyFilter} classes, once per class, for {@link LoggedFeature} and
- * {@link LoggedClientFeature} alike, a filter being stateless and thread-safe.
+ * {@link LoggedClientFeature} alike, a filter being stateless and thread-safe, and reports those it cannot
+ * instantiate on the logger of the feature.
  */
 public class LoggedBodyFilterFactory {
 
     /**
-     * Logger reporting a body filter class that cannot be instantiated.
+     * Logger of the feature using this factory, reporting a body filter class that cannot be instantiated.
      */
-    private static final Logger log = LoggerFactory.getLogger(LoggedBodyFilterFactory.class);
+    private final Logger log;
 
     /**
      * Filter cached for a class that failed to be instantiated, reported once: it drops the body, writing
@@ -57,10 +57,12 @@ public class LoggedBodyFilterFactory {
     final Map<Class<?>, LoggedBodyFilter> cache = new ConcurrentHashMap<>();
 
     /**
-     * Creates a factory having instantiated no filter yet.
+     * Creates a factory having instantiated no filter yet, filters being instantiated on first use.
+     *
+     * @param log The logger of the feature using the factory, to report a class that cannot be instantiated on
      */
-    public LoggedBodyFilterFactory() {
-        // Filters are instantiated on first use
+    public LoggedBodyFilterFactory(Logger log) {
+        this.log = log;
     }
 
     /**

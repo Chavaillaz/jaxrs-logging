@@ -12,15 +12,20 @@ import java.util.List;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import com.chavaillaz.jakarta.rs.AbstractFilterTest;
 import com.chavaillaz.jakarta.rs.SensitiveBodyFilter;
 import com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
 @DisplayName("Logged body filter factory")
-class LoggedBodyFilterFactoryTest {
+class LoggedBodyFilterFactoryTest extends AbstractFilterTest {
 
-    private final LoggedBodyFilterFactory factory = new LoggedBodyFilterFactory();
+    static final Logger log = LoggerFactory.getLogger(LoggedBodyFilterFactoryTest.class);
+
+    private final LoggedBodyFilterFactory factory = new LoggedBodyFilterFactory(log);
 
     @Test
     @DisplayName("Check the same filter class only gets instantiated once and reused across calls")
@@ -96,6 +101,11 @@ class LoggedBodyFilterFactoryTest {
         // instead of reflection (and the accompanying error log) being retried on every call
         assertSame(first, second);
         assertEquals(1, factory.cache.size());
+        // Reported on the logger of the feature the factory works for
+        assertEquals(1, listAppender.getMessages().stream()
+                .filter(event -> event.getMessage().getFormattedMessage().startsWith("Unable to instantiate body filter"))
+                .filter(event -> event.getLoggerName().equals(log.getName()))
+                .count());
     }
 
     @Test

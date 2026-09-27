@@ -1,5 +1,8 @@
 package com.chavaillaz.jakarta.rs.internal;
 
+import static com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture.FILTERING_FAILURE_MARKER;
+import static com.chavaillaz.jakarta.rs.internal.BodyCapturer.CAPTURE_FAILURE;
+import static com.chavaillaz.jakarta.rs.internal.BodyCapturer.FILTER_FAILURE;
 import static com.chavaillaz.jakarta.rs.internal.LoggingGuard.report;
 
 import jakarta.ws.rs.core.MediaType;
@@ -11,15 +14,21 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 
 import com.chavaillaz.jakarta.rs.LoggedFeatureConfiguration;
+import com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
 /**
- * Decorates a {@link LoggedBodyCapture} so its sink failing - a capture of the application spilling to a full
- * disk (see {@link LoggedFeatureConfiguration.Builder#bodyCapture}) - does not fail the exchange: the first
- * failure is reported, the sink receives nothing more, and the body is left out of the logs rather than logged
- * in part.
- * <p>
+ * Decorates a {@link LoggedBodyCapture} so neither its sink nor a body filter failing fails the exchange, the
+ * failure being reported on the logger of the feature capturing:
+ * <ul>
+ *     <li>a sink failing - a capture of the application spilling to a full disk (see
+ *     {@link LoggedFeatureConfiguration.Builder#bodyCapture}) - receives nothing more, and the body is left out
+ *     of the logs rather than logged in part;</li>
+ *     <li>a filter failing has the body replaced with {@link BoundedBodyCapture#FILTERING_FAILURE_MARKER}, which
+ *     the filters after it leave as it is: a filter that threw has not finished redacting, so what it was working
+ *     on must not be logged.</li>
+ * </ul>
  * The sink also stops receiving anything once the capture is released, as an entity read as a stream can go on
  * being read after its body was handed over, which would otherwise fill a capture nobody reads.
  *
@@ -28,18 +37,19 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 final class GuardedBodyCapture implements LoggedBodyCapture {
 
     private final LoggedBodyCapture capture;
+    private final Logger log;
     private final GuardedSink sink;
 
     /**
-     * Guards the sink of the given capture.
+     * Guards the sink and the filters of the given capture.
      *
      * @param capture The capture to guard
-     * @param log     The logger to report a failure of its sink on
-     * @param message The message to report a failure of its sink with
+     * @param log     The logger of the feature capturing, to report a failure on
      */
-    GuardedBodyCapture(LoggedBodyCapture capture, Logger log, String message) {
+    GuardedBodyCapture(LoggedBodyCapture capture, Logger log) {
         this.capture = capture;
-        this.sink = new GuardedSink(capture.getSink(), log, message);
+        this.log = log;
+        this.sink = new GuardedSink(capture.getSink(), log);
     }
 
     @Override
@@ -47,9 +57,20 @@ final class GuardedBodyCapture implements LoggedBodyCapture {
         return sink;
     }
 
+    /**
+     * {@inheritDoc}
+     * <p>
+     * Leaves the body out of the logs once the sink failed, and hands the given filters to the capture guarded.
+     */
     @Override
     public @Nullable String getContent(List<LoggedBodyFilter> filters, @Nullable MediaType mediaType) {
-        return sink.failed ? null : capture.getContent(filters, mediaType);
+        if (sink.failed) {
+            return null;
+        }
+        List<LoggedBodyFilter> guarded = filters.stream()
+                .<LoggedBodyFilter>map(filter -> new GuardedFilter(filter, log))
+                .toList();
+        return capture.getContent(guarded, mediaType);
     }
 
     /**
@@ -72,14 +93,12 @@ final class GuardedBodyCapture implements LoggedBodyCapture {
 
         private final OutputStream sink;
         private final Logger log;
-        private final String message;
         private boolean failed;
         private volatile boolean released;
 
-        private GuardedSink(OutputStream sink, Logger log, String message) {
+        private GuardedSink(OutputStream sink, Logger log) {
             this.sink = sink;
             this.log = log;
-            this.message = message;
         }
 
         @Override
@@ -144,7 +163,71 @@ final class GuardedBodyCapture implements LoggedBodyCapture {
          */
         private void fail(Exception failure) {
             failed = true;
-            report(log, message, failure);
+            report(log, CAPTURE_FAILURE, failure);
+        }
+
+    }
+
+    /**
+     * Filter applying another one, whose failure drops the body rather than failing its rendering, and which
+     * leaves a body dropped by a filter before it as it is.
+     */
+    private static final class GuardedFilter implements LoggedBodyFilter {
+
+        private final LoggedBodyFilter filter;
+        private final Logger log;
+
+        private GuardedFilter(LoggedBodyFilter filter, Logger log) {
+            this.filter = filter;
+            this.log = log;
+        }
+
+        @Override
+        public void filter(StringBuilder body) {
+            if (isDropped(body)) {
+                return;
+            }
+            try {
+                filter.filter(body);
+            } catch (Exception | StackOverflowError e) {
+                drop(e);
+                body.setLength(0);
+                body.append(FILTERING_FAILURE_MARKER);
+            }
+        }
+
+        @Override
+        public CharSequence apply(CharSequence body) {
+            if (isDropped(body)) {
+                return body;
+            }
+            try {
+                return filter.apply(body);
+            } catch (Exception | StackOverflowError e) {
+                drop(e);
+                return FILTERING_FAILURE_MARKER;
+            }
+        }
+
+        /**
+         * Indicates whether the given body was dropped by a filter applied before this one.
+         *
+         * @param body The body to filter
+         * @return {@code true} if the body was dropped, {@code false} otherwise
+         */
+        private static boolean isDropped(CharSequence body) {
+            return FILTERING_FAILURE_MARKER.contentEquals(body);
+        }
+
+        /**
+         * Reports the failure of the filter, whose body is dropped. {@link StackOverflowError} is the one
+         * {@link Error} caught: how {@code java.util.regex} fails on a payload too large for its pattern, leaving
+         * nothing behind once unwound.
+         *
+         * @param failure The failure of the filter
+         */
+        private void drop(Throwable failure) {
+            report(log, FILTER_FAILURE, failure);
         }
 
     }

@@ -11,7 +11,6 @@ import static jakarta.ws.rs.core.MediaType.TEXT_PLAIN_TYPE;
 import static java.nio.charset.StandardCharsets.ISO_8859_1;
 import static java.nio.charset.StandardCharsets.UTF_16BE;
 import static java.nio.charset.StandardCharsets.UTF_8;
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -34,7 +33,6 @@ import org.junit.jupiter.params.provider.ValueSource;
 import com.chavaillaz.jakarta.rs.SensitiveBodyFilter;
 import com.chavaillaz.jakarta.rs.filter.JsonMaskingBodyFilter;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
-import com.chavaillaz.jakarta.rs.filter.RegexMaskingBodyFilter;
 
 @DisplayName("Bounded body capture")
 class BoundedBodyCaptureTest {
@@ -384,51 +382,32 @@ class BoundedBodyCaptureTest {
     }
 
     @Test
-    @DisplayName("Check a filter that throws drops the body instead of leaking it unfiltered")
-    void checkFailingFilterDropsBody() throws IOException {
-        // A filter is a "this must never reach the logs" instruction, so a filter that threw halfway
-        // through must not result in the raw payload being written: what it was redacting is precisely
-        // what must not appear
-        BoundedBodyCapture capture = new BoundedBodyCapture(-1);
-        capture.getSink().write("{\"password\":\"hunter2\"}".getBytes(UTF_8));
-
-        // When
-        String result = capture.getContent(List.of(body -> {
-            throw new IllegalStateException("Filter bug");
-        }), null);
-
-        // Then
-        assertEquals(FILTERING_FAILURE_MARKER, result);
-        assertFalse(result.contains("hunter2"));
-    }
-
-    @Test
-    @DisplayName("Check a filter that throws does not propagate into the entity stream being captured")
-    void checkFailingFilterDoesNotPropagate() throws IOException {
+    @DisplayName("Check a filter failing fails the rendering, left to the guard the features give every capture")
+    void checkFailingFilterPropagates() throws IOException {
         // Given
-        BoundedBodyCapture capture = new BoundedBodyCapture(-1);
+        BoundedBodyCapture capture = new BoundedBodyCapture(NO_LIMIT);
         capture.getSink().write("content".getBytes(UTF_8));
 
-        // When / Then: assertDoesNotThrow, as a broken filter breaking the request it was only meant to
-        // be logging is the one outcome this must never have
-        assertDoesNotThrow(() -> capture.getContent(List.of(body -> {
+        // When / Then: dropped and reported on the logger of the feature by that guard, whatever the capture
+        assertThrows(IllegalStateException.class, () -> capture.getContent(List.of(body -> {
             throw new IllegalStateException("Filter bug");
         }), TEXT_PLAIN_TYPE));
     }
 
     @Test
-    @DisplayName("Check a filter overflowing the stack neither breaks the exchange nor leaks the body")
-    void checkFilterOverflowingTheStackDropsBody() throws IOException {
-        // Given: a pattern java.util.regex recurses through once per character, as an application's own
-        // RegexMaskingBodyFilter easily can, run on a payload long enough to exhaust the stack
-        BoundedBodyCapture capture = new BoundedBodyCapture(-1);
-        capture.getSink().write(("secret=" + "ab".repeat(100_000)).getBytes(UTF_8));
-        LoggedBodyFilter filter = new RegexMaskingBodyFilter("secret=((?:a|b)*)", 1);
+    @DisplayName("Check a body a filter dropped is not marked as truncated")
+    void checkDroppedBodyNotMarkedTruncated() throws IOException {
+        // Given: a body the limit cut short
+        BoundedBodyCapture capture = new BoundedBodyCapture(4);
+        capture.getSink().write("{\"password\":\"hunter2\"}".getBytes(UTF_8));
 
-        // When: a StackOverflowError is not an Exception, and used to escape every guard on its way out
-        String result = assertDoesNotThrow(() -> capture.getContent(List.of(filter), null));
+        // When: dropped, by a filter class that could not be instantiated for instance
+        String result = capture.getContent(List.of(body -> {
+            body.setLength(0);
+            body.append(FILTERING_FAILURE_MARKER);
+        }), TEXT_PLAIN_TYPE);
 
-        // Then
+        // Then: nothing of the body is shown, so nothing shown was cut
         assertEquals(FILTERING_FAILURE_MARKER, result);
     }
 

@@ -17,6 +17,7 @@ import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
+import static com.chavaillaz.jakarta.rs.internal.BodyCapturer.FILTER_FAILURE;
 import static com.chavaillaz.jakarta.rs.internal.BodyCapturer.MEMORY_FAILURE;
 import static com.chavaillaz.jakarta.rs.internal.Sanitizer.REQUEST_ID_MAX_LENGTH;
 import static jakarta.ws.rs.Priorities.ENTITY_CODER;
@@ -1380,6 +1381,10 @@ class LoggedFeatureTest extends AbstractFilterTest {
         assertNotNull(event);
         assertFalse(event.getMessage().getFormattedMessage().contains("1234-ABCD"));
         assertNull(MDC.get(getMdcField(REQUEST_ID)));
+        // The failure being reported on the logger of the feature, as everything it logs
+        LogEvent report = listAppender.findFirstMessage(FILTER_FAILURE);
+        assertNotNull(report);
+        assertEquals(LoggedFeature.class.getName(), report.getLoggerName());
     }
 
     @Test

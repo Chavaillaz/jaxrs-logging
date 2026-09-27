@@ -62,6 +62,10 @@ public interface LoggedBodyCapture extends AutoCloseable {
      * Gets the captured content, rendered as the given media type says (see {@link BoundedBodyCapture})
      * and filtered by the given filters in their order, once the stream wrapping {@link #getSink()} was fully read
      * or written.
+     * <p>
+     * The filters a feature gives do not throw: one failing is reported on the logger of the feature, and has the
+     * body replaced with {@link BoundedBodyCapture#FILTERING_FAILURE_MARKER}, which the filters after it leave as
+     * it is.
      *
      * @param filters   The filters to apply to the captured content, in the order they apply in
      * @param mediaType The media type of the captured request or response body, or {@code null} if unknown

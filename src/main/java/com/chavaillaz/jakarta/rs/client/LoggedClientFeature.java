@@ -150,7 +150,7 @@ public final class LoggedClientFeature implements Feature {
         this.responseLevel = builder.responseLevel;
         // Classes first, then instances, keeping the declaration order within each: a filter given as a
         // class cannot depend on one given as an instance without the caller having built both anyway
-        Set<LoggedBodyFilter> filters = new LinkedHashSet<>(new LoggedBodyFilterFactory().getInstances(builder.bodyFilterClasses));
+        Set<LoggedBodyFilter> filters = new LinkedHashSet<>(new LoggedBodyFilterFactory(log).getInstances(builder.bodyFilterClasses));
         filters.addAll(builder.bodyFilterInstances);
         List<LoggedBodyFilter> bodyFilters = List.copyOf(filters);
         this.requestBody = bodyConfiguration(builder.logRequestBody, builder.requestBodyLimit, bodyFilters);

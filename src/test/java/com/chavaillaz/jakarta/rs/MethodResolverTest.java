@@ -21,6 +21,7 @@ import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Set;
 
+import org.apache.logging.log4j.core.LogEvent;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -162,7 +163,7 @@ class MethodResolverTest extends AbstractFilterTest {
 
         // Given: filters that cannot even be determined, as a @LoggedBody naming a class missing at runtime
         // throws a TypeNotPresentException the moment it is read
-        MethodResolver failingResolver = new MethodResolver(new LoggedBodyFilterFactory() {
+        MethodResolver failingResolver = new MethodResolver(new LoggedBodyFilterFactory(LoggedFeature.log) {
 
             @Override
             public List<LoggedBodyFilter> getInstances(Class<? extends LoggedBodyFilter>[] filterTypes) {
@@ -174,11 +175,13 @@ class MethodResolverTest extends AbstractFilterTest {
         // When
         MethodConfiguration configuration = assertDoesNotThrow(() -> failingResolver.resolve(resourceInfo));
 
-        // Then: its redaction cannot be guaranteed
+        // Then: its redaction cannot be guaranteed, which is reported on the logger of the feature
         assertSame(LoggedBodyConfiguration.NONE, configuration.requestBody());
         assertSame(LoggedBodyConfiguration.NONE, configuration.responseBody());
         assertFalse(configuration.capturesBodies());
-        assertNotNull(listAppender.findFirstMessage("Unable to resolve the body logging configuration of"));
+        LogEvent report = listAppender.findFirstMessage("Unable to resolve the body logging configuration of");
+        assertNotNull(report);
+        assertEquals(LoggedFeature.class.getName(), report.getLoggerName());
     }
 
     @Test

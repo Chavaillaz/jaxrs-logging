@@ -103,9 +103,14 @@ failed request logged at the same level as a successful one is a line nobody is 
 library is the one place that already knows which it was. Set `responseLevel` in the
 [configuration](#configuration) to fit your own conventions.
 
-Note that setting the logger above `INFO` disables body capture entirely (see below), so failures are
-then logged at `WARN`/`ERROR` but without their bodies: whether a request failed is only known once it
-has been answered, long after the decision to capture its body had to be made.
+Everything the library logs goes through two loggers, named after its features:
+`com.chavaillaz.jakarta.rs.LoggedFeature` for the requests received, and
+`com.chavaillaz.jakarta.rs.client.LoggedClientFeature` for the calls made (see [Client calls](#client-calls)),
+the failures to log them included - a body filter that threw, an annotation that cannot be read.
+
+Note that setting the logger of `LoggedFeature` above `INFO` disables body capture entirely (see below), so
+failures are then logged at `WARN`/`ERROR` but without their bodies: whether a request failed is only known
+once it has been answered, long after the decision to capture its body had to be made.
 
 The identifier the request was logged under is also returned to the caller as `X-Request-ID`. Without it,
 that identifier only exists on the server: a caller reporting "your API returned a 500 at about 14:32"
@@ -385,7 +390,7 @@ it is in that case, as the ready-made filters do: that spares copying every body
 was nothing to filter in it.
 
 A filter that throws never reaches the application: the body is dropped and logged as
-`[body dropped: a filter failed]`, and the failure is reported on the library's own logger. Dropping it
+`[body dropped: a filter failed]`, and the failure is reported on the logger of the feature. Dropping it
 rather than falling back to the captured text is deliberate - a filter that threw has by definition not
 finished redacting, so what it was working on is exactly what must not be written. The same goes for a
 filter class that cannot be instantiated (a constructor or class that is not `public`, an inner class that
