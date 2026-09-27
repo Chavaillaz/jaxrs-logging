@@ -103,8 +103,8 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check the correlation identifier is propagated from MDC to the outgoing header")
-    void checkCorrelationIdPropagatedFromMdc() {
+    @DisplayName("Check the request identifier is propagated from MDC to the outgoing header")
+    void checkRequestIdPropagatedFromMdc() {
         // Given
         MDC.put("request-id", "abc-123");
 
@@ -116,8 +116,8 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check a random correlation identifier is generated when absent from MDC")
-    void checkCorrelationIdGeneratedWhenAbsent() {
+    @DisplayName("Check a random request identifier is generated when absent from MDC")
+    void checkRequestIdGeneratedWhenAbsent() {
         // When
         feature.filter(requestContext);
 
@@ -126,8 +126,8 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check a random correlation identifier is generated when blank in MDC")
-    void checkCorrelationIdGeneratedWhenBlank() {
+    @DisplayName("Check a random request identifier is generated when blank in MDC")
+    void checkRequestIdGeneratedWhenBlank() {
         // Given: an identifier the application put in MDC, blank, which would correlate nothing
         MDC.put("request-id", " ");
 
@@ -139,8 +139,8 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check the correlation identifier is propagated the way a LoggedFeature logs one it receives")
-    void checkCorrelationIdSanitized() {
+    @DisplayName("Check the request identifier is propagated the way a LoggedFeature logs one it receives")
+    void checkRequestIdSanitized() {
         // Given: an identifier the application put in MDC as it got it, which no HTTP client of the JDK sends
         MDC.put("request-id", "abc\r\nX-Forged: yes");
 
@@ -152,8 +152,8 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check an oversized correlation identifier is truncated")
-    void checkCorrelationIdTruncated() {
+    @DisplayName("Check an oversized request identifier is truncated")
+    void checkRequestIdTruncated() {
         // Given
         MDC.put("request-id", "a".repeat(REQUEST_ID_MAX_LENGTH + 50));
 
@@ -165,12 +165,12 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check the correlation identifier is read from the MDC key configured")
-    void checkCorrelationIdReadFromConfiguredKey() {
+    @DisplayName("Check the request identifier is read from the MDC key configured")
+    void checkRequestIdReadFromConfiguredKey() {
         // Given: the MDC key a LoggedFeature renaming its request identifier puts it under
         MDC.put("request-id", "not-this-one");
         MDC.put("trace-id", "abc-123");
-        LoggedClientFeature renamed = LoggedClientFeature.builder().correlationIdKey("trace-id").build();
+        LoggedClientFeature renamed = LoggedClientFeature.builder().requestIdKey("trace-id").build();
 
         // When
         renamed.filter(requestContext);
@@ -180,11 +180,11 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check the correlation identifier is propagated in the header configured")
-    void checkCorrelationIdPropagatedInConfiguredHeader() {
+    @DisplayName("Check the request identifier is propagated in the header configured")
+    void checkRequestIdPropagatedInConfiguredHeader() {
         // Given: the header the services called read their identifier from
         MDC.put("request-id", "abc-123");
-        LoggedClientFeature tracing = LoggedClientFeature.builder().correlationIdHeader("X-Trace-ID").build();
+        LoggedClientFeature tracing = LoggedClientFeature.builder().requestIdHeader("X-Trace-ID").build();
 
         // When
         tracing.filter(requestContext);
@@ -247,11 +247,11 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
 
     @Test
     @DisplayName("Check a header configured the call already carries, in another casing, is not overwritten")
-    void checkConfiguredCorrelationHeaderNotOverwritten() {
+    void checkConfiguredRequestIdHeaderNotOverwritten() {
         // Given
         headers.putSingle("x-trace-id", "caller-supplied");
         MDC.put("request-id", "from-mdc");
-        LoggedClientFeature tracing = LoggedClientFeature.builder().correlationIdHeader("X-Trace-ID").build();
+        LoggedClientFeature tracing = LoggedClientFeature.builder().requestIdHeader("X-Trace-ID").build();
 
         // When
         tracing.filter(requestContext);
@@ -262,8 +262,8 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
     }
 
     @Test
-    @DisplayName("Check an already present correlation header is not overwritten")
-    void checkCorrelationIdNotOverwritten() {
+    @DisplayName("Check an already present request identifier header is not overwritten")
+    void checkRequestIdNotOverwritten() {
         // Given
         headers.putSingle(REQUEST_ID_HEADER, "caller-supplied");
         MDC.put("request-id", "from-mdc");
@@ -357,9 +357,9 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
         assertThrows(IllegalArgumentException.class, () -> builder.bodyLimit(-2));
         assertThrows(IllegalArgumentException.class, () -> builder.requestBodyLimit(-2));
         assertThrows(IllegalArgumentException.class, () -> builder.responseBodyLimit(Integer.MIN_VALUE));
-        assertThrows(IllegalArgumentException.class, () -> builder.correlationIdKey(null));
-        assertThrows(IllegalArgumentException.class, () -> builder.correlationIdKey(" "));
-        assertThrows(IllegalArgumentException.class, () -> builder.correlationIdHeader(" "));
+        assertThrows(IllegalArgumentException.class, () -> builder.requestIdKey(null));
+        assertThrows(IllegalArgumentException.class, () -> builder.requestIdKey(" "));
+        assertThrows(IllegalArgumentException.class, () -> builder.requestIdHeader(" "));
         assertThrows(NullPointerException.class, () -> builder.sensitiveParameters(null));
         assertThrows(NullPointerException.class, () -> builder.responseLevel(null));
         assertThrows(NullPointerException.class, () -> builder.bodyCapture(null));

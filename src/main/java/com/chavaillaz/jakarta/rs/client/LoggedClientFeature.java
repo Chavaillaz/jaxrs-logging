@@ -116,13 +116,13 @@ public final class LoggedClientFeature implements Feature {
     private static final String RESPONSE_BODY_LOGGED_PROPERTY = LoggedClientFeature.class.getName() + ".responseBodyLogged";
 
     /**
-     * Name of the request property holding the correlation identifier this feature gave the call, for the lines
-     * logging it to carry, see {@link #withCorrelationId(Object, Runnable)}.
+     * Name of the request property holding the request identifier this feature gave the call, for the lines
+     * logging it to carry, see {@link #withRequestId(Object, Runnable)}.
      */
-    private static final String CORRELATION_ID_PROPERTY = LoggedClientFeature.class.getName() + ".correlationId";
+    private static final String REQUEST_ID_PROPERTY = LoggedClientFeature.class.getName() + ".requestId";
 
-    private final String correlationIdMdcKey;
-    private final String correlationIdHeader;
+    private final String requestIdKey;
+    private final String requestIdHeader;
     private final BiPredicate<MappingType, String> sensitiveParameters;
     private final IntFunction<@Nullable Level> responseLevel;
     private final LoggedBodyConfiguration requestBody;
@@ -131,7 +131,7 @@ public final class LoggedClientFeature implements Feature {
 
     /**
      * Creates a client feature with the default configuration, for an application registering it by class: no
-     * body logged, and the correlation identifier read from the {@code request-id} MDC key. Use
+     * body logged, and the request identifier read from the {@code request-id} MDC key. Use
      * {@link #builder()} to configure it.
      */
     public LoggedClientFeature() {
@@ -144,8 +144,8 @@ public final class LoggedClientFeature implements Feature {
      * @param builder The builder holding the configuration
      */
     private LoggedClientFeature(Builder builder) {
-        this.correlationIdMdcKey = builder.correlationIdMdcKey;
-        this.correlationIdHeader = builder.correlationIdHeader;
+        this.requestIdKey = builder.requestIdKey;
+        this.requestIdHeader = builder.requestIdHeader;
         this.sensitiveParameters = builder.sensitiveParameters;
         this.responseLevel = builder.responseLevel;
         // Classes first, then instances, keeping the declaration order within each: a filter given as a
@@ -187,8 +187,8 @@ public final class LoggedClientFeature implements Feature {
      */
     public static final class Builder {
 
-        private String correlationIdMdcKey = REQUEST_ID.getDefaultField();
-        private String correlationIdHeader = REQUEST_ID_HEADER;
+        private String requestIdKey = REQUEST_ID.getDefaultField();
+        private String requestIdHeader = REQUEST_ID_HEADER;
         private BiPredicate<MappingType, String> sensitiveParameters = LoggedFeatureConfiguration::isCredential;
         private IntFunction<@Nullable Level> responseLevel = LoggedFeatureConfiguration::levelOf;
         private boolean logRequestBody = false;
@@ -210,20 +210,20 @@ public final class LoggedClientFeature implements Feature {
          * The identifier is sanitized and truncated to 128 characters, as a {@link LoggedFeature} does one it
          * receives.
          *
-         * @param mdcKey The MDC key to read the correlation identifier from
+         * @param mdcKey The MDC key to read the request identifier from
          * @return This builder
          * @throws IllegalArgumentException if the key is blank, as no field of a {@link LoggedFeature} is
          */
-        public Builder correlationIdKey(String mdcKey) {
+        public Builder requestIdKey(String mdcKey) {
             if (isBlank(mdcKey)) {
-                throw new IllegalArgumentException("The MDC key of the correlation identifier is required");
+                throw new IllegalArgumentException("The MDC key of the request identifier is required");
             }
-            this.correlationIdMdcKey = mdcKey;
+            this.requestIdKey = mdcKey;
             return this;
         }
 
         /**
-         * Sets the header the correlation identifier is propagated in, to match the one the services called
+         * Sets the header the request identifier is propagated in, to match the one the services called
          * read theirs from (see {@link LoggedFeatureConfiguration.Builder#requestIdHeader(String)}). Defaults to
          * {@value LoggedFeature#REQUEST_ID_HEADER}.
          * <p>
@@ -233,11 +233,11 @@ public final class LoggedClientFeature implements Feature {
          * @return This builder
          * @throws IllegalArgumentException if the name is blank
          */
-        public Builder correlationIdHeader(String header) {
+        public Builder requestIdHeader(String header) {
             if (isBlank(header)) {
-                throw new IllegalArgumentException("The name of the correlation identifier header is required");
+                throw new IllegalArgumentException("The name of the request identifier header is required");
             }
-            this.correlationIdHeader = header;
+            this.requestIdHeader = header;
             return this;
         }
 
@@ -413,63 +413,63 @@ public final class LoggedClientFeature implements Feature {
     }
 
     /**
-     * Propagates the correlation identifier and logs the {@code "Calling ..."} line, as the filter this feature
+     * Propagates the request identifier and logs the {@code "Calling ..."} line, as the filter this feature
      * registers sees the request of a call. Nothing done here fails the call.
      *
      * @param requestContext The context of the request about to be sent
      */
     void filter(ClientRequestContext requestContext) {
         // Guarded apart, so a call that cannot be described still carries the identifier
-        safely(() -> propagateCorrelationId(requestContext));
+        safely(() -> propagateRequestId(requestContext));
         safely(() -> {
             requestContext.setProperty(REQUEST_TIME_PROPERTY, nanoTime());
             String uri = getLoggedUri(requestContext.getUri());
             requestContext.setProperty(REQUEST_METHOD_PROPERTY, requestContext.getMethod());
             requestContext.setProperty(REQUEST_URI_PROPERTY, uri);
-            withCorrelationId(requestContext.getProperty(CORRELATION_ID_PROPERTY),
+            withRequestId(requestContext.getProperty(REQUEST_ID_PROPERTY),
                     () -> log.info("Calling {} {}", requestContext.getMethod(), uri));
         });
     }
 
     /**
-     * Sets the correlation identifier on the given request, unless it already carries one.
+     * Sets the request identifier on the given request, unless it already carries one.
      *
      * @param requestContext The context of the request about to be sent
      */
-    private void propagateCorrelationId(ClientRequestContext requestContext) {
+    private void propagateRequestId(ClientRequestContext requestContext) {
         // Compared without regard to case, as the headers of a client request may be a case-sensitive map
-        if (requestContext.getHeaders().keySet().stream().noneMatch(correlationIdHeader::equalsIgnoreCase)) {
+        if (requestContext.getHeaders().keySet().stream().noneMatch(requestIdHeader::equalsIgnoreCase)) {
             // Sanitized as a LoggedFeature does one it receives: a control character in a header fails the call in
             // the HTTP client of the JDK, and a blank identifier correlates nothing
-            String correlationId = requestIdOf(MDC.get(correlationIdMdcKey));
-            requestContext.getHeaders().putSingle(correlationIdHeader, correlationId);
-            requestContext.setProperty(CORRELATION_ID_PROPERTY, correlationId);
+            String requestId = requestIdOf(MDC.get(requestIdKey));
+            requestContext.getHeaders().putSingle(requestIdHeader, requestId);
+            requestContext.setProperty(REQUEST_ID_PROPERTY, requestId);
         }
     }
 
     /**
-     * Logs a line of a call under the correlation identifier this feature gave it, when the current thread has
+     * Logs a line of a call under the request identifier this feature gave it, when the current thread has
      * none in MDC: a call made outside of a request, or on the executor of an asynchronous one, is given a random
      * identifier, the only one the service called logs it under.
      *
-     * @param correlationId The correlation identifier this feature gave the call, {@code null} if the calling code
-     *                      gave it one
-     * @param logging       The logging of the line
+     * @param requestId The request identifier this feature gave the call, {@code null} if the calling code gave
+     *                  it one
+     * @param logging   The logging of the line
      */
-    private void withCorrelationId(@Nullable Object correlationId, Runnable logging) {
-        String current = MDC.get(correlationIdMdcKey);
-        if (!(correlationId instanceof String id) || isNotBlank(current)) {
+    private void withRequestId(@Nullable Object requestId, Runnable logging) {
+        String current = MDC.get(requestIdKey);
+        if (!(requestId instanceof String id) || isNotBlank(current)) {
             logging.run();
             return;
         }
-        MDC.put(correlationIdMdcKey, id);
+        MDC.put(requestIdKey, id);
         try {
             logging.run();
         } finally {
             if (current == null) {
-                MDC.remove(correlationIdMdcKey);
+                MDC.remove(requestIdKey);
             } else {
-                MDC.put(correlationIdMdcKey, current);
+                MDC.put(requestIdKey, current);
             }
         }
     }
@@ -540,7 +540,7 @@ public final class LoggedClientFeature implements Feature {
     void captureRequestBody(WriterInterceptorContext context) throws IOException, WebApplicationException {
         bodyCapturer.write(context, isLoggingEnabled() ? requestBody : LoggedBodyConfiguration.NONE, body -> {
             if (isNotBlank(body)) {
-                withCorrelationId(context.getProperty(CORRELATION_ID_PROPERTY), () -> log.info("Request body {} {}{}{}",
+                withRequestId(context.getProperty(REQUEST_ID_PROPERTY), () -> log.info("Request body {} {}{}{}",
                         context.getProperty(REQUEST_METHOD_PROPERTY),
                         context.getProperty(REQUEST_URI_PROPERTY),
                         LF,
@@ -564,7 +564,7 @@ public final class LoggedClientFeature implements Feature {
             long duration = NANOSECONDS.toMillis(now - start);
             int status = responseContext.getStatus();
 
-            withCorrelationId(requestContext.getProperty(CORRELATION_ID_PROPERTY), () -> log.atLevel(responseLevel(status))
+            withRequestId(requestContext.getProperty(REQUEST_ID_PROPERTY), () -> log.atLevel(responseLevel(status))
                     .log("Called {} {} with status {} in {}ms",
                             requestContext.getMethod(),
                             getLoggedUri(requestContext.getUri()),
@@ -602,7 +602,7 @@ public final class LoggedClientFeature implements Feature {
         return bodyCapturer.read(context, configuration, body -> {
             if (isNotBlank(body)) {
                 context.setProperty(RESPONSE_BODY_LOGGED_PROPERTY, true);
-                withCorrelationId(context.getProperty(CORRELATION_ID_PROPERTY), () -> log.info("Response body {} {}{}{}",
+                withRequestId(context.getProperty(REQUEST_ID_PROPERTY), () -> log.info("Response body {} {}{}{}",
                         context.getProperty(REQUEST_METHOD_PROPERTY),
                         context.getProperty(REQUEST_URI_PROPERTY),
                         LF,

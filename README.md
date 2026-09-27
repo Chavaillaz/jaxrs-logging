@@ -445,9 +445,9 @@ The client-side counterpart [LoggedClientFeature](src/main/java/com/chavaillaz/j
 logs outgoing JAX-RS Client calls and propagates the current request identifier (from MDC) to the downstream
 service as `X-Request-ID`, so a service calling another service exposing its own `@Logged` resource produces a
 single, correlated identifier across both sides of the call. A downstream service reading its identifier from
-another header (`requestIdHeader` of its configuration) is given it there with `correlationIdHeader`. A call
-made outside of a request, by a scheduled task for instance, is given a random identifier, which the lines
-logging the call carry as well.
+another header (`requestIdHeader` of its configuration) is given it there by the `requestIdHeader` of the client
+builder. A call made outside of a request, by a scheduled task for instance, is given a random identifier,
+which the lines logging the call carry as well.
 
 Unlike `@Logged`, which is resolved per resource method from annotations, `LoggedClientFeature` has no resource
 method to attach annotations to: an instance is configured once through its builder and applies to every call
