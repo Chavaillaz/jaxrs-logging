@@ -44,6 +44,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.BiPredicate;
+import java.util.function.IntFunction;
 
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -67,7 +68,7 @@ import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
 
 /**
  * Client-side counterpart of {@link LoggedFeature}, logging the calls made through a JAX-RS {@code Client},
- * the credentials their URI carries masked (see {@link #getLoggedUri(URI)}):
+ * the credentials their URI carries masked (see {@link Builder#sensitiveParameters(BiPredicate)}):
  * <ul>
  *     <li>{@code Calling [method] [uri]}, once the request is about to be sent</li>
  *     <li>{@code Called [method] [uri] with status [status] in [duration]ms}, once the response is received</li>
@@ -84,100 +85,72 @@ import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
  * it discovers to every client of the deployment.
  * <p>
  * A body is logged on a line of its own, as a response body is only read if and when the calling code reads
- * the entity (see {@link #captureResponseBody(ReaderInterceptorContext)}): nothing marks the end of a call that
- * an MDC entry holding it could be scoped to, so only {@link LoggedBody.LogType#LOG} is supported.
+ * the entity: nothing marks the end of a call that an MDC entry holding it could be scoped to, so only
+ * {@link LoggedBody.LogType#LOG} is supported.
  */
 @ConstrainedTo(CLIENT)
-public class LoggedClientFeature implements Feature {
+public final class LoggedClientFeature implements Feature {
 
-    /**
-     * Logger the calls, their bodies and the failures to log them are written to.
-     */
-    protected static final Logger log = LoggerFactory.getLogger(LoggedClientFeature.class);
+    private static final Logger log = LoggerFactory.getLogger(LoggedClientFeature.class);
 
     /**
      * Name of the request property holding the moment the call started, to compute its duration.
      */
-    protected static final String REQUEST_TIME_PROPERTY = LoggedClientFeature.class.getName() + ".requestTime";
+    private static final String REQUEST_TIME_PROPERTY = LoggedClientFeature.class.getName() + ".requestTime";
 
     /**
      * Name of the request property holding the method of the call, for the lines logging its bodies, which an
      * interceptor context does not give access to.
      */
-    protected static final String REQUEST_METHOD_PROPERTY = LoggedClientFeature.class.getName() + ".requestMethod";
+    private static final String REQUEST_METHOD_PROPERTY = LoggedClientFeature.class.getName() + ".requestMethod";
 
     /**
-     * Name of the request property holding the URI of the call as it is logged (see {@link #getLoggedUri(URI)}),
-     * for the same reason as {@link #REQUEST_METHOD_PROPERTY}.
+     * Name of the request property holding the URI of the call as it is logged, for the same reason as
+     * {@link #REQUEST_METHOD_PROPERTY}.
      */
-    protected static final String REQUEST_URI_PROPERTY = LoggedClientFeature.class.getName() + ".requestUri";
+    private static final String REQUEST_URI_PROPERTY = LoggedClientFeature.class.getName() + ".requestUri";
 
     /**
      * Name of the request property recording that the response body of the call has been logged, see
      * {@link #captureResponseBody(ReaderInterceptorContext)}.
      */
-    protected static final String RESPONSE_BODY_LOGGED_PROPERTY = LoggedClientFeature.class.getName() + ".responseBodyLogged";
+    private static final String RESPONSE_BODY_LOGGED_PROPERTY = LoggedClientFeature.class.getName() + ".responseBodyLogged";
 
-    /**
-     * Instantiates and caches the body filters given as classes.
-     */
-    private final LoggedBodyFilterFactory bodyFilterFactory = new LoggedBodyFilterFactory();
-
-    /**
-     * Key of the MDC entry holding the identifier propagated to the services called.
-     */
-    protected final String correlationIdMdcKey;
-
-    /**
-     * Name of the header the identifier is propagated in to the services called.
-     */
+    private final String correlationIdMdcKey;
     private final String correlationIdHeader;
-
-    /**
-     * Whether the value of the query parameter of the given type and name must be kept out of the logs.
-     */
     private final BiPredicate<MappingType, String> sensitiveParameters;
-
-    /**
-     * Body logging configuration of the requests sent, fixed when this provider is built.
-     */
+    private final IntFunction<@Nullable Level> responseLevel;
     private final LoggedBodyConfiguration requestBody;
-
-    /**
-     * Body logging configuration of the responses received, fixed when this provider is built.
-     */
     private final LoggedBodyConfiguration responseBody;
+    private final BodyCapturer bodyCapturer;
 
     /**
-     * Captures the bodies of the requests written and the responses read, through
-     * {@link #createBodyCapture(int)}.
-     */
-    private final BodyCapturer bodyCapturer = new BodyCapturer(log, this::createBodyCapture);
-
-    /**
-     * Creates a new client feature with the default configuration (no body logging, correlation identifier
-     * read from the {@code request-id} MDC key). Use {@link #builder()} to customize it.
+     * Creates a client feature with the default configuration, for an application registering it by class: no
+     * body logged, and the correlation identifier read from the {@code request-id} MDC key. Use
+     * {@link #builder()} to configure it.
      */
     public LoggedClientFeature() {
         this(builder());
     }
 
     /**
-     * Creates a client feature configured by the given builder, for a subclass to call from its constructors.
+     * Creates a client feature configured by the given builder.
      *
      * @param builder The builder holding the configuration
      */
-    protected LoggedClientFeature(Builder builder) {
+    private LoggedClientFeature(Builder builder) {
         this.correlationIdMdcKey = builder.correlationIdMdcKey;
         this.correlationIdHeader = builder.correlationIdHeader;
         this.sensitiveParameters = builder.sensitiveParameters;
+        this.responseLevel = builder.responseLevel;
         // Classes first, then instances, keeping the declaration order within each: a filter given as a
         // class cannot depend on one given as an instance without the caller having built both anyway
-        Set<LoggedBodyFilter> filters = new LinkedHashSet<>(bodyFilterFactory.getInstances(builder.bodyFilterClasses));
+        Set<LoggedBodyFilter> filters = new LinkedHashSet<>(new LoggedBodyFilterFactory().getInstances(builder.bodyFilterClasses));
         filters.addAll(builder.bodyFilterInstances);
         Set<LoggedBodyFilter> bodyFilters = unmodifiableSet(filters);
         this.requestBody = bodyConfiguration(builder.logRequestBody, builder.requestBodyLimit, bodyFilters);
         this.responseBody = bodyConfiguration(builder.logResponseBody, builder.responseBodyLimit, bodyFilters);
+        this.bodyCapturer = new BodyCapturer(log, builder.bodyCapture);
     }
 
     /**
@@ -212,12 +185,14 @@ public class LoggedClientFeature implements Feature {
         private String correlationIdMdcKey = REQUEST_ID.getDefaultField();
         private String correlationIdHeader = REQUEST_ID_HEADER;
         private BiPredicate<MappingType, String> sensitiveParameters = LoggedFeatureConfiguration::isCredential;
+        private IntFunction<@Nullable Level> responseLevel = LoggedSupport::levelOf;
         private boolean logRequestBody = false;
         private boolean logResponseBody = false;
         private int requestBodyLimit = DEFAULT_LIMIT;
         private int responseBodyLimit = DEFAULT_LIMIT;
         private final Set<Class<? extends LoggedBodyFilter>> bodyFilterClasses = new LinkedHashSet<>();
         private final Set<LoggedBodyFilter> bodyFilterInstances = new LinkedHashSet<>();
+        private IntFunction<LoggedBodyCapture> bodyCapture = BoundedLoggedBodyCapture::new;
 
         private Builder() {
             // Created through LoggedClientFeature.builder()
@@ -267,12 +242,28 @@ public class LoggedClientFeature implements Feature {
          * <pre>{@code
          * .sensitiveParameters((type, name) -> isCredential(type, name) || "partner-key".equalsIgnoreCase(name))
          * }</pre>
+         * The user information of a URI ({@code https://user:secret@host}) is masked whatever the predicate says.
          *
          * @param predicate Whether the value of the parameter of the given type and name must be kept out of the logs
          * @return This builder
          */
         public Builder sensitiveParameters(BiPredicate<MappingType, String> predicate) {
             this.sensitiveParameters = requireNonNull(predicate, "The sensitive parameters predicate is required");
+            return this;
+        }
+
+        /**
+         * Sets the level a call is logged at once answered, given its status, for example to leave a {@code 404}
+         * the calling code expects at {@code INFO}, as
+         * {@link LoggedFeatureConfiguration.Builder#responseLevel(IntFunction)} does for the requests received. A
+         * status the function returns {@code null} for, or fails for, is logged at its default level. Defaults to
+         * {@link LoggedSupport#levelOf(int)}.
+         *
+         * @param levels The level to log a call answered with the given status at
+         * @return This builder
+         */
+        public Builder responseLevel(IntFunction<@Nullable Level> levels) {
+            this.responseLevel = requireNonNull(levels, "The response level function is required");
             return this;
         }
 
@@ -363,6 +354,19 @@ public class LoggedClientFeature implements Feature {
         }
 
         /**
+         * Sets how the bodies are captured, given the maximum size to capture in bytes, or {@code -1} for no
+         * limit, as {@link LoggedFeatureConfiguration.Builder#bodyCapture(IntFunction)} does for the requests
+         * received. Defaults to capturing them in memory ({@link BoundedLoggedBodyCapture}).
+         *
+         * @param factory The creation of the capture of a body keeping at most the given number of bytes
+         * @return This builder
+         */
+        public Builder bodyCapture(IntFunction<LoggedBodyCapture> factory) {
+            this.bodyCapture = requireNonNull(factory, "The body capture factory is required");
+            return this;
+        }
+
+        /**
          * Builds the {@link LoggedClientFeature} configured by this builder.
          *
          * @return The client feature created
@@ -402,12 +406,11 @@ public class LoggedClientFeature implements Feature {
 
     /**
      * Propagates the correlation identifier and logs the {@code "Calling ..."} line, as the filter this feature
-     * registers sees the request of a call (see {@link #configure(FeatureContext)}). Nothing done here fails the
-     * call.
+     * registers sees the request of a call. Nothing done here fails the call.
      *
      * @param requestContext The context of the request about to be sent
      */
-    protected void filter(ClientRequestContext requestContext) {
+    void filter(ClientRequestContext requestContext) {
         // Guarded apart, so a call that cannot be described still carries the identifier
         safely(() -> propagateCorrelationId(requestContext));
         safely(() -> {
@@ -442,7 +445,7 @@ public class LoggedClientFeature implements Feature {
      * @param uri The URI of the call
      * @return The URI as it must be logged
      */
-    protected String getLoggedUri(URI uri) {
+    String getLoggedUri(URI uri) {
         String authority = uri.getRawAuthority();
         // Found at the last '@' of the authority rather than through getRawUserInfo(), null for an authority
         // java.net.URI cannot parse as a host and a port, a host name with an underscore as containers have
@@ -496,7 +499,7 @@ public class LoggedClientFeature implements Feature {
      * @throws IOException             if an IO error arises while writing the entity
      * @throws WebApplicationException if the entity cannot be written
      */
-    protected void captureRequestBody(WriterInterceptorContext context) throws IOException, WebApplicationException {
+    void captureRequestBody(WriterInterceptorContext context) throws IOException, WebApplicationException {
         bodyCapturer.write(context, isLoggingEnabled() ? requestBody : LoggedBodyConfiguration.NONE, body -> {
             if (isNotBlank(body)) {
                 log.info("Request body {} {}{}{}",
@@ -509,14 +512,14 @@ public class LoggedClientFeature implements Feature {
     }
 
     /**
-     * Logs the {@code "Called ..."} line, at the level {@link #getResponseLevel(int)} gives the status, as the
-     * filter this feature registers sees the response of a call. Nothing done here fails the call. A call a
-     * filter aborted before this one ({@link ClientRequestContext#abortWith}) is logged with a zero duration.
+     * Logs the {@code "Called ..."} line, at the level the configuration gives the status, as the filter this
+     * feature registers sees the response of a call. Nothing done here fails the call. A call a filter aborted
+     * before this one ({@link ClientRequestContext#abortWith}) is logged with a zero duration.
      *
      * @param requestContext  The context of the request sent
      * @param responseContext The context of the response received
      */
-    protected void filter(ClientRequestContext requestContext, ClientResponseContext responseContext) {
+    void filter(ClientRequestContext requestContext, ClientResponseContext responseContext) {
         safely(() -> {
             long now = nanoTime();
             long start = requestContext.getProperty(REQUEST_TIME_PROPERTY) instanceof Long started ? started : now;
@@ -533,26 +536,15 @@ public class LoggedClientFeature implements Feature {
     }
 
     /**
-     * Gets the level at which a call answered with the given status is logged, see
-     * {@link LoggedSupport#levelOf(int)}, which covers both sides of the call.
-     *
-     * @param status The status of the response received
-     * @return The level to log the call at, {@code null} leaving the status at its default level
-     */
-    protected @Nullable Level getResponseLevel(int status) {
-        return levelOf(status);
-    }
-
-    /**
-     * Gets the level a call answered with the given status is logged at: the one {@link #getResponseLevel(int)}
-     * gives, or the default one of the status when it gives none, or fails.
+     * Gets the level a call answered with the given status is logged at: the one the configuration gives, or the
+     * default one of the status when it gives none, or fails.
      *
      * @param status The status of the response received
      * @return The level to log the call at
      */
     private Level responseLevel(int status) {
         Level level = LoggingGuard.safely(log, "Unable to get the level of the client call, its default one is used instead",
-                () -> getResponseLevel(status), null);
+                () -> responseLevel.apply(status), null);
         return level == null ? levelOf(status) : level;
     }
 
@@ -566,7 +558,7 @@ public class LoggedClientFeature implements Feature {
      * @throws IOException             if an IO error arises while reading the entity
      * @throws WebApplicationException if the entity cannot be read
      */
-    protected @Nullable Object captureResponseBody(ReaderInterceptorContext context) throws IOException, WebApplicationException {
+    @Nullable Object captureResponseBody(ReaderInterceptorContext context) throws IOException, WebApplicationException {
         boolean alreadyLogged = Boolean.TRUE.equals(context.getProperty(RESPONSE_BODY_LOGGED_PROPERTY));
         LoggedBodyConfiguration configuration = isLoggingEnabled() && !alreadyLogged ? responseBody : LoggedBodyConfiguration.NONE;
         return bodyCapturer.read(context, configuration, body -> {
@@ -626,23 +618,15 @@ public class LoggedClientFeature implements Feature {
     /**
      * Captures the bodies for the feature that registered it, after any entity coder
      * ({@link Priorities#ENTITY_CODER}), so a {@code Content-Encoding: gzip} body is logged as the payload rather
-     * than compressed. The feature it calls back decides everything else.
+     * than compressed.
      */
     @ConstrainedTo(CLIENT)
     @Priority(ENTITY_CODER + 100)
-    public static class BodyInterceptor implements ReaderInterceptor, WriterInterceptor {
+    private static final class BodyInterceptor implements ReaderInterceptor, WriterInterceptor {
 
-        /**
-         * Feature the bodies captured are handed back to.
-         */
-        protected final LoggedClientFeature feature;
+        private final LoggedClientFeature feature;
 
-        /**
-         * Creates the interceptor capturing bodies for the given feature.
-         *
-         * @param feature The feature to hand the captured bodies back to
-         */
-        public BodyInterceptor(LoggedClientFeature feature) {
+        private BodyInterceptor(LoggedClientFeature feature) {
             this.feature = feature;
         }
 
@@ -659,33 +643,22 @@ public class LoggedClientFeature implements Feature {
     }
 
     /**
-     * Runs the given logging action, reporting anything it throws on the logger of this provider and
-     * swallowing it, so that logging a call can never be the reason it fails.
+     * Runs the given logging action, reporting anything it throws and swallowing it, so logging a call is never
+     * the reason it fails.
      *
      * @param action The logging action to run
      */
-    protected void safely(Runnable action) {
+    private static void safely(Runnable action) {
         LoggingGuard.safely(log, "Unable to log the client call, the call itself is left unaffected", action);
     }
 
     /**
-     * Creates the capture of a request or response body, to override for another capture strategy, as
-     * {@link LoggedFeatureConfiguration.Builder#bodyCapture} sets it on the server side.
+     * Indicates whether the lines of this feature are enabled, bodies being neither captured nor filtered for
+     * lines that are not.
      *
-     * @param limit The maximum size of the body to capture in bytes, or {@code -1} for no limit
-     * @return The body capture to use
+     * @return {@code true} if the lines of this feature are enabled, {@code false} otherwise
      */
-    protected LoggedBodyCapture createBodyCapture(int limit) {
-        return new BoundedLoggedBodyCapture(limit);
-    }
-
-    /**
-     * Indicates whether the lines this provider writes are enabled, bodies being neither captured nor
-     * filtered for lines that are not.
-     *
-     * @return {@code true} if the log lines written by this provider are enabled, {@code false} otherwise
-     */
-    protected boolean isLoggingEnabled() {
+    private static boolean isLoggingEnabled() {
         return log.isInfoEnabled();
     }
 

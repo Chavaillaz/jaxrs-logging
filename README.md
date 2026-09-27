@@ -473,9 +473,9 @@ Client client = ClientBuilder.newBuilder()
 
 It logs `Calling [method] [uri]` before sending the request and `Called [method] [uri] with status [status]
 in [duration]ms` once the response is received, the latter at a level derived from the status the same way
-as on the server side (`getResponseLevel(int)`). The roles are reversed there: a 5xx is the downstream
-service failing, which is this application's problem to react to, and a 4xx means this application sent
-something that service rejected - a bug on this side rather than somebody else's typo.
+as on the server side, which `responseLevel` of its builder changes. The roles are reversed there: a 5xx is
+the downstream service failing, which is this application's problem to react to, and a 4xx means this
+application sent something that service rejected - a bug on this side rather than somebody else's typo.
 
 If body logging is activated, the body is logged as a further, separate line rather than merged into those
 two: the response body is only available if/when the calling code actually reads the response entity, which
@@ -483,7 +483,8 @@ may happen after (or not at all after) the `Called ...` line, so there is no sin
 unlike the server-side filter.
 A response read as a stream (`readEntity(InputStream.class)`) is read once the providers are done with it,
 and its body logged once the calling code read that stream to its end, or closed it. As on the server side, a
-body is cut at 64 KiB by default, which `bodyLimit` changes.
+body is cut at 64 KiB by default, which `bodyLimit` changes, and captured in memory unless `bodyCapture` says
+otherwise.
 
 For the same reason, only logging the body as a new log line is supported, not adding it to MDC: on the server
 side, `@LoggedBody(MDC)` works because a request has a single, well-defined point at which it is known to be

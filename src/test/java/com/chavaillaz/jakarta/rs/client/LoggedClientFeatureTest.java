@@ -39,12 +39,15 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
 import jakarta.ws.rs.ext.Provider;
+import jakarta.ws.rs.ext.ReaderInterceptor;
 import jakarta.ws.rs.ext.ReaderInterceptorContext;
+import jakarta.ws.rs.ext.WriterInterceptor;
 import jakarta.ws.rs.ext.WriterInterceptorContext;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.lang.reflect.Modifier;
 import java.net.URI;
 import java.util.HashMap;
 import java.util.Map;
@@ -235,23 +238,25 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
 
     @Test
     @DisplayName("Check the credentials a URI carries are masked in every line describing the call")
-    void checkUriCredentialsMasked() {
+    void checkUriCredentialsMasked() throws Exception {
         // Given: the password of the user information and an OAuth access token, which a URI logged whole
         // used to write to the logs of every call made
         doReturn(URI.create("https://jane:hunter2@service.company.com/article?topic=news&access_token=secret"))
                 .when(requestContext).getUri();
         ClientResponseContext responseContext = mock(ClientResponseContext.class);
         doReturn(200).when(responseContext).getStatus();
+        LoggedClientFeature bodyLoggingFeature = LoggedClientFeature.builder().logRequestBody().build();
 
         // When
-        feature.filter(requestContext);
-        feature.filter(requestContext, responseContext);
+        bodyLoggingFeature.filter(requestContext);
+        bodyLoggingFeature.captureRequestBody(writerContext(properties, "Hello, world!"));
+        bodyLoggingFeature.filter(requestContext, responseContext);
 
         // Then: what identifies the call stays readable
         String masked = "https://***@service.company.com/article?topic=news&access_token=***";
         assertEquals("Calling POST " + masked, listAppender.findFirstMessage("Calling").getMessage().getFormattedMessage());
+        assertTrue(listAppender.findFirstMessage("Request body").getMessage().getFormattedMessage().startsWith("Request body POST " + masked + LF));
         assertTrue(listAppender.findFirstMessage("Called").getMessage().getFormattedMessage().startsWith("Called POST " + masked + " "));
-        assertEquals(masked, properties.get(LoggedClientFeature.REQUEST_URI_PROPERTY));
     }
 
     @Test
@@ -304,6 +309,8 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
         assertThrows(NullPointerException.class, () -> builder.correlationIdKey(null));
         assertThrows(IllegalArgumentException.class, () -> builder.correlationIdHeader(" "));
         assertThrows(NullPointerException.class, () -> builder.sensitiveParameters(null));
+        assertThrows(NullPointerException.class, () -> builder.responseLevel(null));
+        assertThrows(NullPointerException.class, () -> builder.bodyCapture(null));
         assertThrows(NullPointerException.class, () -> builder.bodyFilters((LoggedBodyFilter) null));
         assertThrows(NullPointerException.class, () -> builder.bodyFilters(AppendA.class, null));
         assertDoesNotThrow(() -> builder.bodyLimit(0).bodyLimit(-1).build());
@@ -366,20 +373,16 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
         assertEquals(expectedLevel.name(), event.getLevel().name());
     }
 
-    @Test
-    @DisplayName("Check a call the level override gives no level for is still logged, at its default level")
-    void checkResponseLevelWithoutLevel() {
-        // Given: an override covering the statuses it cares about, and returning null for the others
-        LoggedClientFeature levelling = new LoggedClientFeature() {
-
-            @Override
-            protected Level getResponseLevel(int status) {
-                return status == 404 ? Level.INFO : null;
-            }
-
-        };
+    @ParameterizedTest(name = "status {0} logged at {1}")
+    @CsvSource({"404, INFO", "503, ERROR"})
+    @DisplayName("Check a call is logged at the level configured for its status, or at its default level for none")
+    void checkResponseLevelConfigured(int status, Level expectedLevel) {
+        // Given: a function covering the statuses it cares about, and returning null for the others
+        LoggedClientFeature levelling = LoggedClientFeature.builder()
+                .responseLevel(level -> level == 404 ? Level.INFO : null)
+                .build();
         ClientResponseContext responseContext = mock(ClientResponseContext.class);
-        doReturn(503).when(responseContext).getStatus();
+        doReturn(status).when(responseContext).getStatus();
 
         // When
         levelling.filter(requestContext);
@@ -388,21 +391,18 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
         // Then
         LogEvent event = listAppender.findFirstMessage("Called");
         assertNotNull(event, "No Called line was logged");
-        assertEquals(Level.ERROR.name(), event.getLevel().name());
+        assertEquals(expectedLevel.name(), event.getLevel().name());
     }
 
     @Test
-    @DisplayName("Check a call the level override fails for is still logged, at its default level")
+    @DisplayName("Check a call the level function fails for is still logged, at its default level")
     void checkResponseLevelFailing() {
         // Given
-        LoggedClientFeature levelling = new LoggedClientFeature() {
-
-            @Override
-            protected Level getResponseLevel(int status) {
-                throw new IllegalStateException("No level for " + status);
-            }
-
-        };
+        LoggedClientFeature levelling = LoggedClientFeature.builder()
+                .responseLevel(status -> {
+                    throw new IllegalStateException("No level for " + status);
+                })
+                .build();
         ClientResponseContext responseContext = mock(ClientResponseContext.class);
         doReturn(503).when(responseContext).getStatus();
 
@@ -622,9 +622,8 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
         boolean enabled = bodyLoggingFeature.configure(featureContext);
 
         // Then: a single client.register(...) keeps covering bodies, which the interceptor hands back
-        LoggedClientFeature.BodyInterceptor interceptor = registered(featureContext, LoggedClientFeature.BodyInterceptor.class);
-        interceptor.aroundWriteTo(writerContext(properties, "Hello, world!"));
-        interceptor.aroundReadFrom(readerContext("Received content"));
+        registered(featureContext, WriterInterceptor.class).aroundWriteTo(writerContext(properties, "Hello, world!"));
+        registered(featureContext, ReaderInterceptor.class).aroundReadFrom(readerContext("Received content"));
         assertTrue(enabled);
         assertNotNull(listAppender.findFirstMessage("Request body"));
         assertNotNull(listAppender.findFirstMessage("Response body"));
@@ -681,6 +680,13 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
         // Jersey and RESTEasy register a component for every contract it implements: one implementing a filter
         // contract as well would be called next to the filter it registers, logging every call twice
         assertArrayEquals(new Class<?>[]{Feature.class}, LoggedClientFeature.class.getInterfaces());
+    }
+
+    @Test
+    @DisplayName("Check the feature is configured through its builder rather than extended")
+    void checkNotExtensible() {
+        // What a subclass used to override, the level of a call and the capture of its bodies, the builder sets
+        assertTrue(Modifier.isFinal(LoggedClientFeature.class.getModifiers()));
     }
 
     @Test
@@ -815,20 +821,16 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
 
     /**
      * Builds a feature logging request bodies through the given capture, standing in for whatever
-     * {@code createBodyCapture} an application plugs in.
+     * {@code bodyCapture} an application plugs in.
      *
      * @param capture The capture the feature must use
      * @return The feature created
      */
     LoggedClientFeature capturingFeature(LoggedBodyCapture capture) {
-        return new LoggedClientFeature(LoggedClientFeature.builder().logRequestBody()) {
-
-            @Override
-            protected LoggedBodyCapture createBodyCapture(int limit) {
-                return capture;
-            }
-
-        };
+        return LoggedClientFeature.builder()
+                .logRequestBody()
+                .bodyCapture(limit -> capture)
+                .build();
     }
 
     /**
@@ -858,14 +860,12 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
         // is never written at all and the call fails with an error having nothing to do with it
         feature.filter(requestContext);
         ByteArrayOutputStream written = new ByteArrayOutputStream();
-        LoggedClientFeature bodyLoggingFeature = new LoggedClientFeature(LoggedClientFeature.builder().logRequestBody()) {
-
-            @Override
-            protected LoggedBodyCapture createBodyCapture(int limit) {
-                throw new IllegalStateException("No room left to capture anything");
-            }
-
-        };
+        LoggedClientFeature bodyLoggingFeature = LoggedClientFeature.builder()
+                .logRequestBody()
+                .bodyCapture(limit -> {
+                    throw new IllegalStateException("No room left to capture anything");
+                })
+                .build();
 
         // Given
         WriterInterceptorContext context = mock(WriterInterceptorContext.class);

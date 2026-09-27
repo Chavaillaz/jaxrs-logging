@@ -20,8 +20,8 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
  * <p>
  * The default one captures in memory, up to a limit (see {@link BoundedLoggedBodyCapture}), and
  * {@link LoggedBodyFilter} transforms what was captured. Plug in another one - spilling large bodies to a
- * temporary file, say - with {@link LoggedFeatureConfiguration.Builder#bodyCapture}, or by overriding
- * {@code createBodyCapture(int)} of {@link LoggedClientFeature}.
+ * temporary file, say - with {@link LoggedFeatureConfiguration.Builder#bodyCapture}, or
+ * {@link LoggedClientFeature.Builder#bodyCapture} for the calls made.
  */
 public interface LoggedBodyCapture extends AutoCloseable {
 
