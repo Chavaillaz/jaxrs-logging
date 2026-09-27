@@ -54,9 +54,13 @@ register it. The library runs on these, smoke-tested with the same resources on 
 
 Quarkus and CXF answer an exception no `ExceptionMapper` handles outside of JAX-RS, so the request failing with
 it is not logged as `Processed ...`, which an `ExceptionMapper<Throwable>` of the application avoids. Jersey
-serves a `HEAD` request as a `GET` one, which is how it is logged. Micronaut is not supported: its JAX-RS module
-is no JAX-RS implementation, and neither discovers the providers of a library nor runs the writer interceptors
-completing the requests answered with an entity.
+serves a `HEAD` request as a `GET` one, which is how it is logged. CXF builds the sub-resource a locator returns
+when it is first requested, out of reach of `LoggedFeature`, a JAX-RS dynamic feature, unless it resolves it
+statically from the class the locator declares it returns: `setStaticSubresourceResolution(true)` on the
+`JAXRSServerFactoryBean`, or `jaxrs.static.subresources` set to `true` for its servlet.
+
+Micronaut is not supported: its JAX-RS module is no JAX-RS implementation, and neither discovers the providers
+of a library nor runs the writer interceptors completing the requests answered with an entity.
 
 ## Usage
 
