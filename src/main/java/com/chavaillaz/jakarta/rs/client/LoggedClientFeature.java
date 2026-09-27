@@ -214,10 +214,13 @@ public final class LoggedClientFeature implements Feature {
          *
          * @param mdcKey The MDC key to read the correlation identifier from
          * @return This builder
-         * @throws NullPointerException if the key is {@code null}, as MDC cannot read an entry without one
+         * @throws IllegalArgumentException if the key is blank, as no field of a {@link LoggedFeature} is
          */
         public Builder correlationIdKey(String mdcKey) {
-            this.correlationIdMdcKey = requireNonNull(mdcKey, "The MDC key of the correlation identifier is required");
+            if (isBlank(mdcKey)) {
+                throw new IllegalArgumentException("The MDC key of the correlation identifier is required");
+            }
+            this.correlationIdMdcKey = mdcKey;
             return this;
         }
 

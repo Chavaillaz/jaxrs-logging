@@ -351,14 +351,15 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
     @DisplayName("Check a configuration that cannot work is rejected by the builder rather than on every call")
     void checkInvalidConfigurationRejected() {
         // Accepted, each of them failed later on every single call: a body limit below -1 by leaving every
-        // body out of the logs, a missing MDC key by losing the line announcing the call, a missing filter
-        // by dropping every body it was meant to filter
+        // body out of the logs, a missing or blank MDC key by sending no identifier or a random one, a missing
+        // filter by dropping every body it was meant to filter
         LoggedClientFeature.Builder builder = LoggedClientFeature.builder();
 
         assertThrows(IllegalArgumentException.class, () -> builder.bodyLimit(-2));
         assertThrows(IllegalArgumentException.class, () -> builder.requestBodyLimit(-2));
         assertThrows(IllegalArgumentException.class, () -> builder.responseBodyLimit(Integer.MIN_VALUE));
-        assertThrows(NullPointerException.class, () -> builder.correlationIdKey(null));
+        assertThrows(IllegalArgumentException.class, () -> builder.correlationIdKey(null));
+        assertThrows(IllegalArgumentException.class, () -> builder.correlationIdKey(" "));
         assertThrows(IllegalArgumentException.class, () -> builder.correlationIdHeader(" "));
         assertThrows(NullPointerException.class, () -> builder.sensitiveParameters(null));
         assertThrows(NullPointerException.class, () -> builder.responseLevel(null));
