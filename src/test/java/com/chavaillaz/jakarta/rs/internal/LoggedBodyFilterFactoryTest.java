@@ -9,7 +9,6 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Set;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -43,7 +42,7 @@ class LoggedBodyFilterFactoryTest {
         Class<? extends LoggedBodyFilter>[] filterTypes = new Class[]{SensitiveBodyFilter.class, SensitiveBodyFilter.class};
 
         // When
-        Set<LoggedBodyFilter> instances = factory.getInstances(filterTypes);
+        List<LoggedBodyFilter> instances = factory.getInstances(filterTypes);
 
         // Then: same class referenced twice still yields a single instance
         assertEquals(1, instances.size());
@@ -56,7 +55,7 @@ class LoggedBodyFilterFactoryTest {
         // chance (e.g. a HashSet whose bucket layout is coincidentally insertion-ordered for these two
         // particular classes)
         for (int i = 0; i < 20; i++) {
-            Set<LoggedBodyFilter> instances = factory.getInstances(List.of(AppendA.class, AppendB.class));
+            List<LoggedBodyFilter> instances = factory.getInstances(List.of(AppendA.class, AppendB.class));
             StringBuilder body = new StringBuilder();
             instances.forEach(instance -> instance.filter(body));
 
@@ -108,7 +107,7 @@ class LoggedBodyFilterFactoryTest {
         capture.sink().write("{\"password\":\"hunter2\"}".getBytes(UTF_8));
 
         // When
-        String result = capture.content(factory.getInstances(List.of(UninstantiableBodyFilter.class)));
+        String result = capture.content(factory.getInstances(List.of(UninstantiableBodyFilter.class)), null);
 
         // Then
         assertEquals(FILTERING_FAILURE_MARKER, result);

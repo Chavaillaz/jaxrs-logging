@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.Set;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -115,8 +115,7 @@ class GuardedBodyCaptureTest extends AbstractFilterTest {
         // Then: a body missing an arbitrary part of it would read as the one the application handled
         assertEquals(0, sink.callsAfterFailure);
         assertEquals(1, reports());
-        assertNull(capture.content(Set.of()));
-        assertNull(capture.content(Set.of(), TEXT_PLAIN_TYPE));
+        assertNull(capture.content(List.of(), TEXT_PLAIN_TYPE));
     }
 
     @Test
@@ -136,7 +135,7 @@ class GuardedBodyCaptureTest extends AbstractFilterTest {
         // When
         capture.sink().write("body".getBytes(UTF_8));
         capture.sink().flush();
-        String content = capture.content(Set.of(), TEXT_PLAIN_TYPE);
+        String content = capture.content(List.of(), TEXT_PLAIN_TYPE);
         capture.close();
 
         // Then

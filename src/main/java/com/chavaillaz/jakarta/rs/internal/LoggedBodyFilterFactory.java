@@ -2,10 +2,10 @@ package com.chavaillaz.jakarta.rs.internal;
 
 import static com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER;
 import static java.util.Arrays.asList;
-import static java.util.Collections.unmodifiableSet;
 
 import java.util.Collection;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -68,10 +68,9 @@ public class LoggedBodyFilterFactory {
      * already resolved.
      *
      * @param filterTypes The filter classes to instantiate
-     * @return The unmodifiable set of filter instances to be applied, iterating in the order the classes
-     * were declared, so filters that depend on one another's output run predictably
+     * @return The unmodifiable list of filter instances, as {@link #getInstances(Collection)} returns it
      */
-    public Set<LoggedBodyFilter> getInstances(Class<? extends LoggedBodyFilter>[] filterTypes) {
+    public List<LoggedBodyFilter> getInstances(Class<? extends LoggedBodyFilter>[] filterTypes) {
         return getInstances(asList(filterTypes));
     }
 
@@ -80,16 +79,16 @@ public class LoggedBodyFilterFactory {
      * already resolved.
      *
      * @param filterTypes The filter classes to instantiate, in the order they must be applied
-     * @return The unmodifiable set of filter instances to be applied, iterating in the order the classes
-     * were declared, so filters that depend on one another's output run predictably
+     * @return The unmodifiable list of filter instances, in the order the classes were declared, so filters
+     *         depending on one another's output run predictably, a class declared twice applied once
      */
-    public Set<LoggedBodyFilter> getInstances(Collection<Class<? extends LoggedBodyFilter>> filterTypes) {
+    public List<LoggedBodyFilter> getInstances(Collection<Class<? extends LoggedBodyFilter>> filterTypes) {
         if (filterTypes.isEmpty()) {
-            return Set.of();
+            return List.of();
         }
         Set<LoggedBodyFilter> instances = new LinkedHashSet<>();
         filterTypes.forEach(type -> instances.add(getInstance(type)));
-        return unmodifiableSet(instances);
+        return List.copyOf(instances);
     }
 
     /**

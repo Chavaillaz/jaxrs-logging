@@ -166,7 +166,7 @@ class LoggedResolverTest extends AbstractFilterTest {
         LoggedResolver failingResolver = new LoggedResolver(new LoggedBodyFilterFactory() {
 
             @Override
-            public Set<LoggedBodyFilter> getInstances(Class<? extends LoggedBodyFilter>[] filterTypes) {
+            public List<LoggedBodyFilter> getInstances(Class<? extends LoggedBodyFilter>[] filterTypes) {
                 throw new TypeNotPresentException("com.company.MissingFilter", null);
             }
 
@@ -195,7 +195,7 @@ class LoggedResolverTest extends AbstractFilterTest {
         // Then
         assertSame(LoggedBodyConfiguration.NONE, configuration.requestBody());
         assertSame(LoggedBodyConfiguration.NONE, configuration.responseBody());
-        assertThrows(IllegalArgumentException.class, () -> new LoggedBodyConfiguration(Set.of(LOG), -2, Set.of()));
+        assertThrows(IllegalArgumentException.class, () -> new LoggedBodyConfiguration(Set.of(LOG), -2, List.of()));
     }
 
     @Test

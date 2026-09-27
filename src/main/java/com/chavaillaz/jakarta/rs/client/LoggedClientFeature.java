@@ -15,7 +15,6 @@ import static java.lang.System.nanoTime;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.util.Arrays.asList;
 import static java.util.Arrays.stream;
-import static java.util.Collections.unmodifiableSet;
 import static java.util.Objects.requireNonNull;
 import static java.util.concurrent.TimeUnit.NANOSECONDS;
 import static java.util.stream.Collectors.joining;
@@ -153,7 +152,7 @@ public final class LoggedClientFeature implements Feature {
         // class cannot depend on one given as an instance without the caller having built both anyway
         Set<LoggedBodyFilter> filters = new LinkedHashSet<>(new LoggedBodyFilterFactory().getInstances(builder.bodyFilterClasses));
         filters.addAll(builder.bodyFilterInstances);
-        Set<LoggedBodyFilter> bodyFilters = unmodifiableSet(filters);
+        List<LoggedBodyFilter> bodyFilters = List.copyOf(filters);
         this.requestBody = bodyConfiguration(builder.logRequestBody, builder.requestBodyLimit, bodyFilters);
         this.responseBody = bodyConfiguration(builder.logResponseBody, builder.responseBodyLimit, bodyFilters);
         this.bodyCapturer = new BodyCapturer(log, builder.bodyCapture);
@@ -167,7 +166,7 @@ public final class LoggedClientFeature implements Feature {
      * @param filters The filters to apply to the body before logging it, in the order they apply
      * @return The body logging configuration
      */
-    private static LoggedBodyConfiguration bodyConfiguration(boolean logged, int limit, Set<LoggedBodyFilter> filters) {
+    private static LoggedBodyConfiguration bodyConfiguration(boolean logged, int limit, List<LoggedBodyFilter> filters) {
         // Only a separate log line is supported on this side, see the class documentation
         return logged
                 ? new LoggedBodyConfiguration(Set.of(LOG), limit, filters)

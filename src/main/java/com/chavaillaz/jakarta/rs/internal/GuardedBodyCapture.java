@@ -5,7 +5,7 @@ import static com.chavaillaz.jakarta.rs.internal.LoggingGuard.report;
 import jakarta.ws.rs.core.MediaType;
 import java.io.IOException;
 import java.io.OutputStream;
-import java.util.Set;
+import java.util.List;
 
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
@@ -48,12 +48,7 @@ final class GuardedBodyCapture implements LoggedBodyCapture {
     }
 
     @Override
-    public @Nullable String content(Set<LoggedBodyFilter> filters) {
-        return sink.failed ? null : capture.content(filters);
-    }
-
-    @Override
-    public @Nullable String content(Set<LoggedBodyFilter> filters, @Nullable MediaType mediaType) {
+    public @Nullable String content(List<LoggedBodyFilter> filters, @Nullable MediaType mediaType) {
         return sink.failed ? null : capture.content(filters, mediaType);
     }
 

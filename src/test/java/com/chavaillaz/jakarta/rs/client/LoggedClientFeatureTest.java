@@ -52,7 +52,6 @@ import java.net.URI;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -813,7 +812,7 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
         ReleasingBodyCapture capture = new ReleasingBodyCapture() {
 
             @Override
-            public String content(Set<LoggedBodyFilter> filters, MediaType mediaType) {
+            public String content(List<LoggedBodyFilter> filters, MediaType mediaType) {
                 throw new IllegalStateException("Unreadable body");
             }
 
@@ -835,7 +834,7 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
         ReleasingBodyCapture capture = new ReleasingBodyCapture() {
 
             @Override
-            public String content(Set<LoggedBodyFilter> filters, MediaType mediaType) {
+            public String content(List<LoggedBodyFilter> filters, MediaType mediaType) {
                 throw new OutOfMemoryError("Java heap space");
             }
 

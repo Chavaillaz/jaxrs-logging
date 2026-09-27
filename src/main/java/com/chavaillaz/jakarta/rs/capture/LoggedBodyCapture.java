@@ -2,7 +2,7 @@ package com.chavaillaz.jakarta.rs.capture;
 
 import jakarta.ws.rs.core.MediaType;
 import java.io.OutputStream;
-import java.util.Set;
+import java.util.List;
 
 import org.jspecify.annotations.Nullable;
 
@@ -14,9 +14,9 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 /**
  * Captures a request or response body as it is read or written, and renders it as text once done.
  * <p>
- * An instance captures a single body: {@link #sink()} receives a copy of it, {@link #content(Set)} renders it
- * once the entity is done - for a body read as a stream, once the stream ends, possibly on another thread - and
- * {@link #close()} releases what the capture holds.
+ * An instance captures a single body: {@link #sink()} receives a copy of it, {@link #content(List, MediaType)}
+ * renders it once the entity is done - for a body read as a stream, once the stream ends, possibly on another
+ * thread - and {@link #close()} releases what the capture holds.
  * <p>
  * The default one captures in memory, up to a limit (see {@link BoundedLoggedBodyCapture}), and
  * {@link LoggedBodyFilter} transforms what was captured. Plug in another one - spilling large bodies to a
@@ -59,26 +59,15 @@ public interface LoggedBodyCapture extends AutoCloseable {
     OutputStream sink();
 
     /**
-     * Gets the captured content, decoded as text and filtered by the given filters.
-     * Must be called only once the stream wrapping {@link #sink()} has been fully read or written.
-     *
-     * @param filters The filters to apply to the captured content
-     * @return The captured (and filtered) content, or {@code null} to leave the body out of the logs
-     */
-    @Nullable String content(Set<LoggedBodyFilter> filters);
-
-    /**
      * Gets the captured content, rendered as the given media type says (see {@link BoundedLoggedBodyCapture})
-     * and filtered by the given filters, once the stream wrapping {@link #sink()} was fully read or written.
-     * Ignores the media type by default.
+     * and filtered by the given filters in their order, once the stream wrapping {@link #sink()} was fully read
+     * or written.
      *
-     * @param filters   The filters to apply to the captured content
+     * @param filters   The filters to apply to the captured content, in the order they apply in
      * @param mediaType The media type of the captured request or response body, or {@code null} if unknown
      * @return The captured (and filtered) content, or {@code null} to leave the body out of the logs
      */
-    default @Nullable String content(Set<LoggedBodyFilter> filters, @Nullable MediaType mediaType) {
-        return content(filters);
-    }
+    @Nullable String content(List<LoggedBodyFilter> filters, @Nullable MediaType mediaType);
 
     /**
      * Releases what this capture holds - a temporary file, a pooled buffer - once per capture, whatever happened,

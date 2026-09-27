@@ -22,7 +22,7 @@ import jakarta.ws.rs.core.MediaType;
 import java.io.IOException;
 import java.lang.management.ManagementFactory;
 import java.nio.charset.Charset;
-import java.util.Set;
+import java.util.List;
 
 import com.sun.management.ThreadMXBean;
 import org.junit.jupiter.api.DisplayName;
@@ -48,7 +48,7 @@ class BoundedLoggedBodyCaptureTest {
         capture.sink().write(text.getBytes(UTF_8));
 
         // When
-        String result = capture.content(Set.of());
+        String result = capture.content(List.of(), null);
 
         // Then
         assertEquals(text, result);
@@ -75,10 +75,26 @@ class BoundedLoggedBodyCaptureTest {
         capture.sink().write("{\"secret-code\": \"1234-ABCD\"}".getBytes(UTF_8));
 
         // When
-        String result = capture.content(Set.of(new SensitiveBodyFilter()));
+        String result = capture.content(List.of(new SensitiveBodyFilter()), null);
 
         // Then
         assertEquals("{\"secret-code\": \"masked\"}", result);
+    }
+
+    @Test
+    @DisplayName("Check content applies the filters in the order of the list, each to what the previous one left")
+    void checkContentAppliesFiltersInOrder() throws IOException {
+        // Given: filters whose result depends on their order, "4body!" the other way round
+        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(NO_LIMIT);
+        capture.sink().write("body".getBytes(UTF_8));
+        LoggedBodyFilter exclaim = body -> body.append('!');
+        LoggedBodyFilter prefixLength = body -> body.insert(0, body.length());
+
+        // When
+        String result = capture.content(List.of(exclaim, prefixLength), TEXT_PLAIN_TYPE);
+
+        // Then
+        assertEquals("5body!", result);
     }
 
     @Test
@@ -90,7 +106,7 @@ class BoundedLoggedBodyCaptureTest {
         capture.sink().write("Café".getBytes(UTF_8));
 
         // When
-        String result = capture.content(Set.of());
+        String result = capture.content(List.of(), null);
 
         // Then: the dangling half character is gone, and what is left is marked as incomplete rather
         // than reading, in the logs, as the whole body the application actually received
@@ -105,7 +121,7 @@ class BoundedLoggedBodyCaptureTest {
         capture.sink().write("Hello".getBytes(UTF_8));
 
         // When
-        String result = capture.content(Set.of());
+        String result = capture.content(List.of(), null);
 
         // Then
         assertEquals("Hello", result);
@@ -119,7 +135,7 @@ class BoundedLoggedBodyCaptureTest {
         capture.sink().write("Café".getBytes(UTF_8));
 
         // When
-        String result = capture.content(Set.of());
+        String result = capture.content(List.of(), null);
 
         // Then
         assertEquals("Café", result);
@@ -134,7 +150,7 @@ class BoundedLoggedBodyCaptureTest {
         capture.sink().write("Café".getBytes(UTF_8));
 
         // When
-        String result = capture.content(Set.of(), null);
+        String result = capture.content(List.of(), null);
 
         // Then
         assertEquals("Café", result);
@@ -148,7 +164,7 @@ class BoundedLoggedBodyCaptureTest {
         capture.sink().write("Café".getBytes(ISO_8859_1));
 
         // When
-        String result = capture.content(Set.of(), TEXT_PLAIN_TYPE.withCharset("ISO-8859-1"));
+        String result = capture.content(List.of(), TEXT_PLAIN_TYPE.withCharset("ISO-8859-1"));
 
         // Then: decoded as UTF-8, the é used to be logged as a replacement character
         assertEquals("Café", result);
@@ -162,7 +178,7 @@ class BoundedLoggedBodyCaptureTest {
         capture.sink().write("Café".getBytes(UTF_8));
 
         // When
-        String result = capture.content(Set.of(), TEXT_PLAIN_TYPE.withCharset("no-such-charset"));
+        String result = capture.content(List.of(), TEXT_PLAIN_TYPE.withCharset("no-such-charset"));
 
         // Then
         assertEquals("Café", result);
@@ -176,7 +192,7 @@ class BoundedLoggedBodyCaptureTest {
         capture.sink().write("Café".getBytes(UTF_16BE));
 
         // When
-        String result = capture.content(Set.of(), TEXT_PLAIN_TYPE.withCharset("UTF-16BE"));
+        String result = capture.content(List.of(), TEXT_PLAIN_TYPE.withCharset("UTF-16BE"));
 
         // Then
         assertEquals("Caf" + TRUNCATION_MARKER, result);
@@ -191,7 +207,7 @@ class BoundedLoggedBodyCaptureTest {
         capture.sink().write("Café!".getBytes(ISO_8859_1));
 
         // When
-        String result = capture.content(Set.of(), TEXT_PLAIN_TYPE.withCharset("ISO-8859-1"));
+        String result = capture.content(List.of(), TEXT_PLAIN_TYPE.withCharset("ISO-8859-1"));
 
         // Then: a single-byte charset has no character to cut in half, so the é is complete and kept
         assertEquals("Café" + TRUNCATION_MARKER, result);
@@ -206,7 +222,7 @@ class BoundedLoggedBodyCaptureTest {
         capture.sink().write("a😀".getBytes(UTF_8));
 
         // When
-        String result = capture.content(Set.of());
+        String result = capture.content(List.of(), null);
 
         // Then
         assertEquals("a" + TRUNCATION_MARKER, result);
@@ -220,7 +236,7 @@ class BoundedLoggedBodyCaptureTest {
         capture.sink().write(new byte[]{'a', (byte) 0xFF, 'b'});
 
         // When
-        String result = capture.content(Set.of());
+        String result = capture.content(List.of(), null);
 
         // Then: malformed rather than cut in half, it is decoded the way the rest of the body is
         assertEquals("a�" + TRUNCATION_MARKER, result);
@@ -235,7 +251,7 @@ class BoundedLoggedBodyCaptureTest {
         capture.sink().write("a€".getBytes(UTF_8));
 
         // When
-        String result = capture.content(Set.of());
+        String result = capture.content(List.of(), null);
 
         // Then
         assertEquals("a" + TRUNCATION_MARKER, result);
@@ -249,7 +265,7 @@ class BoundedLoggedBodyCaptureTest {
         capture.sink().write(new byte[]{'a', (byte) 0x80, (byte) 0x80, (byte) 0x80, (byte) 0x80, 'b'});
 
         // When
-        String result = capture.content(Set.of());
+        String result = capture.content(List.of(), null);
 
         // Then: malformed rather than cut in half, they are decoded the way the rest of the body is
         assertEquals("a����" + TRUNCATION_MARKER, result);
@@ -264,7 +280,7 @@ class BoundedLoggedBodyCaptureTest {
         capture.sink().write(text.getBytes(Charset.forName(charset)));
 
         // When
-        String result = capture.content(Set.of(), TEXT_PLAIN_TYPE.withCharset(charset));
+        String result = capture.content(List.of(), TEXT_PLAIN_TYPE.withCharset(charset));
 
         // Then
         assertEquals(expected + TRUNCATION_MARKER, result);
@@ -288,7 +304,7 @@ class BoundedLoggedBodyCaptureTest {
         byte[] body = json.toString().getBytes(UTF_8);
         BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(NO_LIMIT);
         capture.sink().write(body);
-        Set<LoggedBodyFilter> filters = Set.of(new JsonMaskingBodyFilter("password"));
+        List<LoggedBodyFilter> filters = List.of(new JsonMaskingBodyFilter("password"));
         for (int i = 0; i < 3; i++) {
             // Rendered first, so what is measured below is the rendering rather than loading its classes
             capture.content(filters, APPLICATION_JSON_TYPE);
@@ -313,7 +329,7 @@ class BoundedLoggedBodyCaptureTest {
         capture.sink().write(bytes);
 
         // When
-        String result = capture.content(Set.of(), APPLICATION_OCTET_STREAM_TYPE);
+        String result = capture.content(List.of(), APPLICATION_OCTET_STREAM_TYPE);
 
         // Then
         assertEquals("0001ffcafe", result);
@@ -332,7 +348,7 @@ class BoundedLoggedBodyCaptureTest {
         };
 
         // When
-        String result = capture.content(Set.of(upperCaseFilter), APPLICATION_OCTET_STREAM_TYPE);
+        String result = capture.content(List.of(upperCaseFilter), APPLICATION_OCTET_STREAM_TYPE);
 
         // Then
         assertEquals("ABCD", result);
@@ -377,9 +393,9 @@ class BoundedLoggedBodyCaptureTest {
         capture.sink().write("{\"password\":\"hunter2\"}".getBytes(UTF_8));
 
         // When
-        String result = capture.content(Set.of(body -> {
+        String result = capture.content(List.of(body -> {
             throw new IllegalStateException("Filter bug");
-        }));
+        }), null);
 
         // Then
         assertEquals(FILTERING_FAILURE_MARKER, result);
@@ -395,7 +411,7 @@ class BoundedLoggedBodyCaptureTest {
 
         // When / Then: assertDoesNotThrow, as a broken filter breaking the request it was only meant to
         // be logging is the one outcome this must never have
-        assertDoesNotThrow(() -> capture.content(Set.of(body -> {
+        assertDoesNotThrow(() -> capture.content(List.of(body -> {
             throw new IllegalStateException("Filter bug");
         }), TEXT_PLAIN_TYPE));
     }
@@ -410,24 +426,10 @@ class BoundedLoggedBodyCaptureTest {
         LoggedBodyFilter filter = new RegexMaskingBodyFilter("secret=((?:a|b)*)", 1);
 
         // When: a StackOverflowError is not an Exception, and used to escape every guard on its way out
-        String result = assertDoesNotThrow(() -> capture.content(Set.of(filter)));
+        String result = assertDoesNotThrow(() -> capture.content(List.of(filter), null));
 
         // Then
         assertEquals(FILTERING_FAILURE_MARKER, result);
-    }
-
-    @Test
-    @DisplayName("Check content(Set) without a media type keeps the historical always-UTF-8 behavior")
-    void checkSingleArgContentIgnoresMediaType() throws IOException {
-        // Given
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
-        capture.sink().write("Café".getBytes(UTF_8));
-
-        // When
-        String result = capture.content(Set.of());
-
-        // Then
-        assertEquals("Café", result);
     }
 
 }

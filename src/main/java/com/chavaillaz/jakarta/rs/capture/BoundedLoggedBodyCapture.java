@@ -17,6 +17,7 @@ import java.nio.CharBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.CharsetDecoder;
 import java.util.HexFormat;
+import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
@@ -100,12 +101,6 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
         return buffer;
     }
 
-    @Override
-    public String content(Set<LoggedBodyFilter> filters) {
-        // Without a media type, the body is decoded as UTF-8 text
-        return content(filters, null);
-    }
-
     /**
      * {@inheritDoc}
      * <p>
@@ -113,7 +108,7 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
      * (see {@link LoggedBodyFilter#apply(CharSequence)}).
      */
     @Override
-    public String content(Set<LoggedBodyFilter> filters, @Nullable MediaType mediaType) {
+    public String content(List<LoggedBodyFilter> filters, @Nullable MediaType mediaType) {
         byte[] bytes = buffer.array();
         int size = buffer.size();
         boolean truncated = buffer.isTruncated();

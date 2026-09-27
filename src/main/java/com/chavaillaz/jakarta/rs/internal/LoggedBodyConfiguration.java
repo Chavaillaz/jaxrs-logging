@@ -4,6 +4,7 @@ import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.checkLimit;
 import static java.util.Objects.requireNonNull;
 
+import java.util.List;
 import java.util.Set;
 
 import com.chavaillaz.jakarta.rs.LoggedBody;
@@ -17,14 +18,14 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
  *
  * @param types   The types of logging to apply to the body, empty for no body logging at all
  * @param limit   The maximum number of bytes of the body to log, or {@code -1} for no limit
- * @param filters The filters to apply to the body before logging it, in declaration order
+ * @param filters The filters to apply to the body before logging it, in the order they apply in
  */
-public record LoggedBodyConfiguration(Set<LogType> types, int limit, Set<LoggedBodyFilter> filters) {
+public record LoggedBodyConfiguration(Set<LogType> types, int limit, List<LoggedBodyFilter> filters) {
 
     /**
      * Configuration logging nothing, used whenever no {@link LoggedBody} applies.
      */
-    public static final LoggedBodyConfiguration NONE = new LoggedBodyConfiguration(Set.of(), NO_LIMIT, Set.of());
+    public static final LoggedBodyConfiguration NONE = new LoggedBodyConfiguration(Set.of(), NO_LIMIT, List.of());
 
     /**
      * Creates a body logging configuration, rejecting an invalid limit as the resource is resolved, rather than on

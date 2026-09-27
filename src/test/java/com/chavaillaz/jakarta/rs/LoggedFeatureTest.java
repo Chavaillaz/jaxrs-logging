@@ -1521,7 +1521,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
                 .bodyCapture(limit -> new BoundedLoggedBodyCapture(limit) {
 
                     @Override
-                    public String content(Set<LoggedBodyFilter> filters, MediaType mediaType) {
+                    public String content(List<LoggedBodyFilter> filters, MediaType mediaType) {
                         throw new OutOfMemoryError("Java heap space");
                     }
 
