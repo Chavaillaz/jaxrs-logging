@@ -19,7 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 
 @DisplayName("MDC propagation to an asynchronous response")
-class MdcPropagationAsyncResponseTest {
+class MdcPropagatingAsyncResponseTest {
 
     /**
      * Stands in for the container's own {@link AsyncResponse}: what matters here is only what the MDC
