@@ -19,9 +19,9 @@ import org.slf4j.event.Level;
 @DisplayName("Exchange logger")
 class ExchangeLoggerTest extends AbstractFilterTest {
 
-    final ExchangeLogger defaultLogger = logger(LoggedFilterConfiguration.defaults());
+    final ExchangeLogger defaultLogger = logger(LoggedFeatureConfiguration.defaults());
 
-    static ExchangeLogger logger(LoggedFilterConfiguration configuration) {
+    static ExchangeLogger logger(LoggedFeatureConfiguration configuration) {
         return new ExchangeLogger(LoggerFactory.getLogger(ExchangeLoggerTest.class), configuration);
     }
 
@@ -56,7 +56,7 @@ class ExchangeLoggerTest extends AbstractFilterTest {
     @Test
     @DisplayName("Check an answered request is logged at the level the configuration gives its status")
     void checkProcessedConfiguredLevel() {
-        ExchangeLogger logger = logger(LoggedFilterConfiguration.builder()
+        ExchangeLogger logger = logger(LoggedFeatureConfiguration.builder()
                 .responseLevel(status -> status == 404 ? Level.INFO : Level.ERROR)
                 .build());
 
@@ -70,7 +70,7 @@ class ExchangeLoggerTest extends AbstractFilterTest {
     @DisplayName("Check an answered request is logged at its default level when the level function fails")
     void checkProcessedFailingLevel() {
         // Given
-        ExchangeLogger logger = logger(LoggedFilterConfiguration.builder()
+        ExchangeLogger logger = logger(LoggedFeatureConfiguration.builder()
                 .responseLevel(status -> {
                     throw new IllegalStateException("No level for " + status);
                 })
@@ -108,7 +108,7 @@ class ExchangeLoggerTest extends AbstractFilterTest {
 
         defaultLogger.returnRequestId(headers, null);
         defaultLogger.returnRequestId(headers, " ");
-        logger(LoggedFilterConfiguration.builder().withoutReturnedRequestId().build()).returnRequestId(headers, "abc-123");
+        logger(LoggedFeatureConfiguration.builder().withoutReturnedRequestId().build()).returnRequestId(headers, "abc-123");
 
         assertTrue(headers.isEmpty());
     }

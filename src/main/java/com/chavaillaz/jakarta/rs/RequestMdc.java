@@ -42,7 +42,7 @@ final class RequestMdc {
 
     /**
      * Names of the MDC entries of the fields, without the fields left out (see
-     * {@link LoggedFilterConfiguration.Builder#withoutField(LoggedField)}).
+     * {@link LoggedFeatureConfiguration.Builder#withoutField(LoggedField)}).
      */
     private final Map<LoggedField, String> fieldNames;
 

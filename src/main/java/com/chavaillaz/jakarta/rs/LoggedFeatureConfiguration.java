@@ -37,15 +37,15 @@ import com.chavaillaz.jakarta.rs.internal.Sanitizer;
  * its configuration up in the application, which declares it through a provider resolving it:
  * <pre>{@code
  * @Provider
- * public class LoggingConfiguration implements ContextResolver<LoggedFilterConfiguration> {
+ * public class LoggingConfiguration implements ContextResolver<LoggedFeatureConfiguration> {
  *
- *     private static final LoggedFilterConfiguration CONFIGURATION = LoggedFilterConfiguration.builder()
+ *     private static final LoggedFeatureConfiguration CONFIGURATION = LoggedFeatureConfiguration.builder()
  *             .fieldName(LoggedField.REQUEST_ID, "trace-id")
  *             .requestIdHeader("X-Trace-ID")
  *             .build();
  *
  *     @Override
- *     public LoggedFilterConfiguration getContext(Class<?> type) {
+ *     public LoggedFeatureConfiguration getContext(Class<?> type) {
  *         return CONFIGURATION;
  *     }
  *
@@ -53,14 +53,14 @@ import com.chavaillaz.jakarta.rs.internal.Sanitizer;
  * }</pre>
  * The resolver is asked for the class of the feature, and the default configuration applies when it resolves
  * none (see {@link #defaults()}). An application registering its providers explicitly passes the
- * configuration to {@link LoggedFeature#LoggedFeature(LoggedFilterConfiguration)} instead.
+ * configuration to {@link LoggedFeature#LoggedFeature(LoggedFeatureConfiguration)} instead.
  * <p>
  * It applies to every resource the feature logs, what varies from one to another being declared on the
  * resource itself, with {@link LoggedBody} and {@link LoggedMapping}.
  */
-public final class LoggedFilterConfiguration {
+public final class LoggedFeatureConfiguration {
 
-    private static final LoggedFilterConfiguration DEFAULTS = builder().build();
+    private static final LoggedFeatureConfiguration DEFAULTS = builder().build();
 
     private final Map<LoggedField, String> fieldNames;
     private final String requestIdHeader;
@@ -71,7 +71,7 @@ public final class LoggedFilterConfiguration {
     private final IntFunction<LoggedBodyCapture> bodyCapture;
     private final BiFunction<ContainerRequestContext, ResourceInfo, Map<String, String>> mdcEntries;
 
-    private LoggedFilterConfiguration(Builder builder) {
+    private LoggedFeatureConfiguration(Builder builder) {
         this.fieldNames = unmodifiableMap(new EnumMap<>(builder.fieldNames));
         String header = builder.requestIdHeader;
         this.requestIdHeader = header;
@@ -88,7 +88,7 @@ public final class LoggedFilterConfiguration {
      *
      * @return The configuration every setting of {@link Builder} documents the default of
      */
-    public static LoggedFilterConfiguration defaults() {
+    public static LoggedFeatureConfiguration defaults() {
         return DEFAULTS;
     }
 
@@ -215,7 +215,7 @@ public final class LoggedFilterConfiguration {
     }
 
     /**
-     * Builder of {@link LoggedFilterConfiguration}, starting from the default of every setting.
+     * Builder of {@link LoggedFeatureConfiguration}, starting from the default of every setting.
      */
     public static final class Builder {
 
@@ -223,7 +223,7 @@ public final class LoggedFilterConfiguration {
         private String requestIdHeader = REQUEST_ID_HEADER;
         private @Nullable Function<ContainerRequestContext, @Nullable String> requestId;
         private boolean requestIdReturned = true;
-        private BiPredicate<MappingType, String> sensitiveParameters = LoggedFilterConfiguration::isCredential;
+        private BiPredicate<MappingType, String> sensitiveParameters = LoggedFeatureConfiguration::isCredential;
         private IntFunction<@Nullable Level> responseLevel = LoggedSupport::levelOf;
         private IntFunction<LoggedBodyCapture> bodyCapture = BoundedLoggedBodyCapture::new;
         private BiFunction<ContainerRequestContext, ResourceInfo, Map<String, String>> mdcEntries = (request, resource) -> Map.of();
@@ -387,7 +387,7 @@ public final class LoggedFilterConfiguration {
          * @throws IllegalStateException if two fields are given the same name, the entry of one overwriting the
          *                               entry of the other
          */
-        public LoggedFilterConfiguration build() {
+        public LoggedFeatureConfiguration build() {
             Map<String, LoggedField> fieldsByName = new HashMap<>();
             fieldNames.forEach((field, name) -> {
                 LoggedField other = fieldsByName.putIfAbsent(name, field);
@@ -395,7 +395,7 @@ public final class LoggedFilterConfiguration {
                     throw new IllegalStateException("The fields " + other + " and " + field + " are both named " + name);
                 }
             });
-            return new LoggedFilterConfiguration(this);
+            return new LoggedFeatureConfiguration(this);
         }
 
     }

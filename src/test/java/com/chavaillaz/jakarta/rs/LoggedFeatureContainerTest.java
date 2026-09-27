@@ -97,7 +97,7 @@ class LoggedFeatureContainerTest extends AbstractFilterTest {
      * @param resources     The resources to serve
      * @return The dispatcher created
      */
-    static Dispatcher dispatcherWith(LoggedFilterConfiguration configuration, Class<?>... resources) {
+    static Dispatcher dispatcherWith(LoggedFeatureConfiguration configuration, Class<?>... resources) {
         Dispatcher configured = MockDispatcherFactory.createDispatcher();
         configured.getProviderFactory().registerProviderInstance(new LoggedFeature(configuration));
         for (Class<?> resource : resources) {
@@ -342,7 +342,7 @@ class LoggedFeatureContainerTest extends AbstractFilterTest {
         // Given: captures counting what reaches them once released
         AtomicLong bytesAfterRelease = new AtomicLong();
         AtomicInteger releases = new AtomicInteger();
-        Dispatcher streaming = dispatcherWith(LoggedFilterConfiguration.builder()
+        Dispatcher streaming = dispatcherWith(LoggedFeatureConfiguration.builder()
                 .bodyCapture(limit -> new ReleaseTrackingCapture(limit, bytesAfterRelease, releases))
                 .build(), UploadResource.class);
 
@@ -390,7 +390,7 @@ class LoggedFeatureContainerTest extends AbstractFilterTest {
     @DisplayName("Check a request is logged in full and at the level of its status whatever MDC leaves out")
     void checkLinesIndependentOfMdcFields() throws Exception {
         // Given
-        Dispatcher bare = dispatcherWith(LoggedFilterConfiguration.builder()
+        Dispatcher bare = dispatcherWith(LoggedFeatureConfiguration.builder()
                 .withoutField(REQUEST_METHOD)
                 .withoutField(REQUEST_URI)
                 .withoutField(RESPONSE_STATUS)
@@ -809,15 +809,15 @@ class LoggedFeatureContainerTest extends AbstractFilterTest {
      * Configuration an application declares, which the features it does not instantiate itself look up.
      */
     @Provider
-    public static class TraceConfiguration implements ContextResolver<LoggedFilterConfiguration> {
+    public static class TraceConfiguration implements ContextResolver<LoggedFeatureConfiguration> {
 
-        static final LoggedFilterConfiguration CONFIGURATION = LoggedFilterConfiguration.builder()
+        static final LoggedFeatureConfiguration CONFIGURATION = LoggedFeatureConfiguration.builder()
                 .fieldName(REQUEST_ID, "trace-id")
                 .requestIdHeader("X-Trace-ID")
                 .build();
 
         @Override
-        public LoggedFilterConfiguration getContext(Class<?> type) {
+        public LoggedFeatureConfiguration getContext(Class<?> type) {
             return CONFIGURATION;
         }
 

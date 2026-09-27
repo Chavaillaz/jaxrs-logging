@@ -2,13 +2,13 @@ package com.chavaillaz.jakarta.rs;
 
 /**
  * Fields {@link LoggedFeature} describes a request with in MDC, under the names given here unless the
- * configuration renames them (see {@link LoggedFilterConfiguration.Builder#fieldName(LoggedField, String)}).
+ * configuration renames them (see {@link LoggedFeatureConfiguration.Builder#fieldName(LoggedField, String)}).
  */
 public enum LoggedField {
 
     /**
      * Identifier of the request, from its {@value LoggedFeature#REQUEST_ID_HEADER} header by default (see
-     * {@link LoggedFilterConfiguration.Builder#requestIdHeader(String)}), or generated.
+     * {@link LoggedFeatureConfiguration.Builder#requestIdHeader(String)}), or generated.
      */
     REQUEST_ID("request-id"),
 

@@ -20,7 +20,7 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 
 import com.chavaillaz.jakarta.rs.LoggedFeature;
-import com.chavaillaz.jakarta.rs.LoggedFilterConfiguration;
+import com.chavaillaz.jakarta.rs.LoggedFeatureConfiguration;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
 
@@ -30,7 +30,7 @@ import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
  * {@link LoggedFeature} and {@link LoggedClientFeature}, which differ in what they do with it.
  * <p>
  * No step fails the exchange, as a capture of the application (see
- * {@link LoggedFilterConfiguration.Builder#bodyCapture}) can fail as file system access does: putting it in
+ * {@link LoggedFeatureConfiguration.Builder#bodyCapture}) can fail as file system access does: putting it in
  * place is reported rather than preventing the entity from being read or written, so is rendering it, the
  * capture being released either way, and its sink is guarded (see {@link GuardedBodyCapture}).
  */

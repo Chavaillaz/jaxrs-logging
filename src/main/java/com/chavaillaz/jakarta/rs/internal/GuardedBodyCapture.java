@@ -10,13 +10,13 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 
-import com.chavaillaz.jakarta.rs.LoggedFilterConfiguration;
+import com.chavaillaz.jakarta.rs.LoggedFeatureConfiguration;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
 /**
  * Decorates a {@link LoggedBodyCapture} so its sink failing - a capture of the application spilling to a full
- * disk (see {@link LoggedFilterConfiguration.Builder#bodyCapture}) - does not fail the exchange: the first
+ * disk (see {@link LoggedFeatureConfiguration.Builder#bodyCapture}) - does not fail the exchange: the first
  * failure is reported, the sink receives nothing more, and the body is left out of the logs rather than logged
  * in part.
  * <p>

@@ -1,7 +1,7 @@
 package com.chavaillaz.jakarta.rs.client;
 
 import static com.chavaillaz.jakarta.rs.LoggedFeature.REQUEST_ID_HEADER;
-import static com.chavaillaz.jakarta.rs.LoggedFilterConfiguration.isCredential;
+import static com.chavaillaz.jakarta.rs.LoggedFeatureConfiguration.isCredential;
 import static com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture.TRUNCATION_MARKER;
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.DEFAULT_LIMIT;
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;

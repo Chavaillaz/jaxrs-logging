@@ -20,7 +20,7 @@ import org.slf4j.event.Level;
 final class ExchangeLogger {
 
     private final Logger log;
-    private final LoggedFilterConfiguration configuration;
+    private final LoggedFeatureConfiguration configuration;
 
     /**
      * Creates the writer of the lines of a feature.
@@ -28,7 +28,7 @@ final class ExchangeLogger {
      * @param log           The logger of the feature
      * @param configuration The configuration of the feature
      */
-    ExchangeLogger(Logger log, LoggedFilterConfiguration configuration) {
+    ExchangeLogger(Logger log, LoggedFeatureConfiguration configuration) {
         this.log = log;
         this.configuration = configuration;
     }

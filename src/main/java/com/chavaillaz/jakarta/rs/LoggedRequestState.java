@@ -78,7 +78,7 @@ final class LoggedRequestState {
 
     /**
      * Method of the request as it is logged, kept for the lines logging it rather than read back from MDC,
-     * which may not carry it (see {@link LoggedFilterConfiguration.Builder#withoutField(LoggedField)}), and
+     * which may not carry it (see {@link LoggedFeatureConfiguration.Builder#withoutField(LoggedField)}), and
      * which the application may have cleared in the meantime.
      */
     private volatile @Nullable String method;

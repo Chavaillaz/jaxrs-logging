@@ -43,8 +43,8 @@ import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
  * cover the latter; with an interceptor capturing their bodies after any entity coder, for the methods logging
  * one, so the entity is captured rather than its transfer encoding.
  * <p>
- * It is configured through a {@code ContextResolver<LoggedFilterConfiguration>} of the application (see
- * {@link LoggedFilterConfiguration}), or constructed with its configuration by an application registering its
+ * It is configured through a {@code ContextResolver<LoggedFeatureConfiguration>} of the application (see
+ * {@link LoggedFeatureConfiguration}), or constructed with its configuration by an application registering its
  * providers explicitly. Register a single one, configured rather than subclassed: RESTEasy and Jersey keep one
  * filter of a class per resource method, so a second feature, a subclass next to the one a container discovers,
  * would leave which of them logs a request to the order they are configured in.
@@ -84,9 +84,9 @@ public class LoggedFeature implements DynamicFeature {
 
     /**
      * Creates a feature configured the way the application declares, through a provider of
-     * {@code ContextResolver<LoggedFilterConfiguration>} asked for the class of the feature as the first
+     * {@code ContextResolver<LoggedFeatureConfiguration>} asked for the class of the feature as the first
      * request is logged, and with the default configuration if it declares none (see
-     * {@link LoggedFilterConfiguration#defaults()}).
+     * {@link LoggedFeatureConfiguration#defaults()}).
      */
     public LoggedFeature() {
         // Configured as the first request is logged, see setup(Providers)
@@ -98,7 +98,7 @@ public class LoggedFeature implements DynamicFeature {
      *
      * @param configuration The configuration of the feature
      */
-    public LoggedFeature(LoggedFilterConfiguration configuration) {
+    public LoggedFeature(LoggedFeatureConfiguration configuration) {
         setup.set(Setup.of(requireNonNull(configuration, "The configuration is required")));
     }
 
@@ -164,15 +164,15 @@ public class LoggedFeature implements DynamicFeature {
      * @param available The context resolvers of the application, {@code null} if none were injected
      * @return The configuration of this feature
      */
-    private LoggedFilterConfiguration lookUpConfiguration(@Nullable Providers available) {
+    private LoggedFeatureConfiguration lookUpConfiguration(@Nullable Providers available) {
         if (available == null) {
-            return LoggedFilterConfiguration.defaults();
+            return LoggedFeatureConfiguration.defaults();
         }
         return LoggingGuard.safely(log, "Unable to look up the configuration of the application, the default one is used instead", () -> {
-            ContextResolver<LoggedFilterConfiguration> resolver = available.getContextResolver(LoggedFilterConfiguration.class, WILDCARD_TYPE);
-            LoggedFilterConfiguration configuration = resolver == null ? null : resolver.getContext(getClass());
-            return configuration == null ? LoggedFilterConfiguration.defaults() : configuration;
-        }, LoggedFilterConfiguration.defaults());
+            ContextResolver<LoggedFeatureConfiguration> resolver = available.getContextResolver(LoggedFeatureConfiguration.class, WILDCARD_TYPE);
+            LoggedFeatureConfiguration configuration = resolver == null ? null : resolver.getContext(getClass());
+            return configuration == null ? LoggedFeatureConfiguration.defaults() : configuration;
+        }, LoggedFeatureConfiguration.defaults());
     }
 
     /**
@@ -185,7 +185,7 @@ public class LoggedFeature implements DynamicFeature {
      * @param bodyCapturer   Captures the bodies read and written, as configured
      * @param exchangeLogger Writes the lines logging the requests, and returns their identifier to the caller
      */
-    record Setup(LoggedFilterConfiguration configuration, RequestMdc mdc, RequestDescriber describer,
+    record Setup(LoggedFeatureConfiguration configuration, RequestMdc mdc, RequestDescriber describer,
                  MappingApplier mappingApplier, BodyCapturer bodyCapturer, ExchangeLogger exchangeLogger) {
 
         /**
@@ -194,7 +194,7 @@ public class LoggedFeature implements DynamicFeature {
          * @param configuration The configuration of the feature
          * @return What the feature works with
          */
-        static Setup of(LoggedFilterConfiguration configuration) {
+        static Setup of(LoggedFeatureConfiguration configuration) {
             RequestMdc mdc = new RequestMdc(configuration.fieldNames());
             return new Setup(configuration, mdc,
                     new RequestDescriber(configuration::isSensitive),

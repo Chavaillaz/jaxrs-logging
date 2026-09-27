@@ -7,7 +7,7 @@ import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 import com.chavaillaz.jakarta.rs.LoggedBody;
-import com.chavaillaz.jakarta.rs.LoggedFilterConfiguration;
+import com.chavaillaz.jakarta.rs.LoggedFeatureConfiguration;
 import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
@@ -20,7 +20,7 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
  * <p>
  * The default one captures in memory, up to a limit (see {@link BoundedLoggedBodyCapture}), and
  * {@link LoggedBodyFilter} transforms what was captured. Plug in another one - spilling large bodies to a
- * temporary file, say - with {@link LoggedFilterConfiguration.Builder#bodyCapture}, or by overriding
+ * temporary file, say - with {@link LoggedFeatureConfiguration.Builder#bodyCapture}, or by overriding
  * {@code createBodyCapture(int)} of {@link LoggedClientFeature}.
  */
 public interface LoggedBodyCapture extends AutoCloseable {

@@ -5,14 +5,14 @@ import java.util.Set;
 
 import org.jspecify.annotations.Nullable;
 
+import com.chavaillaz.jakarta.rs.LoggedFeatureConfiguration;
 import com.chavaillaz.jakarta.rs.LoggedField;
-import com.chavaillaz.jakarta.rs.LoggedFilterConfiguration;
 import com.chavaillaz.jakarta.rs.LoggedMapping;
 
 /**
  * The names of the headers and query parameters carrying a credential often enough to be kept out of the logs
  * by default: what callers conventionally name their secrets, a floor rather than a guarantee (see
- * {@link LoggedFilterConfiguration.Builder#sensitiveParameters(java.util.function.BiPredicate)}). Names are
+ * {@link LoggedFeatureConfiguration.Builder#sensitiveParameters(java.util.function.BiPredicate)}). Names are
  * compared whatever their casing.
  */
 public final class CredentialNames {

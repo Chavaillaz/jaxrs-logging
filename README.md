@@ -309,7 +309,7 @@ your callers actually send with `sensitiveParameters` in the [configuration](#co
 with the default list:
 
 ```java
-LoggedFilterConfiguration.builder()
+LoggedFeatureConfiguration.builder()
         .sensitiveParameters((type, name) -> isCredential(type, name)
                 || (type == QUERY && "url-signature".equalsIgnoreCase(name)))
         .build();
@@ -569,8 +569,8 @@ public void get(@Suspended AsyncResponse response) {
 
 `LoggedFeature` applies the same configuration to every resource it logs: what varies from a resource to
 another is declared on the resource itself with `@LoggedBody` and `@LoggedMapping`. That configuration is a
-[LoggedFilterConfiguration](src/main/java/com/chavaillaz/jakarta/rs/LoggedFilterConfiguration.java), built
-with `LoggedFilterConfiguration.builder()`:
+[LoggedFeatureConfiguration](src/main/java/com/chavaillaz/jakarta/rs/LoggedFeatureConfiguration.java), built
+with `LoggedFeatureConfiguration.builder()`:
 
 * **fieldName** / **withoutField**: Renames the MDC entry of a field, for example to align it with other
   applications or with the schema of whatever the logs are shipped to, or leaves the field out of MDC altogether
@@ -592,16 +592,16 @@ feature looks up when it logs its first request:
 
 ```java
 @Provider
-public class LoggingConfiguration implements ContextResolver<LoggedFilterConfiguration> {
+public class LoggingConfiguration implements ContextResolver<LoggedFeatureConfiguration> {
 
-    private static final LoggedFilterConfiguration CONFIGURATION = LoggedFilterConfiguration.builder()
+    private static final LoggedFeatureConfiguration CONFIGURATION = LoggedFeatureConfiguration.builder()
             .fieldName(REQUEST_ID, "trace-id")
             .requestIdHeader("X-Trace-ID")
             .responseLevel(status -> status == 404 ? Level.INFO : LoggedSupport.levelOf(status))
             .build();
 
     @Override
-    public LoggedFilterConfiguration getContext(Class<?> type) {
+    public LoggedFeatureConfiguration getContext(Class<?> type) {
         return CONFIGURATION;
     }
 

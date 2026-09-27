@@ -26,7 +26,7 @@ import org.slf4j.MDC;
 @DisplayName("Request MDC")
 class RequestMdcTest {
 
-    final Map<LoggedField, String> fieldNames = new EnumMap<>(LoggedFilterConfiguration.defaults().fieldNames());
+    final Map<LoggedField, String> fieldNames = new EnumMap<>(LoggedFeatureConfiguration.defaults().fieldNames());
     final RequestMdc mdc = new RequestMdc(fieldNames);
 
     @AfterEach

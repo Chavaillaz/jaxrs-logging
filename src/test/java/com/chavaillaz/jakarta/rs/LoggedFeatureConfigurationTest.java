@@ -1,9 +1,9 @@
 package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedFeature.REQUEST_ID_HEADER;
+import static com.chavaillaz.jakarta.rs.LoggedFeatureConfiguration.isCredential;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_URI;
-import static com.chavaillaz.jakarta.rs.LoggedFilterConfiguration.isCredential;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.PATH;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
@@ -29,8 +29,8 @@ import org.slf4j.event.Level;
 
 import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 
-@DisplayName("Logged filter configuration")
-class LoggedFilterConfigurationTest {
+@DisplayName("Logged feature configuration")
+class LoggedFeatureConfigurationTest {
 
     static ContainerRequestContext request(String header, String value) throws Exception {
         return new PreMatchContainerRequestContext(MockHttpRequest.create("GET", "/articles").header(header, value));
@@ -39,17 +39,17 @@ class LoggedFilterConfigurationTest {
     @Test
     @DisplayName("Check the default configuration names every field after its default name")
     void checkDefaultFieldNames() {
-        LoggedFilterConfiguration configuration = LoggedFilterConfiguration.defaults();
+        LoggedFeatureConfiguration configuration = LoggedFeatureConfiguration.defaults();
 
         stream(LoggedField.values())
                 .forEach(field -> assertEquals(field.getDefaultField(), configuration.fieldName(field)));
-        assertSame(configuration, LoggedFilterConfiguration.defaults());
+        assertSame(configuration, LoggedFeatureConfiguration.defaults());
     }
 
     @Test
     @DisplayName("Check the default configuration reads and returns the identifier in the X-Request-ID header")
     void checkDefaultRequestId() throws Exception {
-        LoggedFilterConfiguration configuration = LoggedFilterConfiguration.defaults();
+        LoggedFeatureConfiguration configuration = LoggedFeatureConfiguration.defaults();
 
         assertEquals("abc-123", configuration.requestIdOf(request(REQUEST_ID_HEADER, "abc-123")));
         // Left for RequestDescriber to generate, as it does for whatever strategy obtains none
@@ -60,7 +60,7 @@ class LoggedFilterConfigurationTest {
     @Test
     @DisplayName("Check the default configuration logs at a level following the status and captures in memory")
     void checkDefaultLevelsAndCapture() {
-        LoggedFilterConfiguration configuration = LoggedFilterConfiguration.defaults();
+        LoggedFeatureConfiguration configuration = LoggedFeatureConfiguration.defaults();
 
         assertEquals(Level.INFO, configuration.responseLevel(200));
         assertEquals(Level.WARN, configuration.responseLevel(404));
@@ -71,7 +71,7 @@ class LoggedFilterConfigurationTest {
     @Test
     @DisplayName("Check a status the level function gives no level for keeps its default level")
     void checkResponseLevelWithoutLevel() {
-        LoggedFilterConfiguration configuration = LoggedFilterConfiguration.builder()
+        LoggedFeatureConfiguration configuration = LoggedFeatureConfiguration.builder()
                 .responseLevel(status -> status == 404 ? Level.INFO : null)
                 .build();
 
@@ -82,7 +82,7 @@ class LoggedFilterConfigurationTest {
     @Test
     @DisplayName("Check the default sensitive parameters are the credentials callers conventionally send")
     void checkDefaultSensitiveParameters() {
-        LoggedFilterConfiguration configuration = LoggedFilterConfiguration.defaults();
+        LoggedFeatureConfiguration configuration = LoggedFeatureConfiguration.defaults();
 
         assertTrue(configuration.isSensitive(HEADER, "Authorization"));
         assertTrue(configuration.isSensitive(QUERY, "access_token"));
@@ -94,7 +94,7 @@ class LoggedFilterConfigurationTest {
     @Test
     @DisplayName("Check a field can be renamed or left out")
     void checkFieldRenamedOrLeftOut() {
-        LoggedFilterConfiguration configuration = LoggedFilterConfiguration.builder()
+        LoggedFeatureConfiguration configuration = LoggedFeatureConfiguration.builder()
                 .fieldName(REQUEST_ID, "trace-id")
                 .withoutField(REQUEST_URI)
                 .build();
@@ -108,7 +108,7 @@ class LoggedFilterConfigurationTest {
     @ValueSource(strings = {"", " "})
     @DisplayName("Check a field cannot be given a blank name")
     void checkBlankFieldNameRejected(String name) {
-        LoggedFilterConfiguration.Builder builder = LoggedFilterConfiguration.builder();
+        LoggedFeatureConfiguration.Builder builder = LoggedFeatureConfiguration.builder();
 
         assertThrows(IllegalArgumentException.class, () -> builder.fieldName(REQUEST_ID, name));
         assertThrows(IllegalArgumentException.class, () -> builder.fieldName(REQUEST_ID, null));
@@ -118,7 +118,7 @@ class LoggedFilterConfigurationTest {
     @Test
     @DisplayName("Check two fields cannot share a name, as one entry would silently overwrite the other")
     void checkSharedFieldNameRejected() {
-        LoggedFilterConfiguration.Builder builder = LoggedFilterConfiguration.builder()
+        LoggedFeatureConfiguration.Builder builder = LoggedFeatureConfiguration.builder()
                 .fieldName(REQUEST_ID, REQUEST_URI.getDefaultField());
 
         IllegalStateException exception = assertThrows(IllegalStateException.class, builder::build);
@@ -131,19 +131,19 @@ class LoggedFilterConfigurationTest {
     @Test
     @DisplayName("Check the identifier is read from and returned in the header configured")
     void checkRequestIdHeader() throws Exception {
-        LoggedFilterConfiguration configuration = LoggedFilterConfiguration.builder()
+        LoggedFeatureConfiguration configuration = LoggedFeatureConfiguration.builder()
                 .requestIdHeader("X-Case-ID")
                 .build();
 
         assertEquals("case-42", configuration.requestIdOf(request("X-Case-ID", "case-42")));
         assertEquals("X-Case-ID", configuration.returnedRequestIdHeader());
-        assertThrows(IllegalArgumentException.class, () -> LoggedFilterConfiguration.builder().requestIdHeader(" "));
+        assertThrows(IllegalArgumentException.class, () -> LoggedFeatureConfiguration.builder().requestIdHeader(" "));
     }
 
     @Test
     @DisplayName("Check a strategy of its own replaces reading the identifier from the header")
     void checkRequestIdStrategy() throws Exception {
-        LoggedFilterConfiguration configuration = LoggedFilterConfiguration.builder()
+        LoggedFeatureConfiguration configuration = LoggedFeatureConfiguration.builder()
                 .requestId(request -> "server-side")
                 .build();
 
@@ -153,7 +153,7 @@ class LoggedFilterConfigurationTest {
     @Test
     @DisplayName("Check the identifier is not returned once configured not to be")
     void checkRequestIdNotReturned() {
-        LoggedFilterConfiguration configuration = LoggedFilterConfiguration.builder()
+        LoggedFeatureConfiguration configuration = LoggedFeatureConfiguration.builder()
                 .withoutReturnedRequestId()
                 .build();
 
@@ -163,7 +163,7 @@ class LoggedFilterConfigurationTest {
     @Test
     @DisplayName("Check the strategies configured replace the default ones")
     void checkStrategiesReplaced() {
-        LoggedFilterConfiguration configuration = LoggedFilterConfiguration.builder()
+        LoggedFeatureConfiguration configuration = LoggedFeatureConfiguration.builder()
                 .sensitiveParameters((type, name) -> isCredential(type, name) || "url-signature".equals(name))
                 .responseLevel(status -> Level.DEBUG)
                 .bodyCapture(limit -> new BoundedLoggedBodyCapture(1))
@@ -178,7 +178,7 @@ class LoggedFilterConfigurationTest {
     @Test
     @DisplayName("Check a missing strategy is rejected when set rather than when a request needs it")
     void checkNullStrategiesRejected() {
-        LoggedFilterConfiguration.Builder builder = LoggedFilterConfiguration.builder();
+        LoggedFeatureConfiguration.Builder builder = LoggedFeatureConfiguration.builder();
 
         assertThrows(NullPointerException.class, () -> builder.requestId(null));
         assertThrows(NullPointerException.class, () -> builder.sensitiveParameters(null));

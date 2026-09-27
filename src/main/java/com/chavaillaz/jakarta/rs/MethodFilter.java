@@ -133,7 +133,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
 
     /**
      * Starts the given request: attaches its state, puts the MDC entries describing it - those of the
-     * application included (see {@link LoggedFilterConfiguration.Builder#mdcEntries}) - and logs it as received
+     * application included (see {@link LoggedFeatureConfiguration.Builder#mdcEntries}) - and logs it as received
      * right away when it has no entity to read.
      *
      * @param requestContext The context of the request received

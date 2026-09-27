@@ -3,6 +3,7 @@ package com.chavaillaz.jakarta.rs;
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.REQUEST;
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.RESPONSE;
 import static com.chavaillaz.jakarta.rs.LoggedFeature.REQUEST_ID_HEADER;
+import static com.chavaillaz.jakarta.rs.LoggedFeatureConfiguration.isCredential;
 import static com.chavaillaz.jakarta.rs.LoggedField.DURATION;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
@@ -13,7 +14,6 @@ import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_CLASS;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESOURCE_METHOD;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_BODY;
 import static com.chavaillaz.jakarta.rs.LoggedField.RESPONSE_STATUS;
-import static com.chavaillaz.jakarta.rs.LoggedFilterConfiguration.isCredential;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
 import static com.chavaillaz.jakarta.rs.LoggedSupport.levelOf;
@@ -190,7 +190,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
 
     @BeforeEach
     void setupFeature() {
-        feature = new LoggedFeature(LoggedFilterConfiguration.defaults());
+        feature = new LoggedFeature(LoggedFeatureConfiguration.defaults());
     }
 
     /**
@@ -199,7 +199,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
      * @param configuration The configuration of the feature
      * @return The filter created
      */
-    MethodFilter filterWith(LoggedFilterConfiguration configuration) {
+    MethodFilter filterWith(LoggedFeatureConfiguration configuration) {
         return new LoggedFeature(configuration).filterFor(resourceInfo);
     }
 
@@ -948,7 +948,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
 
         // Given
         AtomicInteger captures = new AtomicInteger();
-        MethodFilter countingFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter countingFilter = filterWith(LoggedFeatureConfiguration.builder()
                 .bodyCapture(limit -> {
                     captures.incrementAndGet();
                     return new BoundedLoggedBodyCapture(limit);
@@ -1091,7 +1091,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given
-        MethodFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter configuredFilter = filterWith(LoggedFeatureConfiguration.builder()
                 .fieldName(REQUEST_ID, "trace-id")
                 .requestIdHeader("X-Trace-ID")
                 .build());
@@ -1116,9 +1116,9 @@ class LoggedFeatureTest extends AbstractFilterTest {
      * @param resolver The resolver the application declares, {@code null} for none
      * @return The context resolvers of the application
      */
-    static Providers providersDeclaring(@Nullable ContextResolver<LoggedFilterConfiguration> resolver) {
+    static Providers providersDeclaring(@Nullable ContextResolver<LoggedFeatureConfiguration> resolver) {
         Providers providers = mock(Providers.class);
-        doReturn(resolver).when(providers).getContextResolver(LoggedFilterConfiguration.class, WILDCARD_TYPE);
+        doReturn(resolver).when(providers).getContextResolver(LoggedFeatureConfiguration.class, WILDCARD_TYPE);
         return providers;
     }
 
@@ -1129,7 +1129,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
      * @param resolver The resolver the application declares, {@code null} for none
      * @return The feature created
      */
-    static LoggedFeature featureDeclaring(@Nullable ContextResolver<LoggedFilterConfiguration> resolver) {
+    static LoggedFeature featureDeclaring(@Nullable ContextResolver<LoggedFeatureConfiguration> resolver) {
         LoggedFeature declaring = new LoggedFeature();
         declaring.providers = providersDeclaring(resolver);
         return declaring;
@@ -1142,7 +1142,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
 
         // Given: a configuration the application declares for the class of the feature asking alone
         LoggedFeature declaring = featureDeclaring(type -> type == LoggedFeature.class
-                ? LoggedFilterConfiguration.builder().fieldName(REQUEST_ID, "trace-id").build()
+                ? LoggedFeatureConfiguration.builder().fieldName(REQUEST_ID, "trace-id").build()
                 : null);
         MethodFilter declaredFilter = declaring.filterFor(resourceInfo);
         PreMatchContainerRequestContext requestContext = getRequestContext();
@@ -1154,7 +1154,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         // Then: looked up once, when the first request is logged
         assertNotNull(listAppender.findFirstMessage("Processed").getContextData().getValue("trace-id"));
         assertEquals("trace-id", declaring.setup(null).configuration().fieldName(REQUEST_ID));
-        verify(declaring.providers, times(1)).getContextResolver(LoggedFilterConfiguration.class, WILDCARD_TYPE);
+        verify(declaring.providers, times(1)).getContextResolver(LoggedFeatureConfiguration.class, WILDCARD_TYPE);
     }
 
     @Test
@@ -1165,7 +1165,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         // Given: a runtime injecting nothing into a dynamic feature, as Apache CXF does, but the filters it registers
         LoggedFeature declaring = new LoggedFeature();
         MethodFilter declaredFilter = declaring.filterFor(resourceInfo);
-        declaredFilter.providers = providersDeclaring(type -> LoggedFilterConfiguration.builder().fieldName(REQUEST_ID, "trace-id").build());
+        declaredFilter.providers = providersDeclaring(type -> LoggedFeatureConfiguration.builder().fieldName(REQUEST_ID, "trace-id").build());
         PreMatchContainerRequestContext requestContext = getRequestContext();
 
         // When
@@ -1180,14 +1180,14 @@ class LoggedFeatureTest extends AbstractFilterTest {
     @Test
     @DisplayName("Check a feature uses the default configuration when the application declares none, or fails to")
     void checkDefaultConfigurationWhenNoneDeclared() {
-        ContextResolver<LoggedFilterConfiguration> failing = type -> {
+        ContextResolver<LoggedFeatureConfiguration> failing = type -> {
             throw new IllegalStateException("Configuration not loaded yet");
         };
 
-        assertSame(LoggedFilterConfiguration.defaults(), new LoggedFeature().setup(null).configuration());
-        assertSame(LoggedFilterConfiguration.defaults(), featureDeclaring(null).setup(null).configuration());
-        assertSame(LoggedFilterConfiguration.defaults(), featureDeclaring(type -> null).setup(null).configuration());
-        assertSame(LoggedFilterConfiguration.defaults(), featureDeclaring(failing).setup(null).configuration());
+        assertSame(LoggedFeatureConfiguration.defaults(), new LoggedFeature().setup(null).configuration());
+        assertSame(LoggedFeatureConfiguration.defaults(), featureDeclaring(null).setup(null).configuration());
+        assertSame(LoggedFeatureConfiguration.defaults(), featureDeclaring(type -> null).setup(null).configuration());
+        assertSame(LoggedFeatureConfiguration.defaults(), featureDeclaring(failing).setup(null).configuration());
         assertNotNull(listAppender.findFirstMessage("Unable to look up the configuration of the application"));
     }
 
@@ -1195,7 +1195,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
     @DisplayName("Check a feature constructed with its configuration looks none up")
     void checkGivenConfigurationNotLookedUp() {
         // Given
-        LoggedFilterConfiguration given = LoggedFilterConfiguration.builder().build();
+        LoggedFeatureConfiguration given = LoggedFeatureConfiguration.builder().build();
         LoggedFeature givenFeature = new LoggedFeature(given);
         givenFeature.providers = mock(Providers.class);
 
@@ -1212,7 +1212,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given
-        MethodFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter configuredFilter = filterWith(LoggedFeatureConfiguration.builder()
                 .requestId(request -> obtained)
                 .build());
         PreMatchContainerRequestContext requestContext = getRequestContext();
@@ -1234,7 +1234,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given
-        MethodFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter configuredFilter = filterWith(LoggedFeatureConfiguration.builder()
                 .requestId(request -> {
                     throw new IllegalStateException("No trace context on this request");
                 })
@@ -1260,7 +1260,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given
-        MethodFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter configuredFilter = filterWith(LoggedFeatureConfiguration.builder()
                 .withoutReturnedRequestId()
                 .build());
         PreMatchContainerRequestContext requestContext = getRequestContext();
@@ -1281,7 +1281,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given: an application expecting its 404, which is no reason to warn anybody
-        MethodFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter configuredFilter = filterWith(LoggedFeatureConfiguration.builder()
                 .responseLevel(status -> status == 404 ? Level.INFO : levelOf(status))
                 .build());
         PreMatchContainerRequestContext requestContext = getRequestContext();
@@ -1300,7 +1300,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given: a function covering the statuses it cares about, and returning null for the others
-        MethodFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter configuredFilter = filterWith(LoggedFeatureConfiguration.builder()
                 .responseLevel(status -> status == 404 ? Level.INFO : null)
                 .build());
         PreMatchContainerRequestContext requestContext = getRequestContext();
@@ -1321,7 +1321,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given
-        MethodFilter configuredFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter configuredFilter = filterWith(LoggedFeatureConfiguration.builder()
                 .sensitiveParameters((type, name) -> isCredential(type, name)
                         || (type == QUERY && "url-signature".equals(name)))
                 .build());
@@ -1517,7 +1517,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
 
         // Given: a capture whose rendering needs more memory than the heap has left
         AtomicBoolean closed = new AtomicBoolean();
-        MethodFilter capturingFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter capturingFilter = filterWith(LoggedFeatureConfiguration.builder()
                 .bodyCapture(limit -> new BoundedLoggedBodyCapture(limit) {
 
                     @Override
@@ -1639,7 +1639,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
      * @return The filter created
      */
     MethodFilter failingSinkFilter() {
-        return filterWith(LoggedFilterConfiguration.builder()
+        return filterWith(LoggedFeatureConfiguration.builder()
                 .bodyCapture(limit -> new BoundedLoggedBodyCapture(limit) {
 
                     @Override
@@ -1666,7 +1666,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
      * @return The filter created
      */
     MethodFilter capturingFilter(AtomicBoolean closed) {
-        return filterWith(LoggedFilterConfiguration.builder()
+        return filterWith(LoggedFeatureConfiguration.builder()
                 .bodyCapture(limit -> new BoundedLoggedBodyCapture(limit) {
 
                     @Override
@@ -1684,7 +1684,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
      * @return The filter created
      */
     MethodFilter failingCaptureFilter() {
-        return filterWith(LoggedFilterConfiguration.builder()
+        return filterWith(LoggedFeatureConfiguration.builder()
                 .bodyCapture(limit -> {
                     throw new IllegalStateException("No room left to capture anything");
                 })
@@ -1699,7 +1699,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given
-        MethodFilter leavingOutFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter leavingOutFilter = filterWith(LoggedFeatureConfiguration.builder()
                 .withoutField(REQUEST_PARAMETERS)
                 .build());
         PreMatchContainerRequestContext requestContext = getRequestContext();
@@ -1722,7 +1722,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given
-        MethodFilter describingFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter describingFilter = filterWith(LoggedFeatureConfiguration.builder()
                 .mdcEntries((request, resource) -> Map.of(
                         "user-agent", request.getHeaderString("User-Agent"),
                         "resource", resource.getResourceMethod().getName()))
@@ -1749,7 +1749,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given
-        MethodFilter failingFilter = filterWith(LoggedFilterConfiguration.builder()
+        MethodFilter failingFilter = filterWith(LoggedFeatureConfiguration.builder()
                 .mdcEntries((request, resource) -> {
                     throw new IllegalStateException("No user in this context");
                 })
@@ -1800,7 +1800,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "noBodyLogging");
 
         // Given
-        MethodFilter other = filterWith(LoggedFilterConfiguration.builder().fieldName(REQUEST_ID, "trace-id").build());
+        MethodFilter other = filterWith(LoggedFeatureConfiguration.builder().fieldName(REQUEST_ID, "trace-id").build());
         PreMatchContainerRequestContext requestContext = getRequestContext();
         ContainerResponseContextImpl responseContext = getEmptyResponseContext(requestContext);
 
@@ -2077,7 +2077,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         setupTest(AnnotatedResource.class, "bodyAsLog");
         PreMatchContainerRequestContext requestContext = getRequestContext();
         loggingFilter.filter(requestContext);
-        BodyInterceptor otherInterceptor = new BodyInterceptor(new LoggedFeature(LoggedFilterConfiguration.defaults()).filterFor(resourceInfo));
+        BodyInterceptor otherInterceptor = new BodyInterceptor(new LoggedFeature(LoggedFeatureConfiguration.defaults()).filterFor(resourceInfo));
         AtomicReference<String> entityRead = new AtomicReference<>();
         ReaderInterceptorContext requestInterceptorContext = readerContext(requestContext, requestContext.getEntityStream(),
                 stream -> entityRead.set(new String(stream.readAllBytes(), UTF_8)), otherInterceptor);

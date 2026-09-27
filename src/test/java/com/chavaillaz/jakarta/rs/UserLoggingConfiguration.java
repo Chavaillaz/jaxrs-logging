@@ -16,13 +16,13 @@ import java.util.Map;
  * one of them for the resources asking for it with an annotation of its own ({@link UserLogged}).
  */
 @Provider
-public class UserLoggingConfiguration implements ContextResolver<LoggedFilterConfiguration> {
+public class UserLoggingConfiguration implements ContextResolver<LoggedFeatureConfiguration> {
 
     protected static final String REQUEST_IDENTIFIER = "request-identifier";
     protected static final String USER_ID = "user-id";
     protected static final String USER_AGENT = "user-agent";
 
-    static final LoggedFilterConfiguration CONFIGURATION = LoggedFilterConfiguration.builder()
+    static final LoggedFeatureConfiguration CONFIGURATION = LoggedFeatureConfiguration.builder()
             // Edit MDC field name when needed, for example to be aligned between applications
             // or follow schemas defined for Kibana, OpenSearch, Splunk
             .fieldName(REQUEST_ID, REQUEST_IDENTIFIER)
@@ -34,7 +34,7 @@ public class UserLoggingConfiguration implements ContextResolver<LoggedFilterCon
             .build();
 
     @Override
-    public LoggedFilterConfiguration getContext(Class<?> type) {
+    public LoggedFeatureConfiguration getContext(Class<?> type) {
         return CONFIGURATION;
     }
 

@@ -53,8 +53,8 @@ import org.slf4j.event.Level;
 
 import com.chavaillaz.jakarta.rs.LoggedBody;
 import com.chavaillaz.jakarta.rs.LoggedFeature;
+import com.chavaillaz.jakarta.rs.LoggedFeatureConfiguration;
 import com.chavaillaz.jakarta.rs.LoggedField;
-import com.chavaillaz.jakarta.rs.LoggedFilterConfiguration;
 import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
 import com.chavaillaz.jakarta.rs.LoggedSupport;
 import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
@@ -211,7 +211,7 @@ public class LoggedClientFeature implements Feature {
 
         private String correlationIdMdcKey = REQUEST_ID.getDefaultField();
         private String correlationIdHeader = REQUEST_ID_HEADER;
-        private BiPredicate<MappingType, String> sensitiveParameters = LoggedFilterConfiguration::isCredential;
+        private BiPredicate<MappingType, String> sensitiveParameters = LoggedFeatureConfiguration::isCredential;
         private boolean logRequestBody = false;
         private boolean logResponseBody = false;
         private int requestBodyLimit = DEFAULT_LIMIT;
@@ -226,7 +226,7 @@ public class LoggedClientFeature implements Feature {
         /**
          * Sets the MDC key the identifier propagated to the services called is read from, a random one being
          * sent when the entry is absent or blank. Defaults to {@code request-id}, to change along with a renamed
-         * {@link LoggedField#REQUEST_ID} (see {@link LoggedFilterConfiguration.Builder#fieldName(LoggedField, String)}).
+         * {@link LoggedField#REQUEST_ID} (see {@link LoggedFeatureConfiguration.Builder#fieldName(LoggedField, String)}).
          * The identifier is sanitized and truncated to 128 characters, as a {@link LoggedFeature} does one it
          * receives.
          *
@@ -241,7 +241,7 @@ public class LoggedClientFeature implements Feature {
 
         /**
          * Sets the header the correlation identifier is propagated in, to match the one the services called
-         * read theirs from (see {@link LoggedFilterConfiguration.Builder#requestIdHeader(String)}). Defaults to
+         * read theirs from (see {@link LoggedFeatureConfiguration.Builder#requestIdHeader(String)}). Defaults to
          * {@value LoggedFeature#REQUEST_ID_HEADER}.
          * <p>
          * A call already carrying the header, in any casing, keeps the value the calling code gave it.
@@ -260,9 +260,9 @@ public class LoggedClientFeature implements Feature {
 
         /**
          * Sets which query parameters of the calls have their value masked, as
-         * {@link LoggedFilterConfiguration.Builder#sensitiveParameters(BiPredicate)} does for the requests
+         * {@link LoggedFeatureConfiguration.Builder#sensitiveParameters(BiPredicate)} does for the requests
          * received, so both can be given the same predicate, asked about the {@link MappingType#QUERY} parameters
-         * of each call by their decoded name. Defaults to {@link LoggedFilterConfiguration#isCredential}, to
+         * of each call by their decoded name. Defaults to {@link LoggedFeatureConfiguration#isCredential}, to
          * compose with, for example to mask the key a partner API expects in its query string:
          * <pre>{@code
          * .sensitiveParameters((type, name) -> isCredential(type, name) || "partner-key".equalsIgnoreCase(name))
@@ -670,7 +670,7 @@ public class LoggedClientFeature implements Feature {
 
     /**
      * Creates the capture of a request or response body, to override for another capture strategy, as
-     * {@link LoggedFilterConfiguration.Builder#bodyCapture} sets it on the server side.
+     * {@link LoggedFeatureConfiguration.Builder#bodyCapture} sets it on the server side.
      *
      * @param limit The maximum size of the body to capture in bytes, or {@code -1} for no limit
      * @return The body capture to use
