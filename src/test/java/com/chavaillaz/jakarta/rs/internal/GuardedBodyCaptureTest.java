@@ -22,7 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.chavaillaz.jakarta.rs.AbstractFilterTest;
-import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
+import com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture;
 
 @DisplayName("Guarded body capture")
 class GuardedBodyCaptureTest extends AbstractFilterTest {
@@ -92,7 +92,7 @@ class GuardedBodyCaptureTest extends AbstractFilterTest {
     void checkFailingSink(Operation operation) {
         // Given
         FailingSink sink = new FailingSink(operation);
-        GuardedBodyCapture capture = new GuardedBodyCapture(new BoundedLoggedBodyCapture(NO_LIMIT) {
+        GuardedBodyCapture capture = new GuardedBodyCapture(new BoundedBodyCapture(NO_LIMIT) {
 
             @Override
             public OutputStream sink() {
@@ -123,7 +123,7 @@ class GuardedBodyCaptureTest extends AbstractFilterTest {
     void checkWorkingSink() throws IOException {
         // Given
         AtomicBoolean closed = new AtomicBoolean();
-        GuardedBodyCapture capture = new GuardedBodyCapture(new BoundedLoggedBodyCapture(NO_LIMIT) {
+        GuardedBodyCapture capture = new GuardedBodyCapture(new BoundedBodyCapture(NO_LIMIT) {
 
             @Override
             public void close() {
@@ -150,7 +150,7 @@ class GuardedBodyCaptureTest extends AbstractFilterTest {
         // Given: an entity read as a stream, which its reader only goes through once the capture is released
         AtomicInteger writesAfterRelease = new AtomicInteger();
         AtomicBoolean released = new AtomicBoolean();
-        GuardedBodyCapture capture = new GuardedBodyCapture(new BoundedLoggedBodyCapture(NO_LIMIT) {
+        GuardedBodyCapture capture = new GuardedBodyCapture(new BoundedBodyCapture(NO_LIMIT) {
 
             @Override
             public OutputStream sink() {

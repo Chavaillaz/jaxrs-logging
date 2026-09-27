@@ -1,6 +1,6 @@
 package com.chavaillaz.jakarta.rs.internal;
 
-import static com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER;
+import static com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture.FILTERING_FAILURE_MARKER;
 import static java.util.Arrays.asList;
 
 import java.util.Collection;
@@ -14,7 +14,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.chavaillaz.jakarta.rs.LoggedFeature;
-import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
+import com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture;
 import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
@@ -31,7 +31,7 @@ public class LoggedBodyFilterFactory {
 
     /**
      * Filter cached for a class that failed to be instantiated, reported once: it drops the body, writing
-     * {@link BoundedLoggedBodyCapture#FILTERING_FAILURE_MARKER} in its place, as a filter that could not be
+     * {@link BoundedBodyCapture#FILTERING_FAILURE_MARKER} in its place, as a filter that could not be
      * created redacted nothing - a constructor that is not public would otherwise have every payload it
      * protects logged in the clear.
      */

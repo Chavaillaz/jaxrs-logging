@@ -1,6 +1,6 @@
 package com.chavaillaz.jakarta.rs.internal;
 
-import static com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER;
+import static com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture.FILTERING_FAILURE_MARKER;
 import static com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory.FAILED_BODY_FILTER;
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -14,7 +14,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import com.chavaillaz.jakarta.rs.SensitiveBodyFilter;
-import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
+import com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
 @DisplayName("Logged body filter factory")
@@ -103,7 +103,7 @@ class LoggedBodyFilterFactoryTest {
     void checkFailedInstantiationDropsTheBody() throws IOException {
         // A filter is a "this must never reach the logs" instruction, and one that could not even be
         // created has redacted nothing: passing the body through untouched logged it in the clear
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
+        BoundedBodyCapture capture = new BoundedBodyCapture(-1);
         capture.sink().write("{\"password\":\"hunter2\"}".getBytes(UTF_8));
 
         // When

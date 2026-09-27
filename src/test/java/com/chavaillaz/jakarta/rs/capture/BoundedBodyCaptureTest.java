@@ -1,8 +1,8 @@
 package com.chavaillaz.jakarta.rs.capture;
 
-import static com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture.FILTERING_FAILURE_MARKER;
-import static com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture.TRUNCATION_MARKER;
-import static com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture.isBinary;
+import static com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture.FILTERING_FAILURE_MARKER;
+import static com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture.TRUNCATION_MARKER;
+import static com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture.isBinary;
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
 import static jakarta.ws.rs.core.MediaType.APPLICATION_JSON_TYPE;
 import static jakarta.ws.rs.core.MediaType.APPLICATION_OCTET_STREAM_TYPE;
@@ -36,15 +36,15 @@ import com.chavaillaz.jakarta.rs.filter.JsonMaskingBodyFilter;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import com.chavaillaz.jakarta.rs.filter.RegexMaskingBodyFilter;
 
-@DisplayName("Bounded logged body capture")
-class BoundedLoggedBodyCaptureTest {
+@DisplayName("Bounded body capture")
+class BoundedBodyCaptureTest {
 
     @Test
     @DisplayName("Check content decodes captured bytes as UTF-8 regardless of the platform default charset")
     void checkContentUsesUtf8() throws IOException {
         // Given
         String text = "Café ☕ résumé";
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
+        BoundedBodyCapture capture = new BoundedBodyCapture(-1);
         capture.sink().write(text.getBytes(UTF_8));
 
         // When
@@ -61,7 +61,7 @@ class BoundedLoggedBodyCaptureTest {
         // nobody can trace back to the LoggedBody#limit that actually has to be changed - and, now that
         // a capture failing to be created no longer fails the exchange, that message is all there is
         IllegalArgumentException thrown = assertThrows(IllegalArgumentException.class,
-                () -> new BoundedLoggedBodyCapture(-2));
+                () -> new BoundedBodyCapture(-2));
 
         // Then
         assertTrue(thrown.getMessage().contains("Limit must be -1 (no limit) or a number of bytes, 0 included"));
@@ -71,7 +71,7 @@ class BoundedLoggedBodyCaptureTest {
     @DisplayName("Check content applies every given filter")
     void checkContentAppliesFilters() throws IOException {
         // Given
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
+        BoundedBodyCapture capture = new BoundedBodyCapture(-1);
         capture.sink().write("{\"secret-code\": \"1234-ABCD\"}".getBytes(UTF_8));
 
         // When
@@ -85,7 +85,7 @@ class BoundedLoggedBodyCaptureTest {
     @DisplayName("Check content applies the filters in the order of the list, each to what the previous one left")
     void checkContentAppliesFiltersInOrder() throws IOException {
         // Given: filters whose result depends on their order, "4body!" the other way round
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(NO_LIMIT);
+        BoundedBodyCapture capture = new BoundedBodyCapture(NO_LIMIT);
         capture.sink().write("body".getBytes(UTF_8));
         LoggedBodyFilter exclaim = body -> body.append('!');
         LoggedBodyFilter prefixLength = body -> body.insert(0, body.length());
@@ -102,7 +102,7 @@ class BoundedLoggedBodyCaptureTest {
     void checkContentTrimsTruncatedCharacter() throws IOException {
         // Given: "Café" (5 bytes) captured through a sink limited to 4 bytes, cutting right
         // after the lead byte of the trailing 2-byte character (é)
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(4);
+        BoundedBodyCapture capture = new BoundedBodyCapture(4);
         capture.sink().write("Café".getBytes(UTF_8));
 
         // When
@@ -117,7 +117,7 @@ class BoundedLoggedBodyCaptureTest {
     @DisplayName("Check content of a body exactly as long as the limit is not reported as truncated")
     void checkContentAtExactlyTheLimitIsNotMarkedTruncated() throws IOException {
         // Given: 5 bytes captured through a sink limited to exactly 5 bytes, so nothing was dropped
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(5);
+        BoundedBodyCapture capture = new BoundedBodyCapture(5);
         capture.sink().write("Hello".getBytes(UTF_8));
 
         // When
@@ -131,7 +131,7 @@ class BoundedLoggedBodyCaptureTest {
     @DisplayName("Check content leaves complete content untouched when the limit was not reached")
     void checkContentLeavesUntruncatedContentUntouched() throws IOException {
         // Given
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(100);
+        BoundedBodyCapture capture = new BoundedBodyCapture(100);
         capture.sink().write("Café".getBytes(UTF_8));
 
         // When
@@ -146,7 +146,7 @@ class BoundedLoggedBodyCaptureTest {
     @DisplayName("Check content without a media type still decodes as UTF-8 text")
     void checkContentWithoutMediaTypeDefaultsToText() throws IOException {
         // Given
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
+        BoundedBodyCapture capture = new BoundedBodyCapture(-1);
         capture.sink().write("Café".getBytes(UTF_8));
 
         // When
@@ -160,7 +160,7 @@ class BoundedLoggedBodyCaptureTest {
     @DisplayName("Check content decodes a text body with the charset its media type declares")
     void checkContentDecodesDeclaredCharset() throws IOException {
         // Given
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
+        BoundedBodyCapture capture = new BoundedBodyCapture(-1);
         capture.sink().write("Café".getBytes(ISO_8859_1));
 
         // When
@@ -174,7 +174,7 @@ class BoundedLoggedBodyCaptureTest {
     @DisplayName("Check content decodes as UTF-8 a body whose declared charset is not supported")
     void checkContentFallsBackToUtf8ForUnsupportedCharset() throws IOException {
         // Given
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
+        BoundedBodyCapture capture = new BoundedBodyCapture(-1);
         capture.sink().write("Café".getBytes(UTF_8));
 
         // When
@@ -188,7 +188,7 @@ class BoundedLoggedBodyCaptureTest {
     @DisplayName("Check content trims a character the limit cut in half in a multi-byte charset other than UTF-8")
     void checkContentTrimsTruncatedCharacterOfDeclaredCharset() throws IOException {
         // Given: "Café" in UTF-16 (8 bytes) captured through a sink limited to 7 bytes, cutting the é in half
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(7);
+        BoundedBodyCapture capture = new BoundedBodyCapture(7);
         capture.sink().write("Café".getBytes(UTF_16BE));
 
         // When
@@ -203,7 +203,7 @@ class BoundedLoggedBodyCaptureTest {
     void checkContentKeepsLastCharacterOfSingleByteCharset() throws IOException {
         // Given: "Café!" in ISO-8859-1 (5 bytes) captured through a sink limited to 4 bytes, ending with the
         // byte of the é, which read as UTF-8 is the start of a longer sequence the limit would have cut
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(4);
+        BoundedBodyCapture capture = new BoundedBodyCapture(4);
         capture.sink().write("Café!".getBytes(ISO_8859_1));
 
         // When
@@ -218,7 +218,7 @@ class BoundedLoggedBodyCaptureTest {
     @DisplayName("Check content leaves out a four-byte UTF-8 character the limit cut, wherever it cut it")
     void checkContentTrimsTruncatedFourByteCharacter(int limit) throws IOException {
         // Given: "a😀" in UTF-8 (5 bytes: a, then the emoji on 4 bytes), cut after 1, 2 or 3 of the emoji's bytes
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(limit);
+        BoundedBodyCapture capture = new BoundedBodyCapture(limit);
         capture.sink().write("a😀".getBytes(UTF_8));
 
         // When
@@ -232,7 +232,7 @@ class BoundedLoggedBodyCaptureTest {
     @DisplayName("Check content keeps a byte that is not UTF-8 at the cut, replaced as it would be anywhere else")
     void checkContentKeepsMalformedByteAtTheCut() throws IOException {
         // Given: a byte that cannot start a UTF-8 character, right where the limit cut
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(2);
+        BoundedBodyCapture capture = new BoundedBodyCapture(2);
         capture.sink().write(new byte[]{'a', (byte) 0xFF, 'b'});
 
         // When
@@ -247,7 +247,7 @@ class BoundedLoggedBodyCaptureTest {
     @DisplayName("Check content leaves out a three-byte UTF-8 character the limit cut, wherever it cut it")
     void checkContentTrimsTruncatedThreeByteCharacter(int limit) throws IOException {
         // Given: "a€" in UTF-8 (4 bytes: a, then the euro sign on 3 bytes), cut after 1 or 2 of the sign's bytes
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(limit);
+        BoundedBodyCapture capture = new BoundedBodyCapture(limit);
         capture.sink().write("a€".getBytes(UTF_8));
 
         // When
@@ -261,7 +261,7 @@ class BoundedLoggedBodyCaptureTest {
     @DisplayName("Check content keeps continuation bytes no character starts, replaced as they would be anywhere else")
     void checkContentKeepsStrayContinuationBytesAtTheCut() throws IOException {
         // Given: more continuation bytes than a UTF-8 character has, right where the limit cut
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(5);
+        BoundedBodyCapture capture = new BoundedBodyCapture(5);
         capture.sink().write(new byte[]{'a', (byte) 0x80, (byte) 0x80, (byte) 0x80, (byte) 0x80, 'b'});
 
         // When
@@ -276,7 +276,7 @@ class BoundedLoggedBodyCaptureTest {
     @DisplayName("Check content leaves out a character the limit cut in any other charset, and only that one")
     void checkContentTrimsTruncatedCharacterOfOtherCharsets(String charset, String text, int limit, String expected) throws IOException {
         // Given
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(limit);
+        BoundedBodyCapture capture = new BoundedBodyCapture(limit);
         capture.sink().write(text.getBytes(Charset.forName(charset)));
 
         // When
@@ -302,7 +302,7 @@ class BoundedLoggedBodyCaptureTest {
                     .append("\",\"password\":\"secret-").append(i).append("\"},");
         }
         byte[] body = json.toString().getBytes(UTF_8);
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(NO_LIMIT);
+        BoundedBodyCapture capture = new BoundedBodyCapture(NO_LIMIT);
         capture.sink().write(body);
         List<LoggedBodyFilter> filters = List.of(new JsonMaskingBodyFilter("password"));
         for (int i = 0; i < 3; i++) {
@@ -325,7 +325,7 @@ class BoundedLoggedBodyCaptureTest {
     void checkContentRendersBinaryAsHex() throws IOException {
         // Given
         byte[] bytes = {0x00, 0x01, (byte) 0xFF, (byte) 0xCA, (byte) 0xFE};
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
+        BoundedBodyCapture capture = new BoundedBodyCapture(-1);
         capture.sink().write(bytes);
 
         // When
@@ -339,7 +339,7 @@ class BoundedLoggedBodyCaptureTest {
     @DisplayName("Check content applies filters to the hexadecimal rendering of a binary body")
     void checkContentAppliesFiltersToHexRendering() throws IOException {
         // Given
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
+        BoundedBodyCapture capture = new BoundedBodyCapture(-1);
         capture.sink().write(new byte[]{(byte) 0xAB, (byte) 0xCD});
         LoggedBodyFilter upperCaseFilter = body -> {
             String upper = body.toString().toUpperCase();
@@ -389,7 +389,7 @@ class BoundedLoggedBodyCaptureTest {
         // A filter is a "this must never reach the logs" instruction, so a filter that threw halfway
         // through must not result in the raw payload being written: what it was redacting is precisely
         // what must not appear
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
+        BoundedBodyCapture capture = new BoundedBodyCapture(-1);
         capture.sink().write("{\"password\":\"hunter2\"}".getBytes(UTF_8));
 
         // When
@@ -406,7 +406,7 @@ class BoundedLoggedBodyCaptureTest {
     @DisplayName("Check a filter that throws does not propagate into the entity stream being captured")
     void checkFailingFilterDoesNotPropagate() throws IOException {
         // Given
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
+        BoundedBodyCapture capture = new BoundedBodyCapture(-1);
         capture.sink().write("content".getBytes(UTF_8));
 
         // When / Then: assertDoesNotThrow, as a broken filter breaking the request it was only meant to
@@ -421,7 +421,7 @@ class BoundedLoggedBodyCaptureTest {
     void checkFilterOverflowingTheStackDropsBody() throws IOException {
         // Given: a pattern java.util.regex recurses through once per character, as an application's own
         // RegexMaskingBodyFilter easily can, run on a payload long enough to exhaust the stack
-        BoundedLoggedBodyCapture capture = new BoundedLoggedBodyCapture(-1);
+        BoundedBodyCapture capture = new BoundedBodyCapture(-1);
         capture.sink().write(("secret=" + "ab".repeat(100_000)).getBytes(UTF_8));
         LoggedBodyFilter filter = new RegexMaskingBodyFilter("secret=((?:a|b)*)", 1);
 

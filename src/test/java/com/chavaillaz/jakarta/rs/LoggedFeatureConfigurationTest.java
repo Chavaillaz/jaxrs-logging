@@ -29,7 +29,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.event.Level;
 
-import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
+import com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture;
 
 @DisplayName("Logged feature configuration")
 class LoggedFeatureConfigurationTest {
@@ -67,7 +67,7 @@ class LoggedFeatureConfigurationTest {
         assertEquals(Level.INFO, configuration.responseLevel(200));
         assertEquals(Level.WARN, configuration.responseLevel(404));
         assertEquals(Level.ERROR, configuration.responseLevel(503));
-        assertInstanceOf(BoundedLoggedBodyCapture.class, configuration.createBodyCapture(10));
+        assertInstanceOf(BoundedBodyCapture.class, configuration.createBodyCapture(10));
     }
 
     @Test
@@ -175,13 +175,13 @@ class LoggedFeatureConfigurationTest {
         LoggedFeatureConfiguration configuration = LoggedFeatureConfiguration.builder()
                 .sensitiveParameters((type, name) -> isCredential(type, name) || "url-signature".equals(name))
                 .responseLevel(status -> Level.DEBUG)
-                .bodyCapture(limit -> new BoundedLoggedBodyCapture(1))
+                .bodyCapture(limit -> new BoundedBodyCapture(1))
                 .build();
 
         assertTrue(configuration.isSensitive(QUERY, "url-signature"));
         assertTrue(configuration.isSensitive(QUERY, "access_token"));
         assertEquals(Level.DEBUG, configuration.responseLevel(500));
-        assertInstanceOf(BoundedLoggedBodyCapture.class, configuration.createBodyCapture(-1));
+        assertInstanceOf(BoundedBodyCapture.class, configuration.createBodyCapture(-1));
     }
 
     @Test

@@ -18,7 +18,7 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
  * renders it once the entity is done - for a body read as a stream, once the stream ends, possibly on another
  * thread - and {@link #close()} releases what the capture holds.
  * <p>
- * The default one captures in memory, up to a limit (see {@link BoundedLoggedBodyCapture}), and
+ * The default one captures in memory, up to a limit (see {@link BoundedBodyCapture}), and
  * {@link LoggedBodyFilter} transforms what was captured. Plug in another one - spilling large bodies to a
  * temporary file, say - with {@link LoggedFeatureConfiguration.Builder#bodyCapture}, or
  * {@link LoggedClientFeature.Builder#bodyCapture} for the calls made.
@@ -59,7 +59,7 @@ public interface LoggedBodyCapture extends AutoCloseable {
     OutputStream sink();
 
     /**
-     * Gets the captured content, rendered as the given media type says (see {@link BoundedLoggedBodyCapture})
+     * Gets the captured content, rendered as the given media type says (see {@link BoundedBodyCapture})
      * and filtered by the given filters in their order, once the stream wrapping {@link #sink()} was fully read
      * or written.
      *

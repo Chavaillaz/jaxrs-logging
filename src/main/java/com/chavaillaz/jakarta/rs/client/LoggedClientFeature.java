@@ -56,7 +56,7 @@ import com.chavaillaz.jakarta.rs.LoggedFeature;
 import com.chavaillaz.jakarta.rs.LoggedFeatureConfiguration;
 import com.chavaillaz.jakarta.rs.LoggedField;
 import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
-import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
+import com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import com.chavaillaz.jakarta.rs.internal.BodyCapturer;
@@ -197,7 +197,7 @@ public final class LoggedClientFeature implements Feature {
         private int responseBodyLimit = DEFAULT_LIMIT;
         private final Set<Class<? extends LoggedBodyFilter>> bodyFilterClasses = new LinkedHashSet<>();
         private final Set<LoggedBodyFilter> bodyFilterInstances = new LinkedHashSet<>();
-        private IntFunction<LoggedBodyCapture> bodyCapture = BoundedLoggedBodyCapture::new;
+        private IntFunction<LoggedBodyCapture> bodyCapture = BoundedBodyCapture::new;
 
         private Builder() {
             // Created through LoggedClientFeature.builder()
@@ -364,7 +364,7 @@ public final class LoggedClientFeature implements Feature {
         /**
          * Sets how the bodies are captured, given the maximum size to capture in bytes, or {@code -1} for no
          * limit, as {@link LoggedFeatureConfiguration.Builder#bodyCapture(IntFunction)} does for the requests
-         * received. Defaults to capturing them in memory ({@link BoundedLoggedBodyCapture}).
+         * received. Defaults to capturing them in memory ({@link BoundedBodyCapture}).
          *
          * @param factory The creation of the capture of a body keeping at most the given number of bytes
          * @return This builder

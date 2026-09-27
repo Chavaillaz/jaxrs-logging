@@ -38,12 +38,12 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
  * a {@link StackOverflowError} included, as a regular expression gives up on a payload too large for it - is
  * replaced with {@link #FILTERING_FAILURE_MARKER}, its redaction not having happened, and the failure reported.
  */
-public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
+public class BoundedBodyCapture implements LoggedBodyCapture {
 
     /**
      * Logger reporting a body filter that failed.
      */
-    protected static final Logger log = LoggerFactory.getLogger(BoundedLoggedBodyCapture.class);
+    protected static final Logger log = LoggerFactory.getLogger(BoundedBodyCapture.class);
 
     /**
      * Appended to a body the limit cut short, so it is not mistaken for a complete, malformed, one.
@@ -92,7 +92,7 @@ public class BoundedLoggedBodyCapture implements LoggedBodyCapture {
      * @param limit The maximum number of bytes to capture, or {@link LoggedBodyCapture#NO_LIMIT} for no limit
      * @throws IllegalArgumentException if the limit is lower than {@link LoggedBodyCapture#NO_LIMIT}
      */
-    public BoundedLoggedBodyCapture(int limit) {
+    public BoundedBodyCapture(int limit) {
         this.buffer = new CaptureBuffer(limit);
     }
 

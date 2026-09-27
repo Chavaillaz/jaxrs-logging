@@ -2,7 +2,7 @@ package com.chavaillaz.jakarta.rs.client;
 
 import static com.chavaillaz.jakarta.rs.LoggedFeature.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedFeatureConfiguration.isCredential;
-import static com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture.TRUNCATION_MARKER;
+import static com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture.TRUNCATION_MARKER;
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.DEFAULT_LIMIT;
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.NO_LIMIT;
 import static com.chavaillaz.jakarta.rs.internal.BodyCapturer.MEMORY_FAILURE;
@@ -70,7 +70,7 @@ import org.slf4j.event.Level;
 
 import com.chavaillaz.jakarta.rs.AbstractFilterTest;
 import com.chavaillaz.jakarta.rs.SensitiveBodyFilter;
-import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
+import com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.JsonMaskingBodyFilter;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
@@ -889,7 +889,7 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
      * Capture standing in for one holding more than memory (a temporary file, a pooled buffer, ...),
      * recording whether it was given the chance to hand it back.
      */
-    static class ReleasingBodyCapture extends BoundedLoggedBodyCapture {
+    static class ReleasingBodyCapture extends BoundedBodyCapture {
 
         boolean closed = false;
 

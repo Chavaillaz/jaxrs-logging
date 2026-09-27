@@ -56,7 +56,7 @@ import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
 import org.slf4j.event.Level;
 
-import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
+import com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture;
 import com.chavaillaz.jakarta.rs.mdc.MdcPropagation;
 
 /**
@@ -764,7 +764,7 @@ class LoggedFeatureContainerTest extends AbstractFilterTest {
     /**
      * In-memory capture counting the bytes its sink is given once it was released, and the captures released.
      */
-    static final class ReleaseTrackingCapture extends BoundedLoggedBodyCapture {
+    static final class ReleaseTrackingCapture extends BoundedBodyCapture {
 
         final AtomicLong bytesAfterRelease;
         final AtomicInteger releases;

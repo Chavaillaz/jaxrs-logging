@@ -12,7 +12,7 @@ import java.lang.annotation.Repeatable;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 
-import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
+import com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
@@ -42,7 +42,7 @@ public @interface LoggedBody {
 
     /**
      * Size of the body logged, beyond which it is cut and logged with
-     * {@link BoundedLoggedBodyCapture#TRUNCATION_MARKER} appended. Defaults to
+     * {@link BoundedBodyCapture#TRUNCATION_MARKER} appended. Defaults to
      * {@link LoggedBodyCapture#DEFAULT_LIMIT}, 64 KiB, as a body is buffered while captured; {@code -1} removes
      * the limit. A limit below {@code -1} is reported as an error, and the resource then logs no body.
      *

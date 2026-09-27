@@ -21,7 +21,7 @@ import org.jspecify.annotations.Nullable;
 import org.slf4j.event.Level;
 
 import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
-import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
+import com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
@@ -246,7 +246,7 @@ public final class LoggedFeatureConfiguration {
         private boolean requestIdReturned = true;
         private BiPredicate<MappingType, String> sensitiveParameters = LoggedFeatureConfiguration::isCredential;
         private IntFunction<@Nullable Level> responseLevel = LoggedFeatureConfiguration::levelOf;
-        private IntFunction<LoggedBodyCapture> bodyCapture = BoundedLoggedBodyCapture::new;
+        private IntFunction<LoggedBodyCapture> bodyCapture = BoundedBodyCapture::new;
         private BiFunction<ContainerRequestContext, ResourceInfo, Map<String, String>> mdcEntries = (request, resource) -> Map.of();
 
         private Builder() {
@@ -371,7 +371,7 @@ public final class LoggedFeatureConfiguration {
         /**
          * Sets how the bodies are captured, given the maximum size to capture in bytes, or {@code -1} for no
          * limit, for example spilling large ones to a temporary file; {@link LoggedBodyFilter} transforms what
-         * was captured. Defaults to capturing them in memory ({@link BoundedLoggedBodyCapture}).
+         * was captured. Defaults to capturing them in memory ({@link BoundedBodyCapture}).
          *
          * @param factory The creation of the capture of a body keeping at most the given number of bytes
          * @return This builder

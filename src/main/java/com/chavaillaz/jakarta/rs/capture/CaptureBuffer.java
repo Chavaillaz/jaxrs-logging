@@ -12,7 +12,7 @@ import java.util.function.BiFunction;
 
 /**
  * Buffer keeping in memory at most a given number of the bytes written to it, those of a body a
- * {@link BoundedLoggedBodyCapture} captures.
+ * {@link BoundedBodyCapture} captures.
  * <p>
  * Written to along with the entity stream, it takes no lock, unlike a {@link java.io.ByteArrayOutputStream}: a
  * capture is confined to the thread reading or writing the entity. It hands out the array it fills rather than

@@ -112,7 +112,7 @@ import org.slf4j.event.Level;
 
 import com.chavaillaz.jakarta.rs.LoggedBody.LogType;
 import com.chavaillaz.jakarta.rs.MethodFilter.BodyInterceptor;
-import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
+import com.chavaillaz.jakarta.rs.capture.BoundedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 
 @DisplayName("Logged feature")
@@ -950,7 +950,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         MethodFilter countingFilter = filterWith(LoggedFeatureConfiguration.builder()
                 .bodyCapture(limit -> {
                     captures.incrementAndGet();
-                    return new BoundedLoggedBodyCapture(limit);
+                    return new BoundedBodyCapture(limit);
                 })
                 .build());
         PreMatchContainerRequestContext requestContext = getRequestContext();
@@ -1517,7 +1517,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         // Given: a capture whose rendering needs more memory than the heap has left
         AtomicBoolean closed = new AtomicBoolean();
         MethodFilter capturingFilter = filterWith(LoggedFeatureConfiguration.builder()
-                .bodyCapture(limit -> new BoundedLoggedBodyCapture(limit) {
+                .bodyCapture(limit -> new BoundedBodyCapture(limit) {
 
                     @Override
                     public String content(List<LoggedBodyFilter> filters, MediaType mediaType) {
@@ -1639,7 +1639,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
      */
     MethodFilter failingSinkFilter() {
         return filterWith(LoggedFeatureConfiguration.builder()
-                .bodyCapture(limit -> new BoundedLoggedBodyCapture(limit) {
+                .bodyCapture(limit -> new BoundedBodyCapture(limit) {
 
                     @Override
                     public OutputStream sink() {
@@ -1666,7 +1666,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
      */
     MethodFilter capturingFilter(AtomicBoolean closed) {
         return filterWith(LoggedFeatureConfiguration.builder()
-                .bodyCapture(limit -> new BoundedLoggedBodyCapture(limit) {
+                .bodyCapture(limit -> new BoundedBodyCapture(limit) {
 
                     @Override
                     public void close() {
