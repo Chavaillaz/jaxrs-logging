@@ -187,7 +187,7 @@ public final class LoggedClientFeature implements Feature {
      */
     public static final class Builder {
 
-        private String requestIdKey = REQUEST_ID.getDefaultField();
+        private String requestIdKey = REQUEST_ID.getDefaultName();
         private String requestIdHeader = REQUEST_ID_HEADER;
         private BiPredicate<MappingType, String> sensitiveParameters = LoggedFeatureConfiguration::isCredential;
         private IntFunction<@Nullable Level> responseLevel = LoggedFeatureConfiguration::levelOf;

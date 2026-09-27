@@ -39,17 +39,17 @@ final class GuardedBodyCapture implements LoggedBodyCapture {
      */
     GuardedBodyCapture(LoggedBodyCapture capture, Logger log, String message) {
         this.capture = capture;
-        this.sink = new GuardedSink(capture.sink(), log, message);
+        this.sink = new GuardedSink(capture.getSink(), log, message);
     }
 
     @Override
-    public OutputStream sink() {
+    public OutputStream getSink() {
         return sink;
     }
 
     @Override
-    public @Nullable String content(List<LoggedBodyFilter> filters, @Nullable MediaType mediaType) {
-        return sink.failed ? null : capture.content(filters, mediaType);
+    public @Nullable String getContent(List<LoggedBodyFilter> filters, @Nullable MediaType mediaType) {
+        return sink.failed ? null : capture.getContent(filters, mediaType);
     }
 
     /**

@@ -104,10 +104,10 @@ class LoggedBodyFilterFactoryTest {
         // A filter is a "this must never reach the logs" instruction, and one that could not even be
         // created has redacted nothing: passing the body through untouched logged it in the clear
         BoundedBodyCapture capture = new BoundedBodyCapture(-1);
-        capture.sink().write("{\"password\":\"hunter2\"}".getBytes(UTF_8));
+        capture.getSink().write("{\"password\":\"hunter2\"}".getBytes(UTF_8));
 
         // When
-        String result = capture.content(factory.getInstances(List.of(UninstantiableBodyFilter.class)), null);
+        String result = capture.getContent(factory.getInstances(List.of(UninstantiableBodyFilter.class)), null);
 
         // Then
         assertEquals(FILTERING_FAILURE_MARKER, result);

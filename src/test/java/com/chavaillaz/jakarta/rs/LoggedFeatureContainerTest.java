@@ -777,8 +777,8 @@ class LoggedFeatureContainerTest extends AbstractFilterTest {
         }
 
         @Override
-        public OutputStream sink() {
-            OutputStream sink = super.sink();
+        public OutputStream getSink() {
+            OutputStream sink = super.getSink();
             return new OutputStream() {
 
                 @Override

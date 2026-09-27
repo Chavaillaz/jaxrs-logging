@@ -26,7 +26,7 @@ import org.slf4j.MDC;
 @DisplayName("Request MDC")
 class RequestMdcTest {
 
-    final Map<LoggedField, String> fieldNames = new EnumMap<>(LoggedFeatureConfiguration.defaults().fieldNames());
+    final Map<LoggedField, String> fieldNames = new EnumMap<>(LoggedFeatureConfiguration.defaults().getFieldNames());
     final RequestMdc mdc = new RequestMdc(fieldNames);
 
     @AfterEach
@@ -85,10 +85,10 @@ class RequestMdcTest {
 
         MDC.clear();
 
-        assertEquals("abc-123", mdc.recorded(request, REQUEST_ID));
-        assertNull(mdc.recorded(request, RESPONSE_STATUS));
+        assertEquals("abc-123", mdc.getRecorded(request, REQUEST_ID));
+        assertNull(mdc.getRecorded(request, RESPONSE_STATUS));
         fieldNames.remove(REQUEST_ID);
-        assertNull(mdc.recorded(request, REQUEST_ID));
+        assertNull(mdc.getRecorded(request, REQUEST_ID));
     }
 
     @Test
@@ -275,7 +275,7 @@ class RequestMdcTest {
         // Then: what the worker put is the request's, and nothing of it is left on the worker
         assertEquals("abc-123", observed.requestId());
         assertTrue(observed.left() == null || observed.left().isEmpty(), () -> "Left on the worker: " + observed.left());
-        assertEquals("200", request.getMdcEntries().get(RESPONSE_STATUS.getDefaultField()));
+        assertEquals("200", request.getMdcEntries().get(RESPONSE_STATUS.getDefaultName()));
     }
 
     @Test
@@ -289,14 +289,14 @@ class RequestMdcTest {
 
         // When: swept twice, the thread putting back the very value the request left in between
         RequestMdc.sweep();
-        String swept = MDC.get(REQUEST_ID.getDefaultField());
-        MDC.put(REQUEST_ID.getDefaultField(), "abc-123");
+        String swept = MDC.get(REQUEST_ID.getDefaultName());
+        MDC.put(REQUEST_ID.getDefaultName(), "abc-123");
         RequestMdc.sweep();
 
         // Then: swept once, the thread being released from that request
         assertNull(swept);
         assertEquals("put-since", MDC.get("custom-key"));
-        assertEquals("abc-123", MDC.get(REQUEST_ID.getDefaultField()));
+        assertEquals("abc-123", MDC.get(REQUEST_ID.getDefaultName()));
     }
 
     @Test

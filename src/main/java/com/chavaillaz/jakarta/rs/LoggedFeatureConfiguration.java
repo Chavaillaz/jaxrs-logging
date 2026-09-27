@@ -148,7 +148,7 @@ public final class LoggedFeatureConfiguration {
      * @param field The field to get the name of
      * @return The name of its MDC entry, or {@code null} for a field left out (see {@link Builder#withoutField(LoggedField)})
      */
-    public @Nullable String fieldName(LoggedField field) {
+    public @Nullable String getFieldName(LoggedField field) {
         return fieldNames.get(field);
     }
 
@@ -157,7 +157,7 @@ public final class LoggedFeatureConfiguration {
      *
      * @return The names of the MDC entries, by field
      */
-    Map<LoggedField, String> fieldNames() {
+    Map<LoggedField, String> getFieldNames() {
         return fieldNames;
     }
 
@@ -177,7 +177,7 @@ public final class LoggedFeatureConfiguration {
      *
      * @return The name of the header, or {@code null} if the identifier is not returned
      */
-    @Nullable String returnedRequestIdHeader() {
+    @Nullable String getReturnedRequestIdHeader() {
         return requestIdReturned ? requestIdHeader : null;
     }
 
@@ -251,13 +251,13 @@ public final class LoggedFeatureConfiguration {
 
         private Builder() {
             for (LoggedField field : LoggedField.values()) {
-                fieldNames.put(field, field.getDefaultField());
+                fieldNames.put(field, field.getDefaultName());
             }
         }
 
         /**
          * Sets the name of the MDC entry of the given field, to align it with other applications or with the
-         * schema the logs are shipped to. Defaults to {@link LoggedField#getDefaultField()}.
+         * schema the logs are shipped to. Defaults to {@link LoggedField#getDefaultName()}.
          *
          * @param field The field to name
          * @param name  The name of its MDC entry

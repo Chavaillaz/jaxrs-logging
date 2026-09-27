@@ -95,12 +95,12 @@ class GuardedBodyCaptureTest extends AbstractFilterTest {
         GuardedBodyCapture capture = new GuardedBodyCapture(new BoundedBodyCapture(NO_LIMIT) {
 
             @Override
-            public OutputStream sink() {
+            public OutputStream getSink() {
                 return sink;
             }
 
         }, log, FAILURE);
-        OutputStream guarded = capture.sink();
+        OutputStream guarded = capture.getSink();
 
         // When: every operation twice, the first round to fail and the second to find the sink left alone
         assertDoesNotThrow(() -> {
@@ -115,7 +115,7 @@ class GuardedBodyCaptureTest extends AbstractFilterTest {
         // Then: a body missing an arbitrary part of it would read as the one the application handled
         assertEquals(0, sink.callsAfterFailure);
         assertEquals(1, reports());
-        assertNull(capture.content(List.of(), TEXT_PLAIN_TYPE));
+        assertNull(capture.getContent(List.of(), TEXT_PLAIN_TYPE));
     }
 
     @Test
@@ -133,9 +133,9 @@ class GuardedBodyCaptureTest extends AbstractFilterTest {
         }, log, FAILURE);
 
         // When
-        capture.sink().write("body".getBytes(UTF_8));
-        capture.sink().flush();
-        String content = capture.content(List.of(), TEXT_PLAIN_TYPE);
+        capture.getSink().write("body".getBytes(UTF_8));
+        capture.getSink().flush();
+        String content = capture.getContent(List.of(), TEXT_PLAIN_TYPE);
         capture.close();
 
         // Then
@@ -153,7 +153,7 @@ class GuardedBodyCaptureTest extends AbstractFilterTest {
         GuardedBodyCapture capture = new GuardedBodyCapture(new BoundedBodyCapture(NO_LIMIT) {
 
             @Override
-            public OutputStream sink() {
+            public OutputStream getSink() {
                 return new OutputStream() {
 
                     @Override
@@ -191,7 +191,7 @@ class GuardedBodyCaptureTest extends AbstractFilterTest {
             }
 
         }, log, FAILURE);
-        OutputStream sink = capture.sink();
+        OutputStream sink = capture.getSink();
         capture.close();
 
         // When

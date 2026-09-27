@@ -118,7 +118,7 @@ final class RequestMdc {
      * @param field The field to get the value of
      * @return The value put for the field, {@code null} if none was or if the field is left out
      */
-    @Nullable String recorded(LoggedRequestState state, LoggedField field) {
+    @Nullable String getRecorded(LoggedRequestState state, LoggedField field) {
         String key = fieldNames.get(field);
         return key == null ? null : state.getMdcEntries().get(key);
     }

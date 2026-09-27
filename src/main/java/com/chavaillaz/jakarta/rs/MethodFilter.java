@@ -85,7 +85,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
      *
      * @return The configuration of the resource method
      */
-    MethodConfiguration method() {
+    MethodConfiguration getMethod() {
         return method;
     }
 
@@ -103,8 +103,8 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
      *
      * @return What the feature works with
      */
-    private Setup setup() {
-        return feature.setup(providers);
+    private Setup getSetup() {
+        return feature.getSetup(providers);
     }
 
     /**
@@ -139,7 +139,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
      * @param requestContext The context of the request received
      */
     private void start(ContainerRequestContext requestContext) {
-        Setup setup = setup();
+        Setup setup = getSetup();
         // Starts measuring the duration, and records this filter as the one logging the request
         LoggedRequestState state = LoggedRequestState.attach(requestContext, this);
         // From here on, the entries this thread carries are this request's
@@ -227,7 +227,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
                 LoggedRequestState state = handledState(context);
                 String body = state == null ? null : state.getRequestBody();
                 if (state != null && isNotBlank(body) && method.requestBody().logs(LOG)) {
-                    logRequest(setup(), state, body);
+                    logRequest(getSetup(), state, body);
                 }
             });
         }
@@ -245,7 +245,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
      * @throws WebApplicationException if the entity cannot be read
      */
     @Nullable Object captureRequestBody(ReaderInterceptorContext context, LoggedRequestState state) throws IOException, WebApplicationException {
-        return setup().bodyCapturer().read(context, captureConfiguration(state, method.requestBody()),
+        return getSetup().bodyCapturer().read(context, captureConfiguration(state, method.requestBody()),
                 state::setRequestBody, state::setStreamedRequestBody);
     }
 
@@ -287,7 +287,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
         safely(() -> {
             LoggedRequestState state = startedState(requestContext);
             if (state != null) {
-                setup().mdc().onBehalfOf(state, () -> describeResponse(state, requestContext, responseContext));
+                getSetup().mdc().onBehalfOf(state, () -> describeResponse(state, requestContext, responseContext));
             }
         });
     }
@@ -318,7 +318,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
      * @param responseContext The context of the response to send
      */
     private void describeResponse(LoggedRequestState state, ContainerRequestContext requestContext, ContainerResponseContext responseContext) {
-        Setup setup = setup();
+        Setup setup = getSetup();
         try {
             // First, for the request to be logged with its status whatever fails below
             state.setStatus(responseContext.getStatus());
@@ -331,7 +331,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
             }
 
             setup.mdc().put(RESPONSE_STATUS, valueOf(state.getStatus()));
-            setup.exchangeLogger().returnRequestId(responseContext.getHeaders(), setup.mdc().recorded(state, REQUEST_ID));
+            setup.exchangeLogger().returnRequestId(responseContext.getHeaders(), setup.mdc().getRecorded(state, REQUEST_ID));
         } finally {
             // Without an entity to write, aroundWriteTo is never called: the request is completed here whatever
             // happened above, as completing it removes its MDC entries. A HEAD request is answered with the entity
@@ -356,7 +356,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
             safely(() -> {
                 LoggedRequestState state = handledState(context);
                 if (state != null) {
-                    setup().mdc().onBehalfOf(state, () -> logResponseWithBody(state));
+                    getSetup().mdc().onBehalfOf(state, () -> logResponseWithBody(state));
                 }
             });
         }
@@ -378,7 +378,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
         try {
             String body = state.getResponseBody();
             if (method.responseBody().logs(LogType.MDC)) {
-                setup().mdc().put(RESPONSE_BODY, body);
+                getSetup().mdc().put(RESPONSE_BODY, body);
             }
             logResponse(state, method.responseBody().logs(LOG) ? requireNonNullElse(body, EMPTY) : EMPTY);
         } catch (RuntimeException e) {
@@ -397,7 +397,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
      * @throws WebApplicationException if the entity cannot be written
      */
     void captureResponseBody(WriterInterceptorContext context, LoggedRequestState state) throws IOException, WebApplicationException {
-        setup().bodyCapturer().write(context, captureConfiguration(state, method.responseBody()), state::setResponseBody);
+        getSetup().bodyCapturer().write(context, captureConfiguration(state, method.responseBody()), state::setResponseBody);
     }
 
     /**
@@ -413,7 +413,7 @@ final class MethodFilter implements ContainerRequestFilter, ContainerResponseFil
         if (!state.markCompleted()) {
             return;
         }
-        Setup setup = setup();
+        Setup setup = getSetup();
         try {
             long duration = state.getElapsedMillis();
             setup.mdc().put(DURATION, valueOf(duration));

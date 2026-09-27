@@ -91,7 +91,7 @@ public final class BodyCapturer {
         LoggedBodyCapture capture = start(configuration, started -> {
             Runnable handOver = once(() -> end(started, configuration, context, handler));
             handingOver.set(handOver);
-            context.setInputStream(new CapturingInputStream(context.getInputStream(), started.sink(), handOver));
+            context.setInputStream(new CapturingInputStream(context.getInputStream(), started.getSink(), handOver));
         });
         Runnable handOver = handingOver.get();
         if (capture == null || handOver == null) {
@@ -132,7 +132,7 @@ public final class BodyCapturer {
         }
 
         LoggedBodyCapture capture = start(configuration,
-                started -> context.setOutputStream(new CapturingOutputStream(context.getOutputStream(), started.sink())));
+                started -> context.setOutputStream(new CapturingOutputStream(context.getOutputStream(), started.getSink())));
         try {
             context.proceed();
         } finally {
@@ -180,7 +180,7 @@ public final class BodyCapturer {
         }
         safely(log, RENDERING_FAILURE, () -> {
             try {
-                handler.accept(capture.content(configuration.filters(), context.getMediaType()));
+                handler.accept(capture.getContent(configuration.filters(), context.getMediaType()));
             } catch (OutOfMemoryError e) {
                 report(log, MEMORY_FAILURE, e);
             } finally {

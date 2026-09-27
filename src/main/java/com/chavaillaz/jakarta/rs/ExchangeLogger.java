@@ -69,7 +69,7 @@ final class ExchangeLogger {
      * @param requestId The identifier the request was logged under, {@code null} if unknown
      */
     void returnRequestId(MultivaluedMap<String, Object> headers, @Nullable String requestId) {
-        String header = configuration.returnedRequestIdHeader();
+        String header = configuration.getReturnedRequestIdHeader();
         // Compared without regard to case, as a container may back the response headers with a case-sensitive map
         if (header != null && isNotBlank(requestId) && headers.keySet().stream().noneMatch(header::equalsIgnoreCase)) {
             headers.putSingle(header, requestId);

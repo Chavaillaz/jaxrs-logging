@@ -97,7 +97,7 @@ public class BoundedBodyCapture implements LoggedBodyCapture {
     }
 
     @Override
-    public OutputStream sink() {
+    public OutputStream getSink() {
         return buffer;
     }
 
@@ -108,7 +108,7 @@ public class BoundedBodyCapture implements LoggedBodyCapture {
      * (see {@link LoggedBodyFilter#apply(CharSequence)}).
      */
     @Override
-    public String content(List<LoggedBodyFilter> filters, @Nullable MediaType mediaType) {
+    public String getContent(List<LoggedBodyFilter> filters, @Nullable MediaType mediaType) {
         byte[] bytes = buffer.array();
         int size = buffer.size();
         boolean truncated = buffer.isTruncated();

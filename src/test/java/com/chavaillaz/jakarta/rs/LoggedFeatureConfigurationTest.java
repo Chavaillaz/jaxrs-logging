@@ -44,7 +44,7 @@ class LoggedFeatureConfigurationTest {
         LoggedFeatureConfiguration configuration = LoggedFeatureConfiguration.defaults();
 
         stream(LoggedField.values())
-                .forEach(field -> assertEquals(field.getDefaultField(), configuration.fieldName(field)));
+                .forEach(field -> assertEquals(field.getDefaultName(), configuration.getFieldName(field)));
         assertSame(configuration, LoggedFeatureConfiguration.defaults());
     }
 
@@ -56,7 +56,7 @@ class LoggedFeatureConfigurationTest {
         assertEquals("abc-123", configuration.requestIdOf(request(REQUEST_ID_HEADER, "abc-123")));
         // Left for RequestDescriber to generate, as it does for whatever strategy obtains none
         assertNull(configuration.requestIdOf(request("X-Other", "abc-123")));
-        assertEquals(REQUEST_ID_HEADER, configuration.returnedRequestIdHeader());
+        assertEquals(REQUEST_ID_HEADER, configuration.getReturnedRequestIdHeader());
     }
 
     @Test
@@ -108,9 +108,9 @@ class LoggedFeatureConfigurationTest {
                 .withoutField(REQUEST_URI)
                 .build();
 
-        assertEquals("trace-id", configuration.fieldName(REQUEST_ID));
-        assertNull(configuration.fieldName(REQUEST_URI));
-        assertFalse(configuration.fieldNames().containsKey(REQUEST_URI));
+        assertEquals("trace-id", configuration.getFieldName(REQUEST_ID));
+        assertNull(configuration.getFieldName(REQUEST_URI));
+        assertFalse(configuration.getFieldNames().containsKey(REQUEST_URI));
     }
 
     @ParameterizedTest
@@ -128,10 +128,10 @@ class LoggedFeatureConfigurationTest {
     @DisplayName("Check two fields cannot share a name, as one entry would silently overwrite the other")
     void checkSharedFieldNameRejected() {
         LoggedFeatureConfiguration.Builder builder = LoggedFeatureConfiguration.builder()
-                .fieldName(REQUEST_ID, REQUEST_URI.getDefaultField());
+                .fieldName(REQUEST_ID, REQUEST_URI.getDefaultName());
 
         IllegalStateException exception = assertThrows(IllegalStateException.class, builder::build);
-        assertTrue(exception.getMessage().contains(REQUEST_URI.getDefaultField()));
+        assertTrue(exception.getMessage().contains(REQUEST_URI.getDefaultName()));
 
         // Leaving the other one out frees its name
         assertDoesNotThrow(() -> builder.withoutField(REQUEST_URI).build());
@@ -145,7 +145,7 @@ class LoggedFeatureConfigurationTest {
                 .build();
 
         assertEquals("case-42", configuration.requestIdOf(request("X-Case-ID", "case-42")));
-        assertEquals("X-Case-ID", configuration.returnedRequestIdHeader());
+        assertEquals("X-Case-ID", configuration.getReturnedRequestIdHeader());
         assertThrows(IllegalArgumentException.class, () -> LoggedFeatureConfiguration.builder().requestIdHeader(" "));
     }
 
@@ -166,7 +166,7 @@ class LoggedFeatureConfigurationTest {
                 .withoutReturnedRequestId()
                 .build();
 
-        assertNull(configuration.returnedRequestIdHeader());
+        assertNull(configuration.getReturnedRequestIdHeader());
     }
 
     @Test

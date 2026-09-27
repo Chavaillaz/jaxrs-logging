@@ -14,7 +14,7 @@ import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 /**
  * Captures a request or response body as it is read or written, and renders it as text once done.
  * <p>
- * An instance captures a single body: {@link #sink()} receives a copy of it, {@link #content(List, MediaType)}
+ * An instance captures a single body: {@link #getSink()} receives a copy of it, {@link #getContent(List, MediaType)}
  * renders it once the entity is done - for a body read as a stream, once the stream ends, possibly on another
  * thread - and {@link #close()} releases what the capture holds.
  * <p>
@@ -56,18 +56,18 @@ public interface LoggedBodyCapture extends AutoCloseable {
      *
      * @return The output stream capturing the body
      */
-    OutputStream sink();
+    OutputStream getSink();
 
     /**
      * Gets the captured content, rendered as the given media type says (see {@link BoundedBodyCapture})
-     * and filtered by the given filters in their order, once the stream wrapping {@link #sink()} was fully read
+     * and filtered by the given filters in their order, once the stream wrapping {@link #getSink()} was fully read
      * or written.
      *
      * @param filters   The filters to apply to the captured content, in the order they apply in
      * @param mediaType The media type of the captured request or response body, or {@code null} if unknown
      * @return The captured (and filtered) content, or {@code null} to leave the body out of the logs
      */
-    @Nullable String content(List<LoggedBodyFilter> filters, @Nullable MediaType mediaType);
+    @Nullable String getContent(List<LoggedBodyFilter> filters, @Nullable MediaType mediaType);
 
     /**
      * Releases what this capture holds - a temporary file, a pooled buffer - once per capture, whatever happened,

@@ -812,7 +812,7 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
         ReleasingBodyCapture capture = new ReleasingBodyCapture() {
 
             @Override
-            public String content(List<LoggedBodyFilter> filters, MediaType mediaType) {
+            public String getContent(List<LoggedBodyFilter> filters, MediaType mediaType) {
                 throw new IllegalStateException("Unreadable body");
             }
 
@@ -834,7 +834,7 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
         ReleasingBodyCapture capture = new ReleasingBodyCapture() {
 
             @Override
-            public String content(List<LoggedBodyFilter> filters, MediaType mediaType) {
+            public String getContent(List<LoggedBodyFilter> filters, MediaType mediaType) {
                 throw new OutOfMemoryError("Java heap space");
             }
 

@@ -89,7 +89,7 @@ public class LoggedFeature implements DynamicFeature {
      * {@link LoggedFeatureConfiguration#defaults()}).
      */
     public LoggedFeature() {
-        // Configured as the first request is logged, see setup(Providers)
+        // Configured as the first request is logged, see getSetup(Providers)
     }
 
     /**
@@ -146,7 +146,7 @@ public class LoggedFeature implements DynamicFeature {
      *                 configuration up with when it injected none into this feature
      * @return What this feature works with
      */
-    Setup setup(@Nullable Providers injected) {
+    Setup getSetup(@Nullable Providers injected) {
         Setup current = setup.get();
         if (current != null) {
             return current;
@@ -195,7 +195,7 @@ public class LoggedFeature implements DynamicFeature {
          * @return What the feature works with
          */
         static Setup of(LoggedFeatureConfiguration configuration) {
-            RequestMdc mdc = new RequestMdc(configuration.fieldNames());
+            RequestMdc mdc = new RequestMdc(configuration.getFieldNames());
             return new Setup(configuration, mdc,
                     new RequestDescriber(configuration::isSensitive),
                     new MappingApplier(configuration::isSensitive, mdc::isTaken),

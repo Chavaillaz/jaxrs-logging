@@ -58,15 +58,15 @@ public enum LoggedField {
      */
     DURATION("duration");
 
-    private final String defaultField;
+    private final String defaultName;
 
     /**
      * Creates a field logged under the given name by default.
      *
-     * @param defaultField The name of its MDC entry by default
+     * @param defaultName The name of its MDC entry by default
      */
-    LoggedField(String defaultField) {
-        this.defaultField = defaultField;
+    LoggedField(String defaultName) {
+        this.defaultName = defaultName;
     }
 
     /**
@@ -74,8 +74,8 @@ public enum LoggedField {
      *
      * @return The name by default
      */
-    public String getDefaultField() {
-        return this.defaultField;
+    public String getDefaultName() {
+        return this.defaultName;
     }
 
 }

@@ -412,8 +412,8 @@ class LoggedFeatureTest extends AbstractFilterTest {
         loggingFilter.filter(requestContext, getEmptyResponseContext(requestContext));
 
         // Then: logged as the annotations of the method say, which no callback read again
-        assertTrue(loggingFilter.method().body(REQUEST).isActive());
-        assertEquals(loggingFilter.method().body(REQUEST), loggingFilter.method().body(RESPONSE));
+        assertTrue(loggingFilter.getMethod().body(REQUEST).isActive());
+        assertEquals(loggingFilter.getMethod().body(REQUEST), loggingFilter.getMethod().body(RESPONSE));
         assertEquals(INPUT, getMdcLogged(REQUEST_BODY));
         assertEquals("bodyAsMdc", getMdcLogged(RESOURCE_METHOD));
         verifyNoInteractions(resourceInfo);
@@ -1152,7 +1152,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
 
         // Then: looked up once, when the first request is logged
         assertNotNull(listAppender.findFirstMessage("Processed").getContextData().getValue("trace-id"));
-        assertEquals("trace-id", declaring.setup(null).configuration().fieldName(REQUEST_ID));
+        assertEquals("trace-id", declaring.getSetup(null).configuration().getFieldName(REQUEST_ID));
         verify(declaring.providers, times(1)).getContextResolver(LoggedFeatureConfiguration.class, WILDCARD_TYPE);
     }
 
@@ -1173,7 +1173,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
 
         // Then
         assertNotNull(listAppender.findFirstMessage("Processed").getContextData().getValue("trace-id"));
-        assertEquals("trace-id", declaring.setup(null).configuration().fieldName(REQUEST_ID));
+        assertEquals("trace-id", declaring.getSetup(null).configuration().getFieldName(REQUEST_ID));
     }
 
     @Test
@@ -1183,10 +1183,10 @@ class LoggedFeatureTest extends AbstractFilterTest {
             throw new IllegalStateException("Configuration not loaded yet");
         };
 
-        assertSame(LoggedFeatureConfiguration.defaults(), new LoggedFeature().setup(null).configuration());
-        assertSame(LoggedFeatureConfiguration.defaults(), featureDeclaring(null).setup(null).configuration());
-        assertSame(LoggedFeatureConfiguration.defaults(), featureDeclaring(type -> null).setup(null).configuration());
-        assertSame(LoggedFeatureConfiguration.defaults(), featureDeclaring(failing).setup(null).configuration());
+        assertSame(LoggedFeatureConfiguration.defaults(), new LoggedFeature().getSetup(null).configuration());
+        assertSame(LoggedFeatureConfiguration.defaults(), featureDeclaring(null).getSetup(null).configuration());
+        assertSame(LoggedFeatureConfiguration.defaults(), featureDeclaring(type -> null).getSetup(null).configuration());
+        assertSame(LoggedFeatureConfiguration.defaults(), featureDeclaring(failing).getSetup(null).configuration());
         assertNotNull(listAppender.findFirstMessage("Unable to look up the configuration of the application"));
     }
 
@@ -1199,7 +1199,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         givenFeature.providers = mock(Providers.class);
 
         // Then
-        assertSame(given, givenFeature.setup(null).configuration());
+        assertSame(given, givenFeature.getSetup(null).configuration());
         verifyNoInteractions(givenFeature.providers);
     }
 
@@ -1520,7 +1520,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
                 .bodyCapture(limit -> new BoundedBodyCapture(limit) {
 
                     @Override
-                    public String content(List<LoggedBodyFilter> filters, MediaType mediaType) {
+                    public String getContent(List<LoggedBodyFilter> filters, MediaType mediaType) {
                         throw new OutOfMemoryError("Java heap space");
                     }
 
@@ -1642,7 +1642,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
                 .bodyCapture(limit -> new BoundedBodyCapture(limit) {
 
                     @Override
-                    public OutputStream sink() {
+                    public OutputStream getSink() {
                         return new OutputStream() {
 
                             @Override
@@ -2041,7 +2041,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
         // Then: the one annotation to fix is found from the report alone
         assertNotNull(listAppender.findFirstMessage("Unable to resolve the body logging configuration of "
                 + AnnotatedResource.class.getName() + "#invalidLimit"));
-        assertEquals("?#?", new LoggedFeature().filterFor(mock(ResourceInfo.class)).method().resource().toString());
+        assertEquals("?#?", new LoggedFeature().filterFor(mock(ResourceInfo.class)).getMethod().resource().toString());
     }
 
     @Test
@@ -2212,7 +2212,7 @@ class LoggedFeatureTest extends AbstractFilterTest {
     }
 
     String getMdcField(LoggedField field) {
-        return feature.setup(null).configuration().fieldName(field);
+        return feature.getSetup(null).configuration().getFieldName(field);
     }
 
     String getMdcLogged(LoggedField key) {
