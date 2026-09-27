@@ -50,6 +50,7 @@ import java.io.OutputStream;
 import java.lang.reflect.Modifier;
 import java.net.URI;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -192,6 +193,57 @@ class LoggedClientFeatureTest extends AbstractFilterTest {
         // Then
         assertEquals("abc-123", headers.getFirst("X-Trace-ID"));
         assertNull(headers.getFirst(REQUEST_ID_HEADER));
+    }
+
+    @Test
+    @DisplayName("Check a call made outside of a request is logged under the identifier it is given")
+    void checkCallOutsideRequestLoggedUnderItsIdentifier() throws Exception {
+        // Given: no identifier in MDC, as for a scheduled task, which a call is given a random one for
+        LoggedClientFeature bodyLoggingFeature = LoggedClientFeature.builder().logRequestBody().logResponseBody().build();
+        ClientResponseContext responseContext = mock(ClientResponseContext.class);
+        doReturn(200).when(responseContext).getStatus();
+
+        // When
+        bodyLoggingFeature.filter(requestContext);
+        bodyLoggingFeature.captureRequestBody(writerContext(properties, "Hello, world!"));
+        bodyLoggingFeature.filter(requestContext, responseContext);
+        bodyLoggingFeature.captureResponseBody(readerContext("Received content"));
+
+        // Then: every line of the call carries the identifier the service called logs it under, which used to
+        // appear nowhere on this side, and MDC is left without it
+        Object sent = headers.getFirst(REQUEST_ID_HEADER);
+        assertNotNull(sent);
+        for (String line : List.of("Calling", "Request body", "Called", "Response body")) {
+            assertEquals(sent, listAppender.findFirstMessage(line).getContextData().getValue("request-id"), line);
+        }
+        assertNull(MDC.get("request-id"));
+    }
+
+    @Test
+    @DisplayName("Check a call made for a request is logged under the identifier of the request, MDC left as it was")
+    void checkCallForRequestLoggedUnderItsIdentifier() {
+        // Given
+        MDC.put("request-id", "abc-123");
+
+        // When
+        feature.filter(requestContext);
+
+        // Then
+        assertEquals("abc-123", listAppender.findFirstMessage("Calling").getContextData().getValue("request-id"));
+        assertEquals("abc-123", MDC.get("request-id"));
+    }
+
+    @Test
+    @DisplayName("Check a call the calling code gave an identifier is logged as its thread describes it")
+    void checkCallerIdentifierLeftOutOfMdc() {
+        // Given
+        headers.putSingle(REQUEST_ID_HEADER, "caller-supplied");
+
+        // When
+        feature.filter(requestContext);
+
+        // Then: the calling code knows the identifier it sent, which it may not want in its own lines
+        assertNull(listAppender.findFirstMessage("Calling").getContextData().getValue("request-id"));
     }
 
     @Test

@@ -75,8 +75,9 @@ import com.chavaillaz.jakarta.rs.internal.LoggingGuard;
  * </ul>
  * It propagates the identifier of the current request (see {@link LoggedField#REQUEST_ID}) to the service
  * called, in its {@value LoggedFeature#REQUEST_ID_HEADER} header by default, so both sides of a call are logged
- * under one identifier. It reads it from MDC on the thread running the filters, which an asynchronous call runs
- * on the executor of the client: that executor must propagate MDC (see
+ * under one identifier: a call made outside of a request is given a random one, which the lines logging it carry.
+ * It reads it from MDC on the thread running the filters, which an asynchronous call runs on the executor of the
+ * client: that executor must propagate MDC (see
  * {@link com.chavaillaz.jakarta.rs.mdc.MdcPropagation#wrap(java.util.concurrent.ExecutorService)}).
  * <p>
  * Configured through {@link #builder()}, it applies to every call made through the {@code Client} or
@@ -115,6 +116,12 @@ public final class LoggedClientFeature implements Feature {
      * {@link #captureResponseBody(ReaderInterceptorContext)}.
      */
     private static final String RESPONSE_BODY_LOGGED_PROPERTY = LoggedClientFeature.class.getName() + ".responseBodyLogged";
+
+    /**
+     * Name of the request property holding the correlation identifier this feature gave the call, for the lines
+     * logging it to carry, see {@link #withCorrelationId(Object, Runnable)}.
+     */
+    private static final String CORRELATION_ID_PROPERTY = LoggedClientFeature.class.getName() + ".correlationId";
 
     private final String correlationIdMdcKey;
     private final String correlationIdHeader;
@@ -418,7 +425,8 @@ public final class LoggedClientFeature implements Feature {
             String uri = getLoggedUri(requestContext.getUri());
             requestContext.setProperty(REQUEST_METHOD_PROPERTY, requestContext.getMethod());
             requestContext.setProperty(REQUEST_URI_PROPERTY, uri);
-            log.info("Calling {} {}", requestContext.getMethod(), uri);
+            withCorrelationId(requestContext.getProperty(CORRELATION_ID_PROPERTY),
+                    () -> log.info("Calling {} {}", requestContext.getMethod(), uri));
         });
     }
 
@@ -432,7 +440,36 @@ public final class LoggedClientFeature implements Feature {
         if (requestContext.getHeaders().keySet().stream().noneMatch(correlationIdHeader::equalsIgnoreCase)) {
             // Sanitized as a LoggedFeature does one it receives: a control character in a header fails the call in
             // the HTTP client of the JDK, and a blank identifier correlates nothing
-            requestContext.getHeaders().putSingle(correlationIdHeader, requestIdOf(MDC.get(correlationIdMdcKey)));
+            String correlationId = requestIdOf(MDC.get(correlationIdMdcKey));
+            requestContext.getHeaders().putSingle(correlationIdHeader, correlationId);
+            requestContext.setProperty(CORRELATION_ID_PROPERTY, correlationId);
+        }
+    }
+
+    /**
+     * Logs a line of a call under the correlation identifier this feature gave it, when the current thread has
+     * none in MDC: a call made outside of a request, or on the executor of an asynchronous one, is given a random
+     * identifier, the only one the service called logs it under.
+     *
+     * @param correlationId The correlation identifier this feature gave the call, {@code null} if the calling code
+     *                      gave it one
+     * @param logging       The logging of the line
+     */
+    private void withCorrelationId(@Nullable Object correlationId, Runnable logging) {
+        String current = MDC.get(correlationIdMdcKey);
+        if (!(correlationId instanceof String id) || isNotBlank(current)) {
+            logging.run();
+            return;
+        }
+        MDC.put(correlationIdMdcKey, id);
+        try {
+            logging.run();
+        } finally {
+            if (current == null) {
+                MDC.remove(correlationIdMdcKey);
+            } else {
+                MDC.put(correlationIdMdcKey, current);
+            }
         }
     }
 
@@ -502,11 +539,11 @@ public final class LoggedClientFeature implements Feature {
     void captureRequestBody(WriterInterceptorContext context) throws IOException, WebApplicationException {
         bodyCapturer.write(context, isLoggingEnabled() ? requestBody : LoggedBodyConfiguration.NONE, body -> {
             if (isNotBlank(body)) {
-                log.info("Request body {} {}{}{}",
+                withCorrelationId(context.getProperty(CORRELATION_ID_PROPERTY), () -> log.info("Request body {} {}{}{}",
                         context.getProperty(REQUEST_METHOD_PROPERTY),
                         context.getProperty(REQUEST_URI_PROPERTY),
                         LF,
-                        body);
+                        body));
             }
         });
     }
@@ -526,12 +563,12 @@ public final class LoggedClientFeature implements Feature {
             long duration = NANOSECONDS.toMillis(now - start);
             int status = responseContext.getStatus();
 
-            log.atLevel(responseLevel(status))
+            withCorrelationId(requestContext.getProperty(CORRELATION_ID_PROPERTY), () -> log.atLevel(responseLevel(status))
                     .log("Called {} {} with status {} in {}ms",
                             requestContext.getMethod(),
                             getLoggedUri(requestContext.getUri()),
                             status,
-                            duration);
+                            duration));
         });
     }
 
@@ -564,11 +601,11 @@ public final class LoggedClientFeature implements Feature {
         return bodyCapturer.read(context, configuration, body -> {
             if (isNotBlank(body)) {
                 context.setProperty(RESPONSE_BODY_LOGGED_PROPERTY, true);
-                log.info("Response body {} {}{}{}",
+                withCorrelationId(context.getProperty(CORRELATION_ID_PROPERTY), () -> log.info("Response body {} {}{}{}",
                         context.getProperty(REQUEST_METHOD_PROPERTY),
                         context.getProperty(REQUEST_URI_PROPERTY),
                         LF,
-                        body);
+                        body));
             }
         }, handOver -> {
             // Nothing marks the end of a call: a response read as a stream is logged once that stream ends
