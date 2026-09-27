@@ -1,6 +1,6 @@
 # JAX-RS Requests Logging
 
-[![System tests](https://github.com/chavaillaz/jaxrs-logging/actions/workflows/system-tests.yml/badge.svg)](https://github.com/chavaillaz/jaxrs-logging/actions/workflows/system-tests.yml)
+[![Quality Gate](https://github.com/chavaillaz/jaxrs-logging/actions/workflows/code-quality.yml/badge.svg)](https://github.com/chavaillaz/jaxrs-logging/actions/workflows/code-quality.yml)
 [![Maven Central](https://img.shields.io/maven-central/v/com.chavaillaz/jaxrs-logging)](https://central.sonatype.com/artifact/com.chavaillaz/jaxrs-logging)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
