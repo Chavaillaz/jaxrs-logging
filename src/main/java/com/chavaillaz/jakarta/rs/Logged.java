@@ -14,7 +14,7 @@ import java.lang.annotation.Target;
  * <p>
  * Declared on a resource class, it applies to every resource method of it; on a resource method, to that
  * method alone - and so on the interfaces and superclasses of the class, and on the methods of theirs a
- * resource method implements or overrides (see {@link LoggedUtils#declarationSites}). The most specific
+ * resource method implements or overrides (see {@link LoggedUtils#getDeclarationSites}). The most specific
  * declaration wins entirely: a method redeclaring a bare {@code @Logged} opts out of the body logging of its
  * class.
  * <p>

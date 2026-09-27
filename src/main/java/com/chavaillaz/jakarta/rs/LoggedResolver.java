@@ -2,8 +2,8 @@ package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.REQUEST;
 import static com.chavaillaz.jakarta.rs.LoggedBody.Direction.RESPONSE;
-import static com.chavaillaz.jakarta.rs.LoggedUtils.declarationSites;
-import static com.chavaillaz.jakarta.rs.LoggedUtils.getAnnotation;
+import static com.chavaillaz.jakarta.rs.LoggedUtils.getAnnotations;
+import static com.chavaillaz.jakarta.rs.LoggedUtils.getDeclarationSites;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.getMergedMappings;
 import static com.chavaillaz.jakarta.rs.MappingApplier.inApplicationOrder;
 import static java.util.Arrays.stream;
@@ -28,7 +28,7 @@ import com.chavaillaz.jakarta.rs.internal.LoggedBodyFilterFactory;
 /**
  * Resolves whether the requests of a resource method are logged, and which {@link LoggedMapping} and
  * {@link LoggedBody} configuration applies to them, from the annotations of its declaration sites (see
- * {@link LoggedUtils#declarationSites}).
+ * {@link LoggedUtils#getDeclarationSites}).
  * <p>
  * {@link LoggedFeature} resolves each resource method once, as it is deployed. A failure to read the
  * annotations is reported then and leaves the method logging less rather than failing its requests: the
@@ -76,7 +76,7 @@ final class LoggedResolver {
      */
     boolean isLogged(ResourceInfo resource) {
         try {
-            return declarationSites(resource.getResourceClass(), resource.getResourceMethod()).stream()
+            return getDeclarationSites(resource.getResourceClass(), resource.getResourceMethod()).stream()
                     .anyMatch(site -> ACTIVATING.stream().anyMatch(site::isAnnotationPresent));
         } catch (RuntimeException e) {
             log.error("Unable to find out whether the requests of {} are logged, they are not", resource, e);
@@ -140,7 +140,7 @@ final class LoggedResolver {
      */
     private Optional<LoggedBody> findAnnotation(ResourceInfo resource, Direction target) {
         LoggedBody both = null;
-        for (LoggedBody logging : getAnnotation(resource, LoggedBody.class)) {
+        for (LoggedBody logging : getAnnotations(resource, LoggedBody.class)) {
             Set<Direction> targets = EnumSet.noneOf(Direction.class);
             Collections.addAll(targets, logging.targets());
             if (targets.equals(EnumSet.of(target))) {

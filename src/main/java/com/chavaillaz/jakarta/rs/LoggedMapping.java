@@ -13,7 +13,7 @@ import java.lang.annotation.Target;
  * Maps parameters of the requests of a resource - query or path parameters, headers - to MDC entries, and
  * activates the logging of its requests as {@link Logged} does.
  * <p>
- * The mappings of every declaration site apply (see {@link LoggedUtils#declarationSites}), but a parameter is
+ * The mappings of every declaration site apply (see {@link LoggedUtils#getDeclarationSites}), but a parameter is
  * mapped once at most, by the mapping naming it on the most specific site, the first one declared there. An
  * automatic mapping leaves out the parameters the others name.
  */

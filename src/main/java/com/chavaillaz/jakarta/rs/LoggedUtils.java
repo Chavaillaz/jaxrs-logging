@@ -26,6 +26,7 @@ import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.BiPredicate;
 import java.util.function.Function;
@@ -34,9 +35,11 @@ import org.apache.commons.lang3.reflect.TypeUtils;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Reads the annotations of this library declared for a resource method: on the method, the methods it
- * overrides, its class, and the interfaces and superclasses of the class, most specific first (see
- * {@link #declarationSites}). {@link LoggedFeature} reads them once per resource method, as it is deployed.
+ * Reads the annotations declared for a resource method: on the method, the methods it overrides, its class, and
+ * the interfaces and superclasses of the class, most specific first (see {@link #getDeclarationSites}).
+ * {@link LoggedFeature} reads those of this library once per resource method, as it is deployed, and an
+ * application reads its own with {@link #getAnnotation(ResourceInfo, Class)}, for the MDC entries it describes a
+ * request with (see {@link LoggedFeatureConfiguration.Builder#mdcEntries}).
  */
 public final class LoggedUtils {
 
@@ -46,7 +49,7 @@ public final class LoggedUtils {
 
     /**
      * Merges the {@link LoggedMapping} annotations of every declaration site of the resource method (see
-     * {@link #declarationSites}), leaving out a mapping competing for a parameter with one declared on a more
+     * {@link #getDeclarationSites}), leaving out a mapping competing for a parameter with one declared on a more
      * specific site (see {@link #mergeMappings}).
      *
      * @param resourceInfo The resource method and its class
@@ -63,7 +66,7 @@ public final class LoggedUtils {
         // wins over a competing one; getAnnotationsByType finds a mapping whether it is repeated or not, the
         // compiler only wrapping two or more of them into @LoggedMappings
         Set<LoggedMapping> mergedMappings = new LinkedHashSet<>();
-        for (AnnotatedElement site : declarationSites(resourceClass, resourceMethod)) {
+        for (AnnotatedElement site : getDeclarationSites(resourceClass, resourceMethod)) {
             mergeMappings(mergedMappings, site.getAnnotationsByType(LoggedMapping.class));
         }
         return mergedMappings;
@@ -107,9 +110,22 @@ public final class LoggedUtils {
     }
 
     /**
-     * Gets the given annotation from the declaration sites of the resource method.
+     * Gets the given annotation from the declaration sites of the resource method, the first of them for a
+     * repeatable one (see {@link #getAnnotations(ResourceInfo, Class)}).
+     *
+     * @param resourceInfo   The resource method and its class
+     * @param annotationType The annotation type to get
+     * @param <A>            The annotation type
+     * @return The annotation found, or {@link Optional#empty()} otherwise
+     */
+    public static <A extends Annotation> Optional<A> getAnnotation(ResourceInfo resourceInfo, Class<A> annotationType) {
+        return getAnnotations(resourceInfo, annotationType).stream().findFirst();
+    }
+
+    /**
+     * Gets the given annotations from the declaration sites of the resource method.
      * <p>
-     * The first declaration site (see {@link #declarationSites(Class, Method)}) declaring the annotation type wins
+     * The first declaration site (see {@link #getDeclarationSites(Class, Method)}) declaring the annotation type wins
      * entirely: a more specific declaration <em>replaces</em> a less specific one. A repeatable annotation is
      * found through the container the compiler declares in its place once repeated, and a container declared
      * empty counts, which lets a resource method opt out of the body logging of its class with a bare
@@ -120,8 +136,8 @@ public final class LoggedUtils {
      * @param <A>            The annotation type
      * @return The annotations found, or an empty list otherwise
      */
-    public static <A extends Annotation> List<A> getAnnotation(ResourceInfo resourceInfo, Class<A> annotationType) {
-        for (AnnotatedElement site : declarationSites(resourceInfo.getResourceClass(), resourceInfo.getResourceMethod())) {
+    public static <A extends Annotation> List<A> getAnnotations(ResourceInfo resourceInfo, Class<A> annotationType) {
+        for (AnnotatedElement site : getDeclarationSites(resourceInfo.getResourceClass(), resourceInfo.getResourceMethod())) {
             if (declares(site, annotationType)) {
                 // Looks through the container of a repeatable annotation type
                 return asList(site.getAnnotationsByType(annotationType));
@@ -167,7 +183,7 @@ public final class LoggedUtils {
      * @param resourceMethod The resource method, possibly {@code null}
      * @return The declaration sites, in decreasing order of priority
      */
-    public static List<AnnotatedElement> declarationSites(@Nullable Class<?> resourceClass, @Nullable Method resourceMethod) {
+    public static List<AnnotatedElement> getDeclarationSites(@Nullable Class<?> resourceClass, @Nullable Method resourceMethod) {
         List<AnnotatedElement> sites = new ArrayList<>();
         if (resourceMethod != null) {
             sites.add(resourceMethod);
@@ -181,8 +197,8 @@ public final class LoggedUtils {
                 .toList();
         List<Class<?>> interfaces = getAllInterfaces(resourceClass);
         if (resourceMethod != null) {
-            sites.addAll(overriddenMethods(superclasses, Class::getDeclaredMethods, resourceClass, resourceMethod));
-            sites.addAll(overriddenMethods(interfaces, Class::getMethods, resourceClass, resourceMethod));
+            sites.addAll(getOverriddenMethods(superclasses, Class::getDeclaredMethods, resourceClass, resourceMethod));
+            sites.addAll(getOverriddenMethods(interfaces, Class::getMethods, resourceClass, resourceMethod));
         }
 
         sites.addAll(interfaces);
@@ -202,7 +218,7 @@ public final class LoggedUtils {
      * @param resourceMethod The resource method
      * @return The methods the resource method overrides or implements
      */
-    private static List<Method> overriddenMethods(List<Class<?>> types, Function<Class<?>, Method[]> methods, Class<?> resourceClass, Method resourceMethod) {
+    private static List<Method> getOverriddenMethods(List<Class<?>> types, Function<Class<?>, Method[]> methods, Class<?> resourceClass, Method resourceMethod) {
         List<Method> overridden = new ArrayList<>();
         for (Class<?> type : types) {
             for (Method method : methods.apply(type)) {

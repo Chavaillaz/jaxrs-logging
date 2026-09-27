@@ -5,8 +5,9 @@ import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.LOG;
 import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.MDC;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
-import static com.chavaillaz.jakarta.rs.LoggedUtils.declarationSites;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.getAnnotation;
+import static com.chavaillaz.jakarta.rs.LoggedUtils.getAnnotations;
+import static com.chavaillaz.jakarta.rs.LoggedUtils.getDeclarationSites;
 import static com.chavaillaz.jakarta.rs.LoggedUtils.getMergedMappings;
 import static java.lang.annotation.RetentionPolicy.RUNTIME;
 import static java.util.stream.Collectors.toSet;
@@ -23,6 +24,7 @@ import java.lang.annotation.Retention;
 import java.lang.reflect.AnnotatedElement;
 import java.lang.reflect.Method;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 import org.junit.jupiter.api.DisplayName;
@@ -180,7 +182,7 @@ class LoggedUtilsTest {
         doReturn(ClassLevelResource.class.getMethod("create", String.class)).when(resourceInfo).getResourceMethod();
 
         // When
-        List<LoggedBody> result = getAnnotation(resourceInfo, LoggedBody.class);
+        List<LoggedBody> result = getAnnotations(resourceInfo, LoggedBody.class);
 
         // Then: the method's own @POST/@Path must not hide the class-level configuration, as they used
         // to by making the resolution stop at the (empty) interface level
@@ -196,7 +198,7 @@ class LoggedUtilsTest {
         doReturn(ConflictingAnnotationsResource.class.getMethod("method")).when(resourceInfo).getResourceMethod();
 
         // When
-        List<LoggedBody> result = getAnnotation(resourceInfo, LoggedBody.class);
+        List<LoggedBody> result = getAnnotations(resourceInfo, LoggedBody.class);
 
         // Then: only the method-level LoggedBody(LOG, REQUEST) is found, not merged with the
         // interface's class-level LoggedBody(MDC, both)
@@ -250,7 +252,7 @@ class LoggedUtilsTest {
         doReturn(resourceClass.getMethod("create", String.class)).when(resourceInfo).getResourceMethod();
 
         // When
-        List<LoggedBody> result = getAnnotation(resourceInfo, LoggedBody.class);
+        List<LoggedBody> result = getAnnotations(resourceInfo, LoggedBody.class);
 
         // Then: create(String) implements create(T), although the interface method erases to create(Object)
         assertEquals(1, result.size());
@@ -265,7 +267,7 @@ class LoggedUtilsTest {
         doReturn(ArticleCrudResource.class.getMethod("create", Integer.class)).when(resourceInfo).getResourceMethod();
 
         // When
-        List<LoggedBody> result = getAnnotation(resourceInfo, LoggedBody.class);
+        List<LoggedBody> result = getAnnotations(resourceInfo, LoggedBody.class);
 
         // Then
         assertTrue(result.isEmpty());
@@ -322,7 +324,7 @@ class LoggedUtilsTest {
     @DisplayName("Check the declaration sites of a method put the ones of the superclasses above those of the interfaces")
     void checkDeclarationSitesWithSuperclasses() throws Exception {
         // When
-        List<AnnotatedElement> sites = declarationSites(ConcreteResource.class, ConcreteResource.class.getMethod("read", String.class));
+        List<AnnotatedElement> sites = getDeclarationSites(ConcreteResource.class, ConcreteResource.class.getMethod("read", String.class));
 
         // Then: the methods overridden first, the superclasses' before the interfaces', then the types
         assertEquals(List.of(
@@ -339,7 +341,7 @@ class LoggedUtilsTest {
     @DisplayName("Check a method overriding a generic method of a superclass has it as a declaration site")
     void checkDeclarationSitesWithGenericSuperclass() throws Exception {
         // When: save(String) overrides save(E), which erases to save(Object)
-        List<AnnotatedElement> sites = declarationSites(ConcreteResource.class, ConcreteResource.class.getMethod("save", String.class));
+        List<AnnotatedElement> sites = getDeclarationSites(ConcreteResource.class, ConcreteResource.class.getMethod("save", String.class));
 
         // Then
         assertTrue(sites.contains(GenericBaseResource.class.getMethod("save", Object.class)), sites::toString);
@@ -350,8 +352,8 @@ class LoggedUtilsTest {
     void checkDeclarationSitesWithGenericArray() throws Exception {
         // When: saveAll(String[]) overrides saveAll(E[]), which erases to saveAll(Object[])
         Method overridden = GenericBaseResource.class.getMethod("saveAll", Object[].class);
-        List<AnnotatedElement> sites = declarationSites(ConcreteResource.class, ConcreteResource.class.getMethod("saveAll", String[].class));
-        List<AnnotatedElement> overloadSites = declarationSites(ConcreteResource.class, ConcreteResource.class.getMethod("saveAll", Integer[].class));
+        List<AnnotatedElement> sites = getDeclarationSites(ConcreteResource.class, ConcreteResource.class.getMethod("saveAll", String[].class));
+        List<AnnotatedElement> overloadSites = getDeclarationSites(ConcreteResource.class, ConcreteResource.class.getMethod("saveAll", Integer[].class));
 
         // Then: the overload taking another array overrides nothing
         assertTrue(sites.contains(overridden), sites::toString);
@@ -363,7 +365,7 @@ class LoggedUtilsTest {
     void checkDeclarationSitesOfInheritedMethod() throws Exception {
         // When: the container matches the method the superclass declares
         Method inherited = BaseResource.class.getMethod("list");
-        List<AnnotatedElement> sites = declarationSites(ConcreteResource.class, inherited);
+        List<AnnotatedElement> sites = getDeclarationSites(ConcreteResource.class, inherited);
 
         // Then
         assertEquals(inherited, sites.getFirst());
@@ -411,10 +413,26 @@ class LoggedUtilsTest {
         doReturn(RepeatingResource.class.getMethod("repeated")).when(resourceInfo).getResourceMethod();
 
         // When
-        List<Audit> result = getAnnotation(resourceInfo, Audit.class);
+        List<Audit> result = getAnnotations(resourceInfo, Audit.class);
 
         // Then: the method only declares the container, which the annotation of the class used to win over
         assertEquals(List.of("read", "write"), result.stream().map(Audit::value).toList());
+    }
+
+    @Test
+    @DisplayName("Check the annotation got alone is the first of those found, if any")
+    void checkSingleAnnotation() throws Exception {
+        // Given
+        doReturn(RepeatingResource.class).when(resourceInfo).getResourceClass();
+        doReturn(RepeatingResource.class.getMethod("repeated")).when(resourceInfo).getResourceMethod();
+
+        // When
+        Optional<Audit> audit = getAnnotation(resourceInfo, Audit.class);
+        Optional<Path> path = getAnnotation(resourceInfo, Path.class);
+
+        // Then
+        assertEquals(Optional.of("read"), audit.map(Audit::value));
+        assertTrue(path.isEmpty());
     }
 
     @Test
@@ -425,7 +443,7 @@ class LoggedUtilsTest {
         doReturn(RepeatingResource.class.getMethod("optedOut")).when(resourceInfo).getResourceMethod();
 
         // When
-        List<LoggedBody> result = getAnnotation(resourceInfo, LoggedBody.class);
+        List<LoggedBody> result = getAnnotations(resourceInfo, LoggedBody.class);
 
         // Then: the method opts out of the body logging of its class
         assertTrue(result.isEmpty());

@@ -51,7 +51,7 @@ public class UserLoggingConfiguration implements ContextResolver<LoggedFeatureCo
         entries.put(USER_ID, "Doe");
         // Add the user agent if the annotation of the resource asks for it, sanitized by the library as the
         // header comes from the client, who could otherwise forge log lines with it
-        if (getAnnotation(resource, UserLogged.class).stream().anyMatch(UserLogged::userAgent)) {
+        if (getAnnotation(resource, UserLogged.class).filter(UserLogged::userAgent).isPresent()) {
             entries.put(USER_AGENT, request.getHeaderString("User-Agent"));
         }
         return entries;
