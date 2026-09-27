@@ -3,7 +3,7 @@ on:
   workflow_run:
     # Every workflow a pull request builds it with, so that the last one to finish is the one finding it green.
     # A workflow added beside them belongs in this list too, or an update waits for a merge that never comes.
-    workflows: [ Code quality ]
+    workflows: [ Code quality, Dependency check ]
     types: [ completed ]
 concurrency:
   # The builds of one update finish at their own pace, and its merge is attempted once at a time
@@ -59,7 +59,7 @@ jobs:
             exit 0
           fi
 
-          # A skipped build is one whose every job was, and says nothing either way
+          # A skipped build is one whose every job was, such as the dependency check of a fork, and says nothing
           refused=$(echo "$builds" | jq -r '[.workflow_runs[]
             | select(.conclusion != "success" and .conclusion != "skipped") | .name] | join(", ")')
           if [ -n "$refused" ]; then
