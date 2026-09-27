@@ -604,7 +604,7 @@ public class LoggingConfiguration implements ContextResolver<LoggedFeatureConfig
     private static final LoggedFeatureConfiguration CONFIGURATION = LoggedFeatureConfiguration.builder()
             .fieldName(REQUEST_ID, "trace-id")
             .requestIdHeader("X-Trace-ID")
-            .responseLevel(status -> status == 404 ? Level.INFO : LoggedSupport.levelOf(status))
+            .responseLevel(status -> status == 404 ? Level.INFO : LoggedFeatureConfiguration.levelOf(status))
             .build();
 
     @Override

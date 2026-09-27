@@ -1,6 +1,6 @@
 package com.chavaillaz.jakarta.rs;
 
-import static com.chavaillaz.jakarta.rs.LoggedSupport.levelOf;
+import static com.chavaillaz.jakarta.rs.LoggedFeatureConfiguration.levelOf;
 import static com.chavaillaz.jakarta.rs.internal.LoggingGuard.safely;
 import static org.apache.commons.lang3.StringUtils.EMPTY;
 import static org.apache.commons.lang3.StringUtils.LF;

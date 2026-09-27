@@ -1,7 +1,6 @@
 package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedFeature.REQUEST_ID_HEADER;
-import static com.chavaillaz.jakarta.rs.LoggedSupport.levelOf;
 import static java.util.Collections.unmodifiableMap;
 import static java.util.Objects.requireNonNull;
 import static java.util.Objects.requireNonNullElseGet;
@@ -24,6 +23,7 @@ import org.slf4j.event.Level;
 import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
 import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
+import com.chavaillaz.jakarta.rs.client.LoggedClientFeature;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
 import com.chavaillaz.jakarta.rs.internal.CredentialNames;
 import com.chavaillaz.jakarta.rs.internal.Sanitizer;
@@ -119,6 +119,27 @@ public final class LoggedFeatureConfiguration {
             case QUERY -> CredentialNames.isQueryParameter(name);
             case PATH -> false;
         };
+    }
+
+    /**
+     * Gets the level an exchange answered with the given status is logged at by default: {@link Level#ERROR}
+     * for a server error, {@link Level#WARN} for a client error, {@link Level#INFO} otherwise. The default of
+     * {@link Builder#responseLevel(IntFunction)}, and of {@link LoggedClientFeature.Builder#responseLevel}, to
+     * compose with.
+     * <p>
+     * A client error is a warning rather than an error: on the server side, it says something about the caller
+     * rather than the service, and on the client side, it points at a bug rather than an outage.
+     *
+     * @param status The status the exchange was answered with, {@code 0} when unknown
+     * @return The level to log the exchange at
+     */
+    public static Level levelOf(int status) {
+        if (status >= 500) {
+            return Level.ERROR;
+        } else if (status >= 400) {
+            return Level.WARN;
+        }
+        return Level.INFO;
     }
 
     /**
@@ -224,7 +245,7 @@ public final class LoggedFeatureConfiguration {
         private @Nullable Function<ContainerRequestContext, @Nullable String> requestId;
         private boolean requestIdReturned = true;
         private BiPredicate<MappingType, String> sensitiveParameters = LoggedFeatureConfiguration::isCredential;
-        private IntFunction<@Nullable Level> responseLevel = LoggedSupport::levelOf;
+        private IntFunction<@Nullable Level> responseLevel = LoggedFeatureConfiguration::levelOf;
         private IntFunction<LoggedBodyCapture> bodyCapture = BoundedLoggedBodyCapture::new;
         private BiFunction<ContainerRequestContext, ResourceInfo, Map<String, String>> mdcEntries = (request, resource) -> Map.of();
 
@@ -337,7 +358,7 @@ public final class LoggedFeatureConfiguration {
         /**
          * Sets the level a request is logged at once answered, given its status, for example to leave an
          * expected {@code 404} at {@code INFO}. A status the function returns {@code null} for is logged at its
-         * default level. Defaults to {@link LoggedSupport#levelOf(int)}.
+         * default level. Defaults to {@link #levelOf(int)}, to compose with.
          *
          * @param levels The level to log a request answered with the given status at
          * @return This builder

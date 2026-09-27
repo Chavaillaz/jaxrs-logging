@@ -2,9 +2,9 @@ package com.chavaillaz.jakarta.rs.client;
 
 import static com.chavaillaz.jakarta.rs.LoggedBody.LogType.LOG;
 import static com.chavaillaz.jakarta.rs.LoggedFeature.REQUEST_ID_HEADER;
+import static com.chavaillaz.jakarta.rs.LoggedFeatureConfiguration.levelOf;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.QUERY;
-import static com.chavaillaz.jakarta.rs.LoggedSupport.levelOf;
 import static com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture.DEFAULT_LIMIT;
 import static com.chavaillaz.jakarta.rs.filter.MaskingBodyFilter.DEFAULT_MASK;
 import static com.chavaillaz.jakarta.rs.internal.Sanitizer.requestIdOf;
@@ -57,7 +57,6 @@ import com.chavaillaz.jakarta.rs.LoggedFeature;
 import com.chavaillaz.jakarta.rs.LoggedFeatureConfiguration;
 import com.chavaillaz.jakarta.rs.LoggedField;
 import com.chavaillaz.jakarta.rs.LoggedMapping.MappingType;
-import com.chavaillaz.jakarta.rs.LoggedSupport;
 import com.chavaillaz.jakarta.rs.capture.BoundedLoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.capture.LoggedBodyCapture;
 import com.chavaillaz.jakarta.rs.filter.LoggedBodyFilter;
@@ -192,7 +191,7 @@ public final class LoggedClientFeature implements Feature {
         private String correlationIdMdcKey = REQUEST_ID.getDefaultField();
         private String correlationIdHeader = REQUEST_ID_HEADER;
         private BiPredicate<MappingType, String> sensitiveParameters = LoggedFeatureConfiguration::isCredential;
-        private IntFunction<@Nullable Level> responseLevel = LoggedSupport::levelOf;
+        private IntFunction<@Nullable Level> responseLevel = LoggedFeatureConfiguration::levelOf;
         private boolean logRequestBody = false;
         private boolean logResponseBody = false;
         private int requestBodyLimit = DEFAULT_LIMIT;
@@ -267,7 +266,7 @@ public final class LoggedClientFeature implements Feature {
          * the calling code expects at {@code INFO}, as
          * {@link LoggedFeatureConfiguration.Builder#responseLevel(IntFunction)} does for the requests received. A
          * status the function returns {@code null} for, or fails for, is logged at its default level. Defaults to
-         * {@link LoggedSupport#levelOf(int)}.
+         * {@link LoggedFeatureConfiguration#levelOf(int)}.
          *
          * @param levels The level to log a call answered with the given status at
          * @return This builder

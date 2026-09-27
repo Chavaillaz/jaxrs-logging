@@ -2,6 +2,7 @@ package com.chavaillaz.jakarta.rs;
 
 import static com.chavaillaz.jakarta.rs.LoggedFeature.REQUEST_ID_HEADER;
 import static com.chavaillaz.jakarta.rs.LoggedFeatureConfiguration.isCredential;
+import static com.chavaillaz.jakarta.rs.LoggedFeatureConfiguration.levelOf;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_ID;
 import static com.chavaillaz.jakarta.rs.LoggedField.REQUEST_URI;
 import static com.chavaillaz.jakarta.rs.LoggedMapping.MappingType.HEADER;
@@ -24,6 +25,7 @@ import org.jboss.resteasy.mock.MockHttpRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.slf4j.event.Level;
 
@@ -77,6 +79,13 @@ class LoggedFeatureConfigurationTest {
 
         assertEquals(Level.INFO, configuration.responseLevel(404));
         assertEquals(Level.ERROR, configuration.responseLevel(503));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"0, INFO", "204, INFO", "399, INFO", "400, WARN", "499, WARN", "500, ERROR", "599, ERROR"})
+    @DisplayName("Check the default level follows the class of the status, an unknown one logged at INFO")
+    void checkDefaultLevelOfStatus(int status, Level level) {
+        assertEquals(level, levelOf(status));
     }
 
     @Test
